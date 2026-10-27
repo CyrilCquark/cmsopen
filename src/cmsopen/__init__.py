@@ -5,4 +5,8 @@ muon pairs, and reconstructs the dimuon invariant mass spectrum to reveal the
 Z boson resonance near 91 GeV.
 """
 
+from cmsopen.ingestion import EventCollection, open_events
+
 __version__ = "0.1.0"
+
+__all__ = ["EventCollection", "__version__", "open_events"]
