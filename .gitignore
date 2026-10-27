@@ -12,6 +12,7 @@ dist/
 # Data: ROOT files are large and never committed
 *.root
 data/*
+!data/.gitkeep
 
 # Jupyter
 .ipynb_checkpoints/
