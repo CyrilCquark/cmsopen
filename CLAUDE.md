@@ -14,6 +14,29 @@ Z boson invariant mass peak (~91 GeV) from DoubleMuon NanoAOD files.
 - Install: `pip install -e ".[dev]"`
 - Test: `pytest`
 
+## Working on a new machine
+
+Keep the project outside iCloud-synced folders (Desktop, Documents); use
+`~/Developer`. Facts about the data file come from `DATA.md`.
+
+```bash
+brew install python@3.12 gh
+gh auth login
+mkdir -p ~/Developer && cd ~/Developer
+git clone https://github.com/CyrilCquark/cmsopen.git
+cd cmsopen
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+# Resumable download (~1.1 GB); rerun the same command to resume.
+curl -fL -C - -o data/45F7AE81-7A79-4CB1-998E-7BD156490294.root \
+  https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/45F7AE81-7A79-4CB1-998E-7BD156490294.root
+stat -f %z data/45F7AE81-7A79-4CB1-998E-7BD156490294.root   # must print 1145602936
+export CMSOPEN_DATA_FILE="$PWD/data/45F7AE81-7A79-4CB1-998E-7BD156490294.root"
+pytest
+```
+
+If the size differs, the download is incomplete: rerun the `curl` command.
+
 ## Architecture
 
 All modules live under `src/cmsopen/`.
