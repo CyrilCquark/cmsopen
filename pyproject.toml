@@ -19,7 +19,6 @@ dependencies = [
     "scipy>=1.11",
     "hist>=2.7",
     "particle>=0.24",
-    "vector>=1.3",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -29,7 +28,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "jupyter", "nbformat"]
+dev = ["pytest", "jupyter", "nbformat", "vector>=1.3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
