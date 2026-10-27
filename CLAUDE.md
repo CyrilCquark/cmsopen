@@ -136,8 +136,8 @@ fails, report the failure. Do not weaken or edit a check to make it pass.
 
 | Layer | State |
 |---|---|
-| 1 ingestion | Code, tests, demos committed. Live browser check pending. |
-| 2 objects | In progress. |
+| 1 ingestion | Not done: (a)(b)(c)(e) met; (d) live browser check pending (Chrome not connected). |
+| 2 objects | Not done: (a)(b)(c)(e) met; (d) live browser check pending (Chrome not connected). |
 | 3–10 | Not started. |
 
 ## Note on branch names
