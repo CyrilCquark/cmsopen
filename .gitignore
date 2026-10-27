@@ -1,0 +1,20 @@
+# Environment
+.venv/
+
+# Python build and cache artifacts
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# Data: ROOT files are large and never committed
+*.root
+data/*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
