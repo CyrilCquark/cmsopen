@@ -4,6 +4,7 @@ import awkward as ak
 import numpy as np
 import pytest
 import uproot
+from synthetic import ELECTRON_PT, HLT_A, HLT_B, MUON_CHARGE, MUON_PT, N_EVENTS, REAL_FILE, _write_ttree
 
 import cmsopen
 from cmsopen.ingestion import (
@@ -13,65 +14,6 @@ from cmsopen.ingestion import (
     NotNanoAODError,
     open_events,
 )
-
-REAL_FILE = Path(__file__).parents[1] / "data" / "45F7AE81-7A79-4CB1-998E-7BD156490294.root"
-
-N_EVENTS = 6
-MUON_PT = [[45.0, 38.0], [], [20.0], [50.0, 41.0, 5.0], [], [30.0, 29.0]]
-MUON_CHARGE = [[1, -1], [], [1], [-1, 1, 1], [], [1, 1]]
-ELECTRON_PT = [[], [25.0], [], [], [12.0, 9.0], []]
-HLT_A = [True, False, False, True, False, False]
-HLT_B = [True, False, True, False, False, False]
-
-
-def _jagged(values, dtype):
-    return ak.values_astype(ak.Array(values), dtype)
-
-
-def _write_ttree(file, name: str, data: dict) -> None:
-    # Plain dict assignment writes an RNTuple in uproot >= 5.7; NanoAOD is a TTree.
-    file.mktree(name, {k: (v.type.content if isinstance(v, ak.Array) else v.dtype) for k, v in data.items()})
-    file[name].extend(data)
-
-
-@pytest.fixture
-def nano_file(tmp_path: Path) -> Path:
-    """A tiny flat NanoAOD-like file with Muon/Electron collections and triggers."""
-    path = tmp_path / "nano.root"
-    muon_pt = _jagged(MUON_PT, np.float32)
-    muon = ak.zip(
-        {
-            "pt": muon_pt,
-            "eta": muon_pt * 0 + np.float32(0.5),
-            "phi": muon_pt * 0 + np.float32(1.0),
-            "mass": muon_pt * 0 + np.float32(0.105658),
-            "charge": _jagged(MUON_CHARGE, np.int32),
-            "tightId": muon_pt > 25,
-        }
-    )
-    ele_pt = _jagged(ELECTRON_PT, np.float32)
-    electron = ak.zip({"pt": ele_pt, "eta": ele_pt * 0, "cutBased": ak.values_astype(ele_pt > 10, np.int32)})
-    with uproot.recreate(path) as f:
-        _write_ttree(f, "Events", {
-            "run": np.full(N_EVENTS, 194050, np.uint32),
-            "luminosityBlock": np.arange(N_EVENTS, dtype=np.uint32),
-            "event": np.arange(100, 100 + N_EVENTS, dtype=np.uint64),
-            "Muon": muon,
-            "Electron": electron,
-            # Run 1 quirk: a per-event scalar that shares the Electron_ prefix.
-            "Electron_nNano": np.zeros(N_EVENTS, np.uint32),
-            "HLT_Mu17_Mu8": np.array(HLT_A),
-            "HLT_Mu17_TkMu8": np.array(HLT_B),
-            "HLT_IsoMu24": np.zeros(N_EVENTS, bool),
-        })
-    return path
-
-
-@pytest.fixture
-def events(nano_file: Path) -> EventCollection:
-    with open_events(nano_file) as ev:
-        yield ev
-
 
 def test_package_exports():
     assert cmsopen.open_events is open_events
