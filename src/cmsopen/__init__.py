@@ -14,6 +14,7 @@ from cmsopen.combinatorics import (
     opposite_sign_pairs,
     same_sign_pairs,
 )
+from cmsopen.datasets import fetch_example_data
 from cmsopen.fitting import (
     FitError,
     FitResult,
@@ -107,6 +108,7 @@ __all__ = [
     "delta_eta",
     "delta_phi",
     "delta_r",
+    "fetch_example_data",
     "fit_mass_peak",
     "fit_stability",
     "gaussian",
