@@ -546,39 +546,136 @@ def _check_survivors(cutflow: CutFlow) -> None:
     )
 
 
-def _process_file(path: str, config: ChannelConfig, limit: int | None, chunk_size: int,
-                  fields: tuple[str, ...]) -> tuple[int, list[CutFlow], list[np.ndarray], list[np.ndarray], int]:
-    """Run selection and pairing over one file in chunks; return events, cutflows, masses, SS masses, OS count."""
+@dataclass(frozen=True)
+class _Unit:
+    """One piece of work: a half-open event range of one file."""
+
+    file_index: int
+    chunk_index: int
+    path: str
+    start: int
+    stop: int
+
+    def describe(self) -> str:
+        return f"{self.path}, chunk {self.chunk_index} (events {self.start}-{self.stop})"
+
+
+@dataclass
+class _ChunkResult:
+    cutflow: CutFlow
+    masses: np.ndarray
+    same_sign: np.ndarray
+    n_os: int
+
+
+def _open(path: str) -> Any:
     try:
-        events = open_events(path)
+        return open_events(path)
     except FileNotFoundError:
         raise AnalysisError(f"file not found: {path}") from None
     except NotNanoAODError as exc:
         raise AnalysisError(f"{path} is not a usable NanoAOD file: {exc}") from None
     except OSError as exc:
         raise AnalysisError(f"cannot open {path}: {exc}") from None
-    cutflows, masses, ss, n_os = [], [], [], 0
-    with events:
-        n_total = events.n_events if limit is None else min(limit, events.n_events)
-        missing = [f"Muon_{f}" for f in fields if not events.has_branch(f"Muon_{f}")]
-        missing += [t for t in config.triggers if not events.has_branch(t)]
-        if missing:
-            raise AnalysisError(f"{path} lacks branches needed by channel {config.name!r}: {missing}")
-        for start in range(0, max(n_total, 1), chunk_size):
-            stop = min(start + chunk_size, n_total)
-            sel = select_muons(events, fields=fields, entry_start=start, entry_stop=stop)
-            if config.triggers:
-                sel = sel.require_trigger(*config.triggers)
-            sel = sel.apply(**config.muon_cuts).require(2)
-            cutflows.append(sel.cutflow())
-            os_pairs = opposite_sign_pairs(sel)
-            n_os += os_pairs.n_pairs
-            chosen = best_pair(os_pairs, config.candidate_strategy)
-            masses.append(ak.to_numpy(ak.flatten(chosen.mass)).astype(np.float64))
-            ss.append(ak.to_numpy(ak.flatten(same_sign_pairs(sel).mass)).astype(np.float64))
-            if stop >= n_total:
-                break
-    return n_total, cutflows, masses, ss, n_os
+
+
+def _plan(files: Sequence[str], config: ChannelConfig, n_events: int | None, chunk_size: int,
+          fields: tuple[str, ...]) -> tuple[list[_Unit], int]:
+    """Split the input into chunks, file by file, after checking every file can be analysed."""
+    units: list[_Unit] = []
+    n_done = 0
+    for i, path in enumerate(files):
+        remaining = None if n_events is None else n_events - n_done
+        if remaining is not None and remaining <= 0:
+            break
+        with _open(path) as events:
+            n_total = events.n_events if remaining is None else min(remaining, events.n_events)
+            missing = [f"Muon_{f}" for f in fields if not events.has_branch(f"Muon_{f}")]
+            missing += [t for t in config.triggers if not events.has_branch(t)]
+            if missing:
+                raise AnalysisError(f"{path} lacks branches needed by channel {config.name!r}: {missing}")
+        starts = range(0, n_total, chunk_size) if n_total else [0]  # an empty file still gives a (zero) cutflow
+        units += [_Unit(i, j, path, start, min(start + chunk_size, n_total)) for j, start in enumerate(starts)]
+        n_done += n_total
+    return units, n_done
+
+
+def _run_chunk(events: Any, triggers: tuple[str, ...], cuts: Mapping[str, Any], strategy: str,
+               fields: tuple[str, ...], start: int, stop: int) -> _ChunkResult:
+    """Selection, trigger, pairing and masses for one event range of an open file (the unit of work)."""
+    sel = select_muons(events, fields=fields, entry_start=start, entry_stop=stop)
+    if triggers:
+        sel = sel.require_trigger(*triggers)
+    sel = sel.apply(**cuts).require(2)
+    os_pairs = opposite_sign_pairs(sel)
+    chosen = best_pair(os_pairs, strategy)
+    return _ChunkResult(
+        cutflow=sel.cutflow(),
+        masses=ak.to_numpy(ak.flatten(chosen.mass)).astype(np.float64),
+        same_sign=ak.to_numpy(ak.flatten(same_sign_pairs(sel).mass)).astype(np.float64),
+        n_os=os_pairs.n_pairs,
+    )
+
+
+_WORKER_FILE: dict[str, Any] = {}
+"""In a worker process: the file it has open (opening a NanoAOD file reads all its branch metadata)."""
+
+
+def _chunk_worker(path: str, triggers: tuple[str, ...], cuts: dict[str, Any], strategy: str,
+                  fields: tuple[str, ...], start: int, stop: int) -> _ChunkResult:
+    """Process-pool entry point: process one chunk, keeping the worker's current file open between chunks.
+
+    Opening a file costs a noticeable fraction of a chunk's processing time,
+    so a worker keeps its last file open and reopens only when it is given a
+    chunk of a different file. The chunk is processed by exactly the same
+    code as in a serial run.
+    """
+    events = _WORKER_FILE.get(path)
+    if events is None:
+        for old in _WORKER_FILE.values():
+            old.close()
+        _WORKER_FILE.clear()
+        events = _WORKER_FILE[path] = open_events(path)
+    return _run_chunk(events, triggers, cuts, strategy, fields, start, stop)
+
+
+def _execute(units: list[_Unit], config: ChannelConfig, fields: tuple[str, ...],
+             n_workers: int | None) -> list[_ChunkResult]:
+    """Process every unit, serially or in a process pool, and return the results in unit order.
+
+    Results are collected in the fixed order of the units (files in the
+    order given, chunks in event order), never in the order workers finish,
+    so a parallel run gives exactly the same masses, cutflow and fits as a
+    serial one.
+    """
+    cuts, triggers, strategy = dict(config.muon_cuts), config.triggers, config.candidate_strategy
+    results: list[_ChunkResult] = []
+    if n_workers is None or n_workers == 1:
+        i = 0
+        while i < len(units):
+            path = units[i].path
+            with _open(path) as events:
+                while i < len(units) and units[i].path == path:
+                    unit = units[i]
+                    try:
+                        results.append(_run_chunk(events, triggers, cuts, strategy, fields, unit.start, unit.stop))
+                    except AnalysisError:
+                        raise
+                    except Exception as exc:
+                        raise AnalysisError(f"{unit.describe()} failed: {type(exc).__name__}: {exc}") from None
+                    i += 1
+        return results
+    from concurrent.futures import ProcessPoolExecutor
+
+    with ProcessPoolExecutor(max_workers=min(n_workers, len(units))) as pool:
+        futures = [pool.submit(_chunk_worker, u.path, triggers, cuts, strategy, fields, u.start, u.stop) for u in units]
+        for unit, future in zip(units, futures):
+            try:
+                results.append(future.result())
+            except Exception as exc:
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise AnalysisError(f"worker failed on {unit.describe()}: {type(exc).__name__}: {exc}") from None
+    return results
 
 
 def analyze(
@@ -594,6 +691,7 @@ def analyze(
     verbose: bool = True,
     stability: bool = True,
     config: ChannelConfig | None = None,
+    n_workers: int | None = None,
 ) -> AnalysisResult:
     """Run the full dimuon resonance analysis on one or more NanoAOD files.
 
@@ -611,7 +709,7 @@ def analyze(
     ``chunk_size`` events, so memory stays bounded; the cutflows of the
     chunks are added exactly (:meth:`CutFlow.combine`) and the masses are
     concatenated in event order, so the result does not depend on the chunk
-    size.
+    size, nor on ``n_workers``.
 
     Parameters
     ----------
@@ -638,13 +736,20 @@ def analyze(
         Run :func:`cmsopen.fitting.fit_stability` over the channel's grid.
     config : ChannelConfig, optional
         Use this configuration instead of a registered channel.
+    n_workers : int, optional
+        None or 1: process the chunks one after another in this process.
+        Greater than 1: process them in a pool of that many worker
+        processes. The chunks are merged in their fixed file and event order,
+        so the result is identical to the serial one.
 
     Raises
     ------
     AnalysisError
         Missing file, a file without the NanoAOD ``Events`` tree, missing
         branches, no events surviving the selection (the message names the
-        last cut that kept events), too few pairs, or a failed primary fit.
+        last cut that kept events), too few pairs, a failed primary fit, or
+        an error while processing a chunk (the message names the file and
+        the chunk, also when it happened in a worker process).
     ValueError
         Unknown channel (the message lists the valid ones), unknown model,
         or invalid sizes.
@@ -656,6 +761,9 @@ def analyze(
         raise ValueError(f"model must be one of {MODELS}, got {model!r}")
     if not isinstance(chunk_size, (int, np.integer)) or chunk_size < 1:
         raise ValueError(f"chunk_size must be a positive integer, got {chunk_size!r}")
+    if n_workers is not None and (isinstance(n_workers, bool) or not isinstance(n_workers, (int, np.integer))
+                                  or n_workers < 1):
+        raise ValueError(f"n_workers must be a positive integer or None, got {n_workers!r}")
     if n_events is not None and (not isinstance(n_events, (int, np.integer)) or n_events < 1):
         raise ValueError(f"n_events must be a positive integer or None, got {n_events!r}")
     if outdir is not None:
@@ -667,21 +775,13 @@ def analyze(
     n_bins = bins if bins is not None else cfg.bins
     muon_fields = _muon_fields(cfg.muon_cuts)
 
-    n_done, cutflows, mass_parts, ss_parts, n_os = 0, [], [], [], 0
-    for f in files:
-        remaining = None if n_events is None else n_events - n_done
-        if remaining is not None and remaining <= 0:
-            break
-        n, cfs, ms, ss, nos = _process_file(f, cfg, remaining, chunk_size, muon_fields)
-        n_done += n
-        cutflows += cfs
-        mass_parts += ms
-        ss_parts += ss
-        n_os += nos
-    cutflow = CutFlow.combine(cutflows)
+    units, n_done = _plan(files, cfg, n_events, chunk_size, muon_fields)
+    chunks = _execute(units, cfg, muon_fields, n_workers)
+    cutflow = CutFlow.combine([c.cutflow for c in chunks])
     _check_survivors(cutflow)
-    masses = np.concatenate(mass_parts) if mass_parts else np.empty(0)
-    ss_masses = np.concatenate(ss_parts) if ss_parts else np.empty(0)
+    masses = np.concatenate([c.masses for c in chunks])
+    ss_masses = np.concatenate([c.same_sign for c in chunks])
+    n_os = sum(c.n_os for c in chunks)
 
     in_range = int(np.sum((masses >= fit_range[0]) & (masses < fit_range[1])))
     if in_range < cfg.min_pairs:
