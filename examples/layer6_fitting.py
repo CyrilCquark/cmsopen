@@ -151,7 +151,7 @@ def main() -> int:
 
     sideband_cross_check(path)
 
-    pulls = pull_test(n_toys=300)
+    pulls = pull_test(n_toys=1000)
     print(f"Toy pull test: {pulls.n_toys} toys (Gaussian peak at {pulls.true_mean} GeV on a falling exponential), "
           f"{pulls.n_failed} failed; pull mean {pulls.mean:+.3f}, std {pulls.std:.3f}")
     print()

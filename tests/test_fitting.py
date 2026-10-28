@@ -68,18 +68,18 @@ def test_gaussian_toy_recovers_truth():
 # -- 2. pull test -----------------------------------------------------------------------------------------
 
 
-def test_pull_test_300_toys(capsys):
+def test_pull_test_1000_toys(capsys):
     rng = np.random.default_rng(2012)
     pulls = []
-    for _ in range(300):
+    for _ in range(1000):
         r = fit_mass_peak(gauss_exp_toy(rng), model="gauss_poly", fit_range=(70, 110), poly_degree=2)
         m, e = r.peak_position
         pulls.append((m - TRUE_MEAN) / e)
     pulls = np.array(pulls)
     mean, std = pulls.mean(), pulls.std(ddof=1)
     with capsys.disabled():
-        print(f"\n  pull test, 300 toys: mean {mean:+.3f}, std {std:.3f}")
-    assert len(pulls) == 300
+        print(f"\n  pull test, 1,000 toys: mean {mean:+.3f}, std {std:.3f}")
+    assert len(pulls) == 1000
     assert abs(mean) < 0.2
     assert 0.8 < std < 1.2
 

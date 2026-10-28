@@ -1022,14 +1022,14 @@ print(f"  {'both sidebands':<16}{os_side:>15,}{ss_side:>12,}{ss_side / os_side:>
         new_markdown_cell(
             r"""## Are the quoted errors right? A toy pull test
 
-300 toy histograms with known truth (a Gaussian peak at 91.0 GeV, $\sigma = 2$ GeV, on a falling exponential),
+1,000 toy histograms with known truth (a Gaussian peak at 91.0 GeV, $\sigma = 2$ GeV, on a falling exponential),
 Poisson-fluctuated and fitted like the data. If the fit is unbiased and its errors are right, the pulls
 (fitted $-$ true) / error have mean 0 and standard deviation 1. A small positive mean (about +0.1) comes from
 describing the exponential background with a quadratic: a shift of about 5 MeV, far below the 0.4 GeV offset from
 the PDG mass."""
         ),
         new_code_cell(
-            r"""pulls = pull_test(n_toys=300)
+            r"""pulls = pull_test(n_toys=1000)
 print(f"{pulls.n_toys} toys, {pulls.n_failed} failed; pull mean {pulls.mean:+.3f}, std {pulls.std:.3f}")"""
         ),
         new_markdown_cell(

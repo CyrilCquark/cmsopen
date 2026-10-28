@@ -1074,7 +1074,7 @@ class PullTestResult:
         return float(np.std(self.pulls, ddof=1))
 
 
-def pull_test(n_toys: int = 300, seed: int = 20121, model: str = "gauss_poly", **toy: Any) -> PullTestResult:
+def pull_test(n_toys: int = 1000, seed: int = 20121, model: str = "gauss_poly", **toy: Any) -> PullTestResult:
     """Fit many toys with known truth and return the pulls (fitted - true) / error of the peak position.
 
     If the fit is unbiased and its uncertainty is right, the pulls follow a
