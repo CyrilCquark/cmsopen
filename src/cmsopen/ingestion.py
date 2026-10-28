@@ -11,7 +11,8 @@ with a counter branch ``nMuon`` telling how many muons each event has.
 
 This module only *reads* data. It applies no cuts and no physics
 selection: what you get back is exactly what is stored in the file.
-Selection lives in :mod:`cmsopen.selection` (layer 3).
+Selection lives in :mod:`cmsopen.selection` (layer 3); ``muons()`` and
+``electrons()`` hand over to it when given cut keywords.
 
 Run 1 caveat
 ------------
@@ -36,10 +37,14 @@ from __future__ import annotations
 import difflib
 from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import awkward as ak
 import numpy as np
 import uproot
+
+if TYPE_CHECKING:
+    from cmsopen.selection import Selection
 
 __all__ = [
     "DIMUON_TRIGGERS_2012",
@@ -371,8 +376,9 @@ class EventCollection:
         fields: Sequence[str] = MUON_BRANCHES_DEFAULT,
         entry_start: int | None = None,
         entry_stop: int | None = None,
-    ) -> ak.Array:
-        """Read the raw, unselected muon collection.
+        **cuts: Any,
+    ) -> ak.Array | Selection:
+        """Read the muon collection: raw, or with selection cuts applied.
 
         Muons are about 200 times heavier than electrons, so they barely
         radiate and pass through the calorimeters, reaching the outer muon
@@ -380,10 +386,16 @@ class EventCollection:
         mu+ mu- events stand out with two energetic, isolated, oppositely
         charged muons.
 
-        No ID, isolation or kinematic cuts are applied here. The raw
-        collection includes poorly measured candidates (in the 2012 file,
-        |eta| up to ~10, far beyond the detector, and pt up to ~20 TeV),
-        which layer 3 removes.
+        Without cut keywords, no ID, isolation or kinematic cuts are
+        applied and the raw record array is returned. The raw collection
+        includes poorly measured candidates (in the 2012 file, |eta| up to
+        ~12, far beyond the detector, and pt up to ~120 TeV).
+
+        With cut keywords, e.g. ``events.muons(min_pt=20, max_eta=2.4)``,
+        the cuts are applied in keyword order and a
+        :class:`~cmsopen.selection.Selection` is returned, which can be
+        chained further (``.require(2)``) and reports a cutflow. See
+        :func:`cmsopen.selection.select_muons` for the valid keywords.
 
         Parameters
         ----------
@@ -391,12 +403,19 @@ class EventCollection:
             Muon fields to read; defaults to :data:`MUON_BRANCHES_DEFAULT`.
         entry_start, entry_stop : int, optional
             Half-open event range to read.
+        **cuts
+            Particle-level cuts (layer 3), applied in the order given.
 
         Returns
         -------
-        ak.Array
-            ``n_events * var * {pt, eta, phi, mass, charge, ...}``.
+        ak.Array or Selection
+            Without cuts: ``n_events * var * {pt, eta, phi, mass, charge, ...}``.
+            With cuts: a Selection holding a ``Muon`` collection.
         """
+        if cuts:
+            from cmsopen.selection import select_muons
+
+            return select_muons(self, fields, entry_start, entry_stop, **cuts)
         return self.collection("Muon", fields, entry_start, entry_stop)
 
     def electrons(
@@ -404,12 +423,17 @@ class EventCollection:
         fields: Sequence[str] = ELECTRON_BRANCHES_DEFAULT,
         entry_start: int | None = None,
         entry_stop: int | None = None,
-    ) -> ak.Array:
-        """Read the raw, unselected electron collection.
+        **cuts: Any,
+    ) -> ak.Array | Selection:
+        """Read the electron collection: raw, or with selection cuts applied.
 
         Electrons leave a track and deposit their energy in the
         electromagnetic calorimeter. Z -> e+ e- is the electron counterpart
-        of the dimuon channel. No cuts are applied here.
+        of the dimuon channel. Without cut keywords no cuts are applied and
+        the raw record array is returned. With cut keywords (``min_pt``,
+        ``max_eta``, ``max_rel_iso``) a
+        :class:`~cmsopen.selection.Selection` is returned; see
+        :func:`cmsopen.selection.select_electrons`.
 
         Parameters
         ----------
@@ -418,12 +442,19 @@ class EventCollection:
             :data:`ELECTRON_BRANCHES_DEFAULT`.
         entry_start, entry_stop : int, optional
             Half-open event range to read.
+        **cuts
+            Particle-level cuts (layer 3), applied in the order given.
 
         Returns
         -------
-        ak.Array
-            ``n_events * var * {pt, eta, phi, mass, charge, cutBased, ...}``.
+        ak.Array or Selection
+            Without cuts: ``n_events * var * {pt, eta, phi, mass, charge, cutBased, ...}``.
+            With cuts: a Selection holding an ``Electron`` collection.
         """
+        if cuts:
+            from cmsopen.selection import select_electrons
+
+            return select_electrons(self, fields, entry_start, entry_stop, **cuts)
         return self.collection("Electron", fields, entry_start, entry_stop)
 
     def trigger(
