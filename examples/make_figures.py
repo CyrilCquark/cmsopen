@@ -118,6 +118,18 @@ def _fit_line(fit: Any) -> str:
     )
 
 
+def _yields_sentence(fits: dict[str, Any]) -> str:
+    unreliable = [name for name, fit in fits.items() if not fit.yields_reliable]
+    if not unreliable:
+        return "Signal and background yields are given in the figure annotation."
+    which = "both fits" if len(unreliable) == len(fits) else f"the {', '.join(unreliable)} fit"
+    return (
+        f"Signal and background yields are not quoted: in {which} the fitted quadratic background goes below zero "
+        "inside the fit range, most likely because the symmetric peak model does not describe the radiative tail "
+        "below the Z and the background bends to absorb it."
+    )
+
+
 def caption(fits: dict[str, Any]) -> str:
     main, other = fits[MAIN_MODEL], fits[OTHER_MODEL]
     return f"""# z_peak_fit
@@ -132,8 +144,7 @@ use it.
 - Voigt + pol2 (shown): {_fit_line(main)}.
 - Gaussian + pol2 (same data, same range, not shown): {_fit_line(other)}.
 
-Signal and background yields are not quoted: in both fits the quadratic background dips below zero near
-110 GeV, because neither peak model describes the radiative tail below the Z, and the background absorbs it.
+{_yields_sentence(fits)}
 Uncertainties are statistical only. The offset from the PDG mass reflects the absent muon momentum-scale
 corrections and the simple line shape; it is not a measurement of the Z mass. Unofficial analysis of CMS Open
 Data.
