@@ -1050,6 +1050,177 @@ print(f"{pulls.n_toys} toys, {pulls.n_failed} failed; pull mean {pulls.mean:+.3f
     return _notebook(cells)
 
 
+LAYER7_CHECKS = r"""import re
+import struct
+
+from cmsopen.plotting import LAYOUT_DPI, layout_overlaps
+
+MIN_BYTES = 20_000
+
+
+def png_size(path):
+    data = path.read_bytes()[:24]
+    return struct.unpack(">II", data[16:24])
+
+
+def annotated_peak(fig):
+    for text in fig.axes[0].texts:
+        if text.get_gid() == "annotation":
+            m = re.search(r"m_\{\\mathrm\{peak\}\}\$ = ([0-9.]+) \$\\pm\$ ([0-9.]+) GeV", text.get_text())
+            return (m.group(1), m.group(2)) if m else None
+    return None
+
+
+checks = Checks()
+expected = [outdir / f"{name}.{fmt}" for name, fmts in make_figures.EXPECTED.items() for fmt in fmts]
+sizes = {p.name: (p.stat().st_size if p.exists() else 0) for p in expected}
+checks.check(
+    f"every expected file exists and is larger than {MIN_BYTES:,} bytes",
+    all(size > MIN_BYTES for size in sizes.values()),
+    ", ".join(f"{name} {size:,}" for name, size in sizes.items()),
+)
+
+dims = []
+for name, fig in figs.figures.items():
+    w_in, h_in = fig.get_size_inches()
+    dims.append((name, png_size(outdir / f"{name}.png"), (round(w_in * LAYOUT_DPI), round(h_in * LAYOUT_DPI))))
+checks.check(
+    f"PNG pixel size equals figsize x {LAYOUT_DPI} dpi",
+    all(got == want for _, got, want in dims),
+    "; ".join(f"{n} {g[0]}x{g[1]} (expected {w[0]}x{w[1]})" for n, g, w in dims),
+)
+
+problems = {name: layout_overlaps(fig) for name, fig in figs.figures.items()}
+checks.check(
+    "no legend or annotation overlaps data, error bars or curves, and no text is clipped (real-data figures)",
+    not any(problems.values()),
+    "; ".join(f"{n}: {len(p)} problems" + (f" ({p[0]})" if p else "") for n, p in problems.items()),
+)
+
+shown = annotated_peak(figs.figures["z_peak_fit"])
+m, me = main_fit.peak_position
+if shown is None:
+    checks.check("annotated peak position equals the fit to the displayed precision", False, "no peak line found")
+else:
+    digits = len(shown[0].split(".")[1]) if "." in shown[0] else 0
+    checks.check(
+        "annotated peak position equals the fit to the displayed precision",
+        float(shown[0]) == round(m, digits) and float(shown[1]) == round(me, digits),
+        f"annotation {shown[0]} +- {shown[1]} GeV, fit {m:.6f} +- {me:.6f} GeV rounded to {digits} decimals",
+    )
+
+again = Path(tempfile.mkdtemp(prefix="cmsopen-figures-again-"))
+figs2 = make_figures.write(make_figures.build(DATA_FILE), again)
+pairs = [(a, again / a.name) for files in figs.files.values() for a in files]
+pairs += [(outdir / n, again / n) for n in ("z_peak_fit_caption.md", "README.md")]
+differ = [a.name for a, b in pairs if a.read_bytes() != b.read_bytes()]
+checks.check(
+    "regenerating every figure from the data gives byte-identical files",
+    not differ and len(figs2.files) == len(figs.files),
+    f"{len(pairs) - len(differ)} of {len(pairs)} files identical" + (f"; differ: {differ}" if differ else ""),
+)
+
+""" + FINISH
+
+
+def layer7() -> nbformat.NotebookNode:
+    cells = [
+        new_code_cell(LOAD_PATH),
+        new_markdown_cell(
+            r"""# Layer 7: publication-quality figures with `cmsopen.plotting`
+
+How the figures are drawn, and why:
+
+* **Data are points with error bars, models are lines.** A bin count is a Poisson measurement with uncertainty
+  $\sqrt{N}$; a fitted model is a smooth prediction with no fluctuation of its own.
+* **The bin width is in the y label** ("Events / 1 GeV"): without it a count cannot be compared with another binning.
+* **Signal and background are drawn separately**: the dashed background and the shaded signal show how the fit
+  splits each bin, and make an unphysical background visible.
+* **A pull panel** shows (data $-$ fit) / $\sigma$ per bin: if the model is right these scatter around 0 with unit
+  spread; a run of same-sign pulls points to a missing feature (here, the radiative tail below the Z).
+* **The PDG mass is a reference line**, read from the `particle` package. The fit never uses it.
+* **"Unofficial analysis of CMS Open Data"**: these are real CMS data, but this is not a CMS result.
+
+The style is plain matplotlib: STIX serif fonts, inward ticks on all sides, the Okabe-Ito colour-blind-safe palette
+with distinct line styles (readable in grayscale), editable text in PDF and 300 dpi PNGs. Legends and annotations
+are placed by measuring them and the data with the renderer, so they never cover data."""
+        ),
+        new_code_cell(
+            r"""import sys
+import tempfile
+from pathlib import Path
+
+from IPython.display import Image, display
+
+import cmsopen
+
+sys.path.insert(0, str(Path.cwd()))  # the notebook runs in examples/, next to make_figures.py
+import make_figures
+
+print(f"cmsopen imported from: {cmsopen.__file__}")"""
+        ),
+        new_markdown_cell(
+            r"""## Build every figure from the real file
+
+`make_figures.build` runs the whole chain (selection, opposite-sign pairs, `best_pair`, both fits) and
+`make_figures.write` saves the figures, a caption and a README into a new temporary directory: the same files that
+`python examples/make_figures.py` writes to `docs/figures/`."""
+        ),
+        new_code_cell(
+            r"""outdir = Path(tempfile.mkdtemp(prefix="cmsopen-figures-"))
+figs = make_figures.write(make_figures.build(DATA_FILE), outdir)
+print(f"Figures written to {outdir}:")
+for files in figs.files.values():
+    for f in files:
+        print(f"  {f.name:<20} {f.stat().st_size:>9,} bytes")
+main_fit = figs.fits[make_figures.MAIN_MODEL]
+print()
+print(main_fit.table())"""
+        ),
+        new_markdown_cell(
+            r"""## The Z peak with its fit
+
+A Voigt peak (natural width fixed, Gaussian resolution free) on a quadratic background, fitted over 70-110 GeV.
+Both fits' backgrounds dip below zero near 110 GeV, so the annotation does not quote yields. The pulls show the
+radiative tail: a run of positive pulls at 83-87 GeV that the symmetric peak cannot describe."""
+        ),
+        new_code_cell(r"""display(Image(filename=str(outdir / "z_peak_fit.png"), width=640))"""),
+        new_markdown_cell(
+            r"""## Opposite-sign vs same-sign pairs
+
+A loose selection (no ID, no isolation) keeps enough background to see it: same-sign pairs, which cannot come from
+a Z, form a smooth, falling spectrum with no peak, while the opposite-sign pairs show the Z."""
+        ),
+        new_code_cell(r"""display(Image(filename=str(outdir / "z_os_vs_ss.png"), width=640))"""),
+        new_markdown_cell(
+            r"""## Muon $p_T$ and $\eta$, before and after the selection
+
+All muons in the file (dashed) against the muons that pass the selection (solid). The raw collection reaches
+$|\eta| \approx 12$, far outside the detector; after the cuts every muon is inside $|\eta| < 2.4$ and above 20 GeV,
+and the selected $p_T$ spectrum peaks near $m_Z/2 \approx 45$ GeV."""
+        ),
+        new_code_cell(
+            r"""display(Image(filename=str(outdir / "muon_pt.png"), width=640))
+display(Image(filename=str(outdir / "muon_eta.png"), width=640))"""
+        ),
+        new_markdown_cell(r"""## The cutflow"""),
+        new_code_cell(r"""display(Image(filename=str(outdir / "cutflow.png"), width=640))"""),
+        new_markdown_cell(
+            r"""## Self-checks
+
+1. Every expected file exists and is larger than 20 kB.
+2. Each PNG has exactly figsize $\times$ 300 dpi pixels.
+3. On the real-data figures, no legend or annotation overlaps the data points, error bars or curves, and no text is
+   clipped by the figure edge (measured with the renderer).
+4. The peak position printed in the annotation equals the fitted value to the displayed precision.
+5. Regenerating every figure from the data gives byte-identical files."""
+        ),
+        new_code_cell(CHECKS_CLASS),
+        new_code_cell(LAYER7_CHECKS),
+    ]
+    return _notebook(cells)
+
+
 def _notebook(cells: list) -> nbformat.NotebookNode:
     for i, cell in enumerate(cells):
         cell.id = f"cell-{i:02d}"  # deterministic ids so rebuilds give identical files
@@ -1066,6 +1237,7 @@ NOTEBOOKS = {
     "layer4_combinatorics.ipynb": layer4,
     "layer5_kinematics.ipynb": layer5,
     "layer6_fitting.ipynb": layer6,
+    "layer7_plotting.ipynb": layer7,
 }
 
 
