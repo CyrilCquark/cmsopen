@@ -807,6 +807,249 @@ def layer5() -> nbformat.NotebookNode:
     return _notebook(cells)
 
 
+LAYER6_CHECKS = r'''checks = Checks()
+fits = {m: r for m, r in results.items() if not isinstance(r, Exception)}
+finite = {m: bool(np.all(np.isfinite(r.errors)) and np.all(r.errors > 0)) for m, r in fits.items()}
+checks.check(
+    "both fits converge with finite uncertainties",
+    len(fits) == len(MODELS) and all(finite.values()),
+    "; ".join(
+        f"{m}: " + (f"{len(r.errors)} parameters, max relative error {np.max(r.errors / np.abs(r.values)):.3g}"
+                    if m in fits else f"FitError ({r})")
+        for m, r in results.items()
+    ),
+)
+for m, r in fits.items():
+    c = compare_to_pdg(r)
+    checks.check(
+        f"{m}: fitted mass within 1.0 GeV of the PDG value (sanity only, not agreement within errors)",
+        abs(c.difference) < 1.0,
+        f"{c.fitted:.4f} +- {c.fitted_error:.4f} GeV vs PDG {c.pdg_mass:.4f}; offset {c.difference:+.4f} GeV, "
+        f"pull {c.pull:+.1f}",
+    )
+for m, r in fits.items():
+    s, se = r.resolution
+    checks.check(f"{m}: fitted resolution between 0.5 and 4 GeV", 0.5 < s < 4.0, f"sigma = {s:.4f} +- {se:.4f} GeV")
+for m, r in fits.items():
+    checks.check(
+        f"{m}: chi2/ndf is finite (reported, no threshold)",
+        math.isfinite(r.chi2_ndf),
+        f"chi2/ndf = {r.chi2:.1f}/{r.ndf} = {r.chi2_ndf:.3f}, p-value {r.p_value:.3g}",
+    )
+checks.check(
+    "stability spread (std of the fitted mass) is below 0.5 GeV",
+    math.isfinite(stability.std) and stability.std < 0.5,
+    f"std {stability.std:.4f} GeV over {len(stability.rows)} converged fits ({len(stability.failed)} failed); "
+    f"mean {stability.mean:.4f}, range {stability.min:.4f}-{stability.max:.4f} GeV",
+)
+for m, r in fits.items():
+    sy, sye = r.signal_yield
+    checks.check(
+        f"{m}: signal yield positive and smaller than the number of entries",
+        0 < sy < r.n_entries,
+        f"signal {sy:,.0f} +- {sye:,.0f} of {r.n_entries:,} entries in {r.fit_range[0]:g}-{r.fit_range[1]:g} GeV",
+    )
+checks.check(
+    "toy pull test: mean within +-0.2 and standard deviation within 0.8-1.2",
+    pulls.n_failed == 0 and abs(pulls.mean) < 0.2 and 0.8 < pulls.std < 1.2,
+    f"{len(pulls.pulls)} toys, mean {pulls.mean:+.3f}, std {pulls.std:.3f}",
+)
+
+''' + FINISH
+
+
+def layer6() -> nbformat.NotebookNode:
+    cells = [
+        new_code_cell(LOAD_PATH),
+        new_markdown_cell(
+            r"""# Layer 6: fitting the Z peak with `cmsopen.fitting`
+
+The dimuon mass spectrum is a **peak** (Z bosons: every $Z\to\mu^+\mu^-$ pair has a mass near the Z mass) on a
+smooth, falling **background** (Drell-Yan pairs from a virtual photon, heavy-flavour decays, fakes), which has no
+preferred mass. To measure the peak we fit a model with a term for each: a peak plus a polynomial background.
+
+The width of the peak has two sources. The Z is unstable, so its mass is spread over a Breit-Wigner of full width
+$\Gamma_Z \approx 2.5$ GeV (the **natural width**). The detector measures each muon momentum with a finite
+**resolution**, which smears the mass by a roughly Gaussian $\sigma$ of 1-2 GeV. The two combine by convolution
+into a **Voigt** profile. A single Gaussian lumps both into one effective width.
+
+The fit minimises $\chi^2 = \sum (N - \mu)^2/\sigma^2$ over the bins, with Poisson errors $\sigma = \sqrt{N}$
+($\sqrt{\max(N,1)}$ so empty bins keep a finite weight), and compares counts with the model integrated over each bin.
+$\chi^2/\mathrm{ndf} \approx 1$ and a p-value that is not tiny mean the model describes the data within the
+statistical errors; they do not prove it is right. A tiny p-value with 26,000 events says the model misses some
+feature of the shape."""
+        ),
+        new_code_cell(
+            r"""import math
+
+import awkward as ak
+import matplotlib.pyplot as plt
+import numpy as np
+
+import cmsopen
+from cmsopen import (
+    ZMUMU_MUON_CUTS,
+    FitError,
+    best_pair,
+    compare_to_pdg,
+    fit_mass_peak,
+    fit_stability,
+    make_histogram,
+    open_events,
+    opposite_sign_pairs,
+    same_sign_pairs,
+)
+from cmsopen.fitting import pdg_mass_width, pull_test
+from cmsopen.ingestion import DIMUON_TRIGGERS_2012
+
+print(f"cmsopen imported from: {cmsopen.__file__}")
+pdg_mass, pdg_mass_err, pdg_width, pdg_width_err = pdg_mass_width("Z")
+print(f"PDG Z (from the particle package): mass {pdg_mass:.4f} +- {pdg_mass_err:.4f} GeV, "
+      f"width {pdg_width:.4f} +- {pdg_width_err:.4f} GeV")"""
+        ),
+        new_markdown_cell(
+            r"""## The data: one Z candidate per event
+
+The layer 3 selection (`ZMUMU_MUON_CUTS`, the dimuon trigger, at least two muons), opposite-sign pairs (layer 4)
+and one pair per event with `best_pair(..., "highest_pt_sum")`, which never looks at the mass. Masses are
+histogrammed in 1 GeV bins over 60-120 GeV."""
+        ),
+        new_code_cell(
+            r"""with open_events(DATA_FILE) as events:
+    n_file = events.n_events
+    sel = events.muons(**ZMUMU_MUON_CUTS).require_trigger(*DIMUON_TRIGGERS_2012).require(2)
+best = best_pair(opposite_sign_pairs(sel), "highest_pt_sum")
+masses = best.mass
+h = make_histogram(masses, bins=60, range=(60.0, 120.0))
+print(f"{DATA_FILE.name}: {n_file:,} events")
+print(repr(sel))
+print(f"{best.n_pairs:,} opposite-sign pairs (one per event)")
+print(repr(h))"""
+        ),
+        new_markdown_cell(
+            r"""## Two fits over 70-110 GeV, each with a quadratic background
+
+`gauss_poly`: Gaussian peak. `voigt_poly`: Voigt peak with the Breit-Wigner half width fixed to $\Gamma_Z/2$ from
+the `particle` package, so $\sigma$ is the detector resolution alone. `compare_to_pdg` gives the offset from the PDG
+mass and the pull (offset / statistical error). The open data have no muon momentum-scale corrections and the
+fitted peak position is not the PDG pole mass, so an offset is expected: it measures systematic effects, not a
+disagreement with the PDG."""
+        ),
+        new_code_cell(
+            r"""FIT_RANGE = (70.0, 110.0)
+MODELS = {"gauss_poly": "Gaussian + quadratic", "voigt_poly": "Voigt + quadratic"}
+results = {}
+for model, label in MODELS.items():
+    print(f"== {label} ==")
+    try:
+        r = fit_mass_peak(h, model=model, fit_range=FIT_RANGE, poly_degree=2)
+    except FitError as exc:
+        print(f"  FitError: {exc}")
+        results[model] = exc
+        continue
+    results[model] = r
+    print(r.table())
+    print(f"  compare_to_pdg: {compare_to_pdg(r)}")
+    print()"""
+        ),
+        new_markdown_cell(
+            r"""### A quick look at the fits
+
+A plain matplotlib figure (publication styling is layer 7): the data with Poisson error bars, each fitted total
+curve, each fitted polynomial background (dashed), and the PDG Z mass. Curves are densities multiplied by the 1 GeV
+bin width, so they compare directly with the counts."""
+        ),
+        new_code_cell(
+            r"""x = np.linspace(*FIT_RANGE, 801)
+fig, ax = plt.subplots(figsize=(8, 5))
+ax.errorbar(h.centers, h.counts, yerr=h.errors, xerr=h.widths / 2, fmt="o", ms=3, color="black", label="data")
+colors = {"gauss_poly": "tab:blue", "voigt_poly": "tab:orange"}
+for model, r in results.items():
+    if isinstance(r, Exception):
+        continue
+    ax.plot(x, r.model(x) * h.widths[0], color=colors[model], label=f"{MODELS[model]}: total")
+    ax.plot(x, r.background(x) * h.widths[0], color=colors[model], linestyle="--", label=f"{MODELS[model]}: background")
+ax.axvline(pdg_mass, color="tab:red", linestyle=":", label=f"PDG Z mass {pdg_mass:.4f} GeV")
+ax.set_xlabel("Dimuon invariant mass [GeV]")
+ax.set_ylabel("Pairs / 1 GeV")
+ax.set_xlim(60, 120)
+ax.legend(fontsize=8)
+ax.set_title("CMS Open Data 2012C DoubleMuParked: Z peak fits (quick plot)", fontsize=10)
+plt.show()"""
+        ),
+        new_markdown_cell(
+            r"""## How much does the answer depend on the fit choices?
+
+The same masses refitted for every combination of fit range (70-110, 75-105, 80-100 GeV), bin width (0.5, 1,
+2 GeV), polynomial degree (1, 2, 3) and peak model: 54 fits. Each choice is defensible, so the spread of the
+fitted mass is a rough, honest estimate of the systematic uncertainty from the fit itself. With 2 GeV bins the
+75-105 window becomes 76-104 GeV, because only whole bins are fitted. The spread does not cover effects that every
+variation shares, such as the muon momentum scale."""
+        ),
+        new_code_cell(r"""stability = fit_stability(masses)
+print(stability)"""),
+        new_markdown_cell(
+            r"""## Cross-check (report only): same-sign pairs in the sidebands
+
+With the full selection there are almost no same-sign pairs (layer 4). Here a **loose** selection ($p_T > 20$ GeV,
+$|\eta| < 2.4$, dimuon trigger, no ID or isolation) keeps more background, and we count all opposite-sign (OS) and
+same-sign (SS) pair candidates in the sidebands 60-80 and 100-120 GeV, and under the peak for comparison.
+
+What it shows: SS pairs cannot come from a Z, so they measure the combinatorial and misidentified-muon background.
+What it does not show: the rest of the OS sideband pairs is not signal. Drell-Yan pairs and the Z line-shape tails are
+real OS pairs with no SS partner, and some backgrounds favour OS. SS/OS is not a background fraction, and these counts
+do not test the polynomial in the fit. This is not a pass/fail check."""
+        ),
+        new_code_cell(
+            r"""def count_in(mass, window):
+    return int(np.sum((mass >= window[0]) & (mass < window[1])))
+
+
+with open_events(DATA_FILE) as events:
+    loose = events.muons(min_pt=20.0, max_eta=2.4).require_trigger(*DIMUON_TRIGGERS_2012).require(2)
+m_os = ak.to_numpy(ak.flatten(opposite_sign_pairs(loose).mass))
+m_ss = ak.to_numpy(ak.flatten(same_sign_pairs(loose).mass))
+print(repr(loose))
+print(f"  {'window [GeV]':<16}{'opposite-sign':>15}{'same-sign':>12}{'SS / OS':>10}")
+for lo, hi in ((60.0, 80.0), (100.0, 120.0), (80.0, 100.0)):
+    n_os, n_ss = count_in(m_os, (lo, hi)), count_in(m_ss, (lo, hi))
+    label = f"{lo:g}-{hi:g}" + (" (peak)" if lo == 80.0 else "")
+    print(f"  {label:<16}{n_os:>15,}{n_ss:>12,}{n_ss / n_os:>10.3f}")
+os_side = count_in(m_os, (60.0, 80.0)) + count_in(m_os, (100.0, 120.0))
+ss_side = count_in(m_ss, (60.0, 80.0)) + count_in(m_ss, (100.0, 120.0))
+print(f"  {'both sidebands':<16}{os_side:>15,}{ss_side:>12,}{ss_side / os_side:>10.3f}")"""
+        ),
+        new_markdown_cell(
+            r"""## Are the quoted errors right? A toy pull test
+
+300 toy histograms with known truth (a Gaussian peak at 91.0 GeV, $\sigma = 2$ GeV, on a falling exponential),
+Poisson-fluctuated and fitted like the data. If the fit is unbiased and its errors are right, the pulls
+(fitted $-$ true) / error have mean 0 and standard deviation 1. A small positive mean (about +0.1) comes from
+describing the exponential background with a quadratic: a shift of about 5 MeV, far below the 0.4 GeV offset from
+the PDG mass."""
+        ),
+        new_code_cell(
+            r"""pulls = pull_test(n_toys=300)
+print(f"{pulls.n_toys} toys, {pulls.n_failed} failed; pull mean {pulls.mean:+.3f}, std {pulls.std:.3f}")"""
+        ),
+        new_markdown_cell(
+            r"""## Self-checks
+
+1. Both fits converge with finite uncertainties.
+2. The fitted mass is within 1.0 GeV of the PDG value. This is a sanity check only: the offset and pull are reported,
+   and agreement within the statistical errors is not claimed.
+3. The fitted resolution is between 0.5 and 4 GeV.
+4. $\chi^2/\mathrm{ndf}$ is finite (reported, no threshold).
+5. The standard deviation of the fitted mass over the 54 fit choices is below 0.5 GeV.
+6. The signal yield is positive and smaller than the number of entries in the fit range.
+7. The toy pull test: mean within $\pm 0.2$, standard deviation within 0.8-1.2."""
+        ),
+        new_code_cell(CHECKS_CLASS),
+        new_code_cell(LAYER6_CHECKS),
+    ]
+    return _notebook(cells)
+
+
 def _notebook(cells: list) -> nbformat.NotebookNode:
     for i, cell in enumerate(cells):
         cell.id = f"cell-{i:02d}"  # deterministic ids so rebuilds give identical files
@@ -822,6 +1065,7 @@ NOTEBOOKS = {
     "layer3_selection.ipynb": layer3,
     "layer4_combinatorics.ipynb": layer4,
     "layer5_kinematics.ipynb": layer5,
+    "layer6_fitting.ipynb": layer6,
 }
 
 
