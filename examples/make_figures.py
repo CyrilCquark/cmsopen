@@ -3,7 +3,8 @@
 Runs the whole chain on every event of the file: the Z -> mu mu selection
 (dimuon trigger, then cmsopen.ZMUMU_MUON_CUTS, then at least two muons),
 opposite-sign pairs, one per event with best_pair "highest_pt_sum", and
-both fit models over 70-110 GeV. Writes to OUTDIR (default docs/figures/):
+both fit models over 70-110 GeV. Writes to OUTDIR (default build/figures/,
+which is not tracked by git):
 
     z_peak_fit.png/.pdf      the mass spectrum with the Voigt + pol2 fit and pulls
     z_peak_fit_caption.md    the caption, with the Gaussian + pol2 result for comparison
@@ -13,8 +14,14 @@ both fit models over 70-110 GeV. Writes to OUTDIR (default docs/figures/):
     cutflow.png              events left after each selection step
     README.md                what each figure is, how to regenerate it, data and versions
 
+docs/figures/ is protected documentation (see "Documentation freeze" in
+CLAUDE.md). The script writes there only with --production, and then only
+if the git working tree is clean. That is for the final production run,
+on the user's explicit instruction; never run it otherwise.
+
 Usage:
     python examples/make_figures.py [--file PATH] [--outdir DIR]
+    python examples/make_figures.py --production [--file PATH]
 """
 
 from __future__ import annotations
@@ -52,7 +59,9 @@ from cmsopen.plotting import (
 )
 
 REPO = Path(__file__).resolve().parents[1]
-DEFAULT_OUTDIR = REPO / "docs" / "figures"
+DEFAULT_OUTDIR = REPO / "build" / "figures"
+PRODUCTION_OUTDIR = REPO / "docs" / "figures"
+BOLD, RESET = "\033[1m", "\033[0m"
 MAIN_MODEL = "voigt_poly"
 OTHER_MODEL = "gauss_poly"
 EXPECTED = {
@@ -176,7 +185,7 @@ Data: these are not CMS results.
 From the repository root, with the package installed (`pip install -e ".[dev]"`):
 
 ```bash
-python examples/make_figures.py --file data/{data_file.name}
+python examples/make_figures.py --production --file data/{data_file.name}
 ```
 
 The output is deterministic: rerunning on the same data and software gives byte-identical files.
@@ -206,11 +215,45 @@ def write(figs: Figures, outdir: Path) -> Figures:
     return figs
 
 
-def main() -> int:
+def _inside(path: Path, directory: Path) -> bool:
+    try:
+        path.resolve().relative_to(directory.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _working_tree_clean() -> tuple[bool, str]:
+    try:
+        out = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain"], capture_output=True, text=True,
+                             check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        return False, f"cannot run git status: {exc}"
+    return not out.strip(), out
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=None, help="NanoAOD ROOT file (default: first data/*.root)")
-    parser.add_argument("--outdir", type=Path, default=DEFAULT_OUTDIR, help=f"output directory (default {DEFAULT_OUTDIR})")
-    args = parser.parse_args()
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--outdir", type=Path, default=None, help=f"output directory (default {DEFAULT_OUTDIR})")
+    group.add_argument("--production", action="store_true",
+                       help=f"write into {PRODUCTION_OUTDIR} (protected documentation; clean working tree required)")
+    args = parser.parse_args(argv)
+    if args.production:
+        print(f"{BOLD}WARNING: --production OVERWRITES PROTECTED DOCUMENTATION in {PRODUCTION_OUTDIR}. "
+              f"Run it only for the final production run, on explicit instruction.{RESET}", file=sys.stderr)
+        clean, detail = _working_tree_clean()
+        if not clean:
+            print(f"error: refusing --production: the git working tree is not clean:\n{detail}", file=sys.stderr)
+            return 1
+        args.outdir = PRODUCTION_OUTDIR
+    else:
+        args.outdir = args.outdir or DEFAULT_OUTDIR
+        if _inside(args.outdir, REPO / "docs"):
+            print(f"error: {args.outdir} is protected documentation; use --production for that "
+                  f"(see CLAUDE.md, Documentation freeze)", file=sys.stderr)
+            return 1
     path = (args.file or default_file()).resolve()
     figs = write(build(path), args.outdir)
     for paths in figs.files.values():

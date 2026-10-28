@@ -1,7 +1,7 @@
 """Layer 7 demo: publication-quality figures with cmsopen.plotting.
 
 Runs the full analysis on the real file and writes the final figures (the
-same ones examples/make_figures.py writes to docs/figures/) into a new
+same ones examples/make_figures.py writes to build/figures/) into a new
 temporary directory, prints their paths and sizes, then checks them: every
 file exists and is non-trivial, PNGs have the pixel size figsize x 300 dpi,
 no legend or annotation covers the data and no text is clipped (measured on

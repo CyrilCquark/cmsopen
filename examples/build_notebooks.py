@@ -1164,7 +1164,7 @@ print(f"cmsopen imported from: {cmsopen.__file__}")"""
 
 `make_figures.build` runs the whole chain (selection, opposite-sign pairs, `best_pair`, both fits) and
 `make_figures.write` saves the figures, a caption and a README into a new temporary directory: the same files that
-`python examples/make_figures.py` writes to `docs/figures/`."""
+`python examples/make_figures.py` writes to the untracked `build/figures/`."""
         ),
         new_code_cell(
             r"""outdir = Path(tempfile.mkdtemp(prefix="cmsopen-figures-"))
