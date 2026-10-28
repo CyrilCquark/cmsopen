@@ -69,7 +69,10 @@ plotting → pipeline → notebooks → packaging/README
   the code.
 - Use vectorized numpy/awkward only. No Python loops over events.
 - Energies, momenta and masses are in GeV.
-- PDG Z mass: 91.1876 GeV.
+- PDG Z mass and width: read at runtime from the `particle` package
+  (`cmsopen.fitting.pdg_mass_width`); currently 91.1879 GeV. The 91.1876 GeV
+  value this project started from is from an earlier PDG edition. Code must
+  never hard-code the PDG values.
 - Plots are publication quality: labeled axes with units, a legend, and a
   CMS Open Data label.
 - The README explains invariant mass and why the Z peak appears where it
@@ -116,9 +119,13 @@ fails, report the failure. Do not weaken or edit a check to make it pass.
    extras: `pip install "./clone[dev]"`.
 3. Start JupyterLab as a background process from the temp dir:
    `jupyter lab --no-browser --ServerApp.ip=127.0.0.1 --port <a free port>
-   --notebook-dir <temp>/clone/examples` with `CMSOPEN_DATA_FILE` set to the
-   absolute path of the real ROOT file. Read the URL with its token from
-   the server log.
+   --notebook-dir <temp>/clone/examples --LabApp.workspaces_dir=<temp>/ws`
+   with `CMSOPEN_DATA_FILE` set to the absolute path of the real ROOT file.
+   The fresh workspace directory stops JupyterLab from restoring documents
+   from earlier sessions, whose unsaved state blocks closing the tab. Read
+   the URL with its token from the server log. Before closing the tab, save
+   the notebook (it is the temp clone's copy) so no "Leave site?" prompt
+   appears.
 4. In Chrome, open a NEW tab to that URL, open the layer's demo notebook,
    and do what a human would: Run > Run All Cells. Wait until every cell
    has finished (no busy indicators), then read the output cells from the
