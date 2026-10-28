@@ -467,6 +467,220 @@ def layer3() -> nbformat.NotebookNode:
     return _notebook(cells)
 
 
+LAYER4_CHECKS = '''\
+PEAK_SEARCH = (70.0, 110.0)
+PEAK_WINDOW = (88.0, 94.0)
+SS_MAX_FRACTION = 0.10
+
+
+def independent_pair_counts(path):
+    """Recompute the selection and per-event pair counts with uproot and numpy, without cmsopen."""
+    with uproot.open(path) as f:
+        a = f["Events"].arrays(
+            ["Muon_pt", "Muon_eta", "Muon_tightId", "Muon_pfRelIso04_all", "Muon_charge", *DIMUON_TRIGGERS_2012]
+        )
+    fired = np.logical_or.reduce([ak.to_numpy(a[name]) for name in DIMUON_TRIGGERS_2012])
+    good = (a.Muon_pt > 20.0) & (abs(a.Muon_eta) < 2.4) & a.Muon_tightId & (a.Muon_pfRelIso04_all < 0.12)
+    n_plus = ak.to_numpy(ak.sum(good & (a.Muon_charge > 0), axis=1))
+    n_minus = ak.to_numpy(ak.sum(good & (a.Muon_charge < 0), axis=1))
+    n = ak.to_numpy(ak.sum(good, axis=1))
+    rows = np.flatnonzero(fired & (n >= 2))
+    n_plus, n_minus, n = n_plus[rows], n_minus[rows], n[rows]
+    return rows, n_plus * n_minus, n_plus * (n_plus - 1) // 2 + n_minus * (n_minus - 1) // 2, n * (n - 1) // 2
+
+
+def in_window(mass, window):
+    return int(np.sum((mass >= window[0]) & (mass < window[1])))
+
+
+checks = Checks()
+n_os, n_ss, n_all = (ak.to_numpy(p.num) for p in (os_pairs, ss_pairs, every))
+bad = np.flatnonzero(n_os + n_ss != n_all)
+checks.check(
+    "n_OS + n_SS == n_all in every event",
+    bad.size == 0,
+    f"{len(n_all):,} events; {n_os.sum():,} + {n_ss.sum():,} = {n_all.sum():,}"
+    + (f"; mismatches at rows {sel.event_index[bad[:5]].tolist()}" if bad.size else ""),
+)
+
+rows, e_os, e_ss, e_all = independent_pair_counts(DATA_FILE)
+same = (
+    np.array_equal(rows, sel.event_index)
+    and np.array_equal(e_os, n_os) and np.array_equal(e_ss, n_ss) and np.array_equal(e_all, n_all)
+)
+checks.check(
+    "pair counts agree with an independent uproot + numpy recomputation, event by event",
+    same,
+    f"events {len(sel.event_index):,} vs {len(rows):,}; OS {n_os.sum():,} vs {e_os.sum():,}; "
+    f"SS {n_ss.sum():,} vs {e_ss.sum():,}; all {n_all.sum():,} vs {e_all.sum():,}",
+)
+
+os_q, ss_q = ak.flatten(os_pairs.charge_product), ak.flatten(ss_pairs.charge_product)
+checks.check(
+    "all OS pairs have charge product -1 and all SS pairs +1",
+    bool(ak.all(os_q == -1) and ak.all(ss_q == 1)),
+    f"OS products {sorted(set(ak.to_list(os_q)))} over {len(os_q):,} pairs; "
+    f"SS products {sorted(set(ak.to_list(ss_q)))} over {len(ss_q):,} pairs",
+)
+
+reuse = int(ak.sum(every.index1 == every.index2))
+misordered = int(ak.sum(every.leg1.p4.pt < every.leg2.p4.pt))
+checks.check(
+    "no pair reuses a muon and leg1.pt >= leg2.pt",
+    reuse == 0 and misordered == 0,
+    f"{every.n_pairs:,} pairs: {reuse} with index1 == index2, {misordered} with leg1.pt < leg2.pt",
+)
+
+max_best = int(ak.max(best.num)) if len(best) else 0
+checks.check(
+    "best_pair returns at most one pair per event",
+    max_best <= 1 and len(best) == len(os_pairs),
+    f"max {max_best} per event; {int(ak.sum(best.num == 1)):,} events with one pair, "
+    f"{int(ak.sum(best.num == 0)):,} with none",
+)
+
+in_search = (edges[:-1] >= PEAK_SEARCH[0]) & (edges[1:] <= PEAK_SEARCH[1])
+peak = int(np.flatnonzero(in_search)[np.argmax(os_counts[in_search])])
+peak_lo, peak_hi = edges[peak], edges[peak + 1]
+checks.check(
+    f"OS peak: highest bin in {PEAK_SEARCH[0]:.0f}-{PEAK_SEARCH[1]:.0f} GeV lies within "
+    f"{PEAK_WINDOW[0]:.0f}-{PEAK_WINDOW[1]:.0f} GeV",
+    bool(peak_lo >= PEAK_WINDOW[0] and peak_hi <= PEAK_WINDOW[1]),
+    f"peak bin {peak_lo:.0f}-{peak_hi:.0f} GeV with {os_counts[peak]:,} OS pairs",
+)
+
+os_win, ss_win = in_window(m_os, PEAK_WINDOW), in_window(m_ss, PEAK_WINDOW)
+checks.check(
+    f"SS pairs in {PEAK_WINDOW[0]:.0f}-{PEAK_WINDOW[1]:.0f} GeV are fewer than "
+    f"{100 * SS_MAX_FRACTION:.0f}% of OS pairs there",
+    ss_win < SS_MAX_FRACTION * os_win,
+    f"SS {ss_win:,} vs OS {os_win:,} (limit {SS_MAX_FRACTION * os_win:,.1f})",
+)
+
+''' + FINISH
+
+
+def layer4() -> nbformat.NotebookNode:
+    cells = [
+        new_code_cell(LOAD_PATH),
+        new_markdown_cell(
+            "# Layer 4: muon pairs with `cmsopen.combinatorics`\n\n"
+            "The Z boson is electrically neutral and charge is conserved, so $Z\\to\\mu^+\\mu^-$ always gives "
+            "one $\\mu^+$ and one $\\mu^-$: an **opposite-sign (OS)** pair, charge product $q_1 q_2 = -1$. "
+            "A **same-sign (SS)** pair has total charge $\\pm 2$ and cannot come from a Z. SS pairs come from "
+            "the backgrounds, such as two unrelated muons in one collision or a misidentified hadron, which give "
+            "OS and SS pairs at similar rates. The SS spectrum therefore estimates the combinatorial background "
+            "under the OS spectrum, and a peak in OS with none in SS shows that the peak is a real neutral particle.\n\n"
+            "An event with $n$ muons has $n(n-1)/2$ pairs; with $n_+$ positive and $n_-$ negative muons, "
+            "$n_+ n_-$ of them are OS and $n_+(n_+-1)/2 + n_-(n_--1)/2$ are SS. Each pair is ordered so that "
+            "`leg1` is the higher-$p_T$ muon (a convention: the mass does not depend on it)."
+        ),
+        new_code_cell(
+            "import awkward as ak\n"
+            "import matplotlib.pyplot as plt\n"
+            "import numpy as np\n"
+            "import uproot\n\n"
+            "import cmsopen\n"
+            "from cmsopen import (\n"
+            "    ZMUMU_MUON_CUTS,\n"
+            "    all_pairs,\n"
+            "    best_pair,\n"
+            "    multiplicity,\n"
+            "    open_events,\n"
+            "    opposite_sign_pairs,\n"
+            "    same_sign_pairs,\n"
+            ")\n"
+            "from cmsopen.ingestion import DIMUON_TRIGGERS_2012\n\n"
+            'print(f"cmsopen imported from: {cmsopen.__file__}")'
+        ),
+        new_markdown_cell(
+            "## Select Z muons and form pairs\n\n"
+            "The layer 3 selection on every event of the file: `ZMUMU_MUON_CUTS` ($p_T > 20$ GeV, "
+            "$|\\eta| < 2.4$, tight ID, relative isolation $< 0.12$), the dimuon trigger "
+            "(`HLT_Mu17_Mu8` OR `HLT_Mu17_TkMu8`) and at least two selected muons. Then every OS pair, every "
+            "SS pair and every pair regardless of charge."
+        ),
+        new_code_cell(
+            "with open_events(DATA_FILE) as events:\n"
+            "    n_file = events.n_events\n"
+            "    sel = events.muons(**ZMUMU_MUON_CUTS).require_trigger(*DIMUON_TRIGGERS_2012).require(2)\n"
+            'print(f"{DATA_FILE.name}: {n_file:,} events")\n'
+            "print(repr(sel))\n\n"
+            "os_pairs, ss_pairs, every = opposite_sign_pairs(sel), same_sign_pairs(sel), all_pairs(sel)\n"
+            'best = best_pair(os_pairs, "highest_pt_sum")\n'
+            "n_muons = ak.to_numpy(sel.particles.num)\n"
+            'print("Selected muons per event:  " + ", ".join(f"{k}: {c:,}" for k, c in enumerate(np.bincount(n_muons)) if c))'
+        ),
+        new_markdown_cell(
+            "## How many candidates per event?\n\n"
+            "Only events with two or more candidate pairs need a choice of candidate. `best_pair` with the "
+            "default strategy `\"highest_pt_sum\"` keeps the pair with the largest $p_{T,1} + p_{T,2}$. That rule "
+            "never looks at the mass. Choosing the pair closest to 91 GeV would instead carve a fake peak out of "
+            "background."
+        ),
+        new_code_cell(
+            'for label, pairs in (("opposite-sign", os_pairs), ("same-sign", ss_pairs), ("all", every)):\n'
+            '    print(f"Pair multiplicity, {label} pairs:")\n'
+            "    print(multiplicity(pairs))\n"
+            "    print()\n"
+            'print(f"Pair counts: {os_pairs.n_pairs:,} OS + {ss_pairs.n_pairs:,} SS = {every.n_pairs:,} all; "\n'
+            '      f"best_pair(OS, highest_pt_sum) keeps {best.n_pairs:,}")'
+        ),
+        new_markdown_cell(
+            "## Mass spectra, 60 to 120 GeV\n\n"
+            "OS pairs (all candidates and one per event) and SS pairs, in 2 GeV bins."
+        ),
+        new_code_cell(
+            "m_os = ak.to_numpy(ak.flatten(os_pairs.mass))\n"
+            "m_best = ak.to_numpy(ak.flatten(best.mass))\n"
+            "m_ss = ak.to_numpy(ak.flatten(ss_pairs.mass))\n"
+            "BINS = np.arange(60.0, 122.0, 2.0)\n"
+            "os_counts, edges = np.histogram(m_os, bins=BINS)\n"
+            "best_counts, _ = np.histogram(m_best, bins=BINS)\n"
+            "ss_counts, _ = np.histogram(m_ss, bins=BINS)\n"
+            'print(f"  {\'GeV\':11}{\'OS all\':>10}{\'OS best\':>10}{\'SS\':>6}")\n'
+            "for lo, hi, a, b, s in zip(edges[:-1], edges[1:], os_counts, best_counts, ss_counts):\n"
+            '    print(f"  {lo:5.0f}-{hi:<5.0f}{a:>10,}{b:>10,}{s:>6,}")\n'
+            'print(f"  {\'total\':11}{os_counts.sum():>10,}{best_counts.sum():>10,}{ss_counts.sum():>6,}")'
+        ),
+        new_markdown_cell(
+            "OS and SS pairs on the same axes, with a logarithmic vertical scale so that a small SS "
+            "contribution would still be visible. After tight ID and isolation the SS sample is tiny: "
+            "these cuts remove almost all of the misidentified and non-isolated muons that make same-sign "
+            "pairs, so what remains is a nearly background-free Z peak in the OS pairs."
+        ),
+        new_code_cell(
+            "fig, ax = plt.subplots(figsize=(7.5, 5.0))\n"
+            'ax.stairs(os_counts, edges, linewidth=1.8, color="tab:blue", label=f"opposite-sign pairs ({int(os_counts.sum()):,})")\n'
+            'ax.stairs(ss_counts, edges, linewidth=1.8, color="tab:orange", label=f"same-sign pairs ({int(ss_counts.sum()):,})")\n'
+            'ax.axvline(91.1876, color="tab:red", linestyle="--", linewidth=1, label="PDG Z mass 91.1876 GeV")\n'
+            'ax.set_yscale("log")\n'
+            "ax.set_ylim(0.5, 30 * max(os_counts.max(), 1))\n"
+            "ax.set_xlim(edges[0], edges[-1])\n"
+            'ax.set_xlabel("Dimuon invariant mass $M_{\\\\mu\\\\mu}$ [GeV]")\n'
+            'ax.set_ylabel("Muon pairs / 2 GeV")\n'
+            'ax.legend(loc="upper right", fontsize=9, frameon=False)\n'
+            'ax.text(0.99, 1.01, "CMS Open Data, 2012C DoubleMuParked, 8 TeV", transform=ax.transAxes, ha="right", va="bottom", fontsize=9)\n'
+            "plt.show()"
+        ),
+        new_markdown_cell(
+            "## Self-checks\n\n"
+            "1. $n_{OS} + n_{SS} = n_{all}$ in every event.\n"
+            "2. The per-event pair counts equal an independent recomputation with uproot and numpy that "
+            "selects the muons by hand and counts pairs as $n_+ n_-$ and $n_+(n_+-1)/2 + n_-(n_--1)/2$.\n"
+            "3. Every OS pair has charge product $-1$ and every SS pair $+1$.\n"
+            "4. No pair uses the same muon twice, and `leg1` always has the higher $p_T$.\n"
+            "5. `best_pair` keeps at most one pair per event.\n"
+            "6. The highest OS bin between 70 and 110 GeV lies within 88 to 94 GeV.\n"
+            "7. SS pairs in 88 to 94 GeV are fewer than 10% of OS pairs there: the peak is made of "
+            "opposite-sign pairs."
+        ),
+        new_code_cell(CHECKS_CLASS),
+        new_code_cell(LAYER4_CHECKS),
+    ]
+    return _notebook(cells)
+
+
 def layer5() -> nbformat.NotebookNode:
     cells = [
         new_code_cell(LOAD_PATH),
@@ -606,6 +820,7 @@ NOTEBOOKS = {
     "layer1_ingestion.ipynb": layer1,
     "layer2_objects.ipynb": layer2,
     "layer3_selection.ipynb": layer3,
+    "layer4_combinatorics.ipynb": layer4,
     "layer5_kinematics.ipynb": layer5,
 }
 
