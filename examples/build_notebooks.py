@@ -242,6 +242,132 @@ def layer2() -> nbformat.NotebookNode:
     return _notebook(cells)
 
 
+def layer5() -> nbformat.NotebookNode:
+    cells = [
+        new_code_cell(LOAD_PATH),
+        new_markdown_cell(
+            "# Layer 5: a first look at the Z peak with `cmsopen.kinematics`\n\n"
+            "Four-momentum is conserved in a decay, so the summed four-vector of the two muons from "
+            "$Z\\to\\mu^+\\mu^-$ is the Z four-vector. Its Minkowski length, the invariant mass\n\n"
+            "$$M^2 = (E_1+E_2)^2 - |\\vec p_1 + \\vec p_2|^2 \\quad (c = 1),$$\n\n"
+            "is the same in every frame and equals the parent's rest mass. Muon pairs from Z decays therefore "
+            "pile up near 91.19 GeV, while background pairs spread smoothly.\n\n"
+            "**This is not the final analysis.** Selection (layer 3) and pairing (layer 4) do not exist yet, so a "
+            "simple selection is written here with plain awkward masks: at least two muons; the two highest-$p_T$ "
+            "muons have opposite charge, $p_T > 20$ GeV and $|\\eta| < 2.4$."
+        ),
+        new_code_cell(
+            "import awkward as ak\n"
+            "import matplotlib.pyplot as plt\n"
+            "import numpy as np\n\n"
+            "import cmsopen\n"
+            "from cmsopen import FourMomentum, Muon, invariant_mass, open_events\n\n"
+            "try:\n"
+            "    import vector\n"
+            "except ImportError:\n"
+            "    vector = None\n\n"
+            'print(f"cmsopen imported from: {cmsopen.__file__}")\n'
+            "print(f\"vector library: {vector.__version__ if vector else 'not installed (pip install vector to enable the cross-check)'}\")"
+        ),
+        new_markdown_cell("## Select the leading muon pair in each event"),
+        new_code_cell(
+            "PT_MIN = 20.0  # GeV\n"
+            "ETA_MAX = 2.4\n\n"
+            "with open_events(DATA_FILE) as events:\n"
+            "    n_total = len(events)\n"
+            '    muons = Muon.from_events(events, fields=("pt", "eta", "phi", "mass", "charge"))\n\n'
+            "muons = muons[ak.argsort(muons.p4.pt, axis=1, ascending=False)]\n"
+            "muons = muons[muons.num >= 2]\n"
+            "lead, sub = muons[:, 0], muons[:, 1]\n"
+            "selected = (\n"
+            "    (lead.charge * sub.charge < 0)\n"
+            "    & (lead.p4.pt > PT_MIN) & (sub.p4.pt > PT_MIN)\n"
+            "    & (np.abs(lead.p4.eta) < ETA_MAX) & (np.abs(sub.p4.eta) < ETA_MAX)\n"
+            ")\n"
+            "lead, sub = lead[selected], sub[selected]\n"
+            "mass = ak.to_numpy(invariant_mass(lead.p4, sub.p4))\n\n"
+            'print(f"events in file:                         {n_total:,}")\n'
+            'print(f"events with >= 2 muons:                 {len(muons):,}")\n'
+            'print(f"events used (leading pair passes cuts): {len(mass):,}")'
+        ),
+        new_markdown_cell("## Text histogram, 60 to 120 GeV in 2 GeV bins"),
+        new_code_cell(
+            "BINS = np.arange(60.0, 122.0, 2.0)\n"
+            "counts, edges = np.histogram(mass, bins=BINS)\n"
+            'print(f"pairs with 60 <= M < 120 GeV: {int(counts.sum()):,}")\n'
+            'print("Dimuon invariant mass (GeV), 2 GeV bins:")\n'
+            "scale = 50 / counts.max() if counts.max() else 0\n"
+            "for lo, hi, n in zip(edges[:-1], edges[1:], counts):\n"
+            "    print(f\"  {lo:5.0f}-{hi:<5.0f} {n:7d} {'#' * int(round(n * scale))}\")"
+        ),
+        new_markdown_cell(
+            "## The same spectrum with matplotlib\n\n"
+            "A plain histogram; publication styling comes in layer 7. The peak width combines the Z's natural "
+            "width (2.4952 GeV) with the detector's momentum resolution."
+        ),
+        new_code_cell(
+            "fig, ax = plt.subplots(figsize=(7, 4.5))\n"
+            'ax.hist(mass, bins=BINS, histtype="step", linewidth=1.5, label="opposite-charge leading muon pairs")\n'
+            'ax.axvline(91.1876, color="gray", linestyle="--", linewidth=1, label="PDG Z mass 91.1876 GeV")\n'
+            'ax.set_xlabel("Dimuon invariant mass $M_{\\\\mu\\\\mu}$ [GeV]")\n'
+            'ax.set_ylabel("Pairs / 2 GeV")\n'
+            'ax.set_title("CMS Open Data 2012C DoubleMuParked (first look)")\n'
+            "ax.legend()\n"
+            "plt.show()"
+        ),
+        new_markdown_cell(
+            "## Self-checks\n\n"
+            "1. All masses are finite and non-negative.\n"
+            "2. The highest bin between 70 and 110 GeV lies within 88 to 94 GeV: a Z peak is visible.\n"
+            "3. A Z at rest decaying to two back-to-back muons gives back 91.1876 GeV.\n"
+            "4. The masses agree with the independent `vector` library on the real pairs, if installed."
+        ),
+        new_code_cell(CHECKS_CLASS),
+        new_code_cell(
+            "Z_MASS = 91.1876\n"
+            "MU_MASS = 0.10566\n"
+            "PEAK_SEARCH = (70.0, 110.0)\n"
+            "PEAK_WINDOW = (88.0, 94.0)\n\n"
+            "checks = Checks()\n"
+            "checks.check(\n"
+            '    "all masses finite and non-negative",\n'
+            "    bool(np.all(np.isfinite(mass)) and np.all(mass >= 0)),\n"
+            '    f"{len(mass):,} masses, min {mass.min():.4g} GeV, max {mass.max():.4g} GeV" if len(mass) else "no pairs",\n'
+            ")\n\n"
+            "in_search = (edges[:-1] >= PEAK_SEARCH[0]) & (edges[1:] <= PEAK_SEARCH[1])\n"
+            "peak = int(np.flatnonzero(in_search)[np.argmax(counts[in_search])])\n"
+            "peak_lo, peak_hi = edges[peak], edges[peak + 1]\n"
+            "checks.check(\n"
+            '    f"Z peak: highest bin in {PEAK_SEARCH[0]:.0f}-{PEAK_SEARCH[1]:.0f} GeV lies within "\n'
+            '    f"{PEAK_WINDOW[0]:.0f}-{PEAK_WINDOW[1]:.0f} GeV",\n'
+            "    bool(peak_lo >= PEAK_WINDOW[0] and peak_hi <= PEAK_WINDOW[1]),\n"
+            '    f"peak bin {peak_lo:.0f}-{peak_hi:.0f} GeV with {counts[peak]:,} pairs",\n'
+            ")\n\n"
+            "p = np.sqrt((Z_MASS / 2) ** 2 - MU_MASS**2)  # two-body decay momentum\n"
+            "leg1 = FourMomentum.from_arrays([p], [0.0], [0.0], [MU_MASS])\n"
+            "leg2 = FourMomentum.from_arrays([p], [0.0], [np.pi], [MU_MASS])\n"
+            "m_rest = float(invariant_mass(leg1, leg2)[0])\n"
+            "checks.check(\n"
+            '    "Z at rest -> mu+ mu- gives back the Z mass",\n'
+            "    abs(m_rest - Z_MASS) <= 1e-9 * Z_MASS,\n"
+            '    f"{m_rest:.10f} GeV, expected {Z_MASS}",\n'
+            ")\n\n"
+            "if vector is None:\n"
+            '    checks.skip("agreement with vector library on the real pairs", "vector is not installed")\n'
+            "else:\n"
+            '    v1, v2 = (vector.zip({"pt": q.pt, "eta": q.eta, "phi": q.phi, "mass": q.mass}) for q in (lead.p4, sub.p4))\n'
+            "    theirs = ak.to_numpy((v1 + v2).mass)\n"
+            "    rel = np.abs(mass - theirs) / np.maximum(theirs, 1e-300)\n"
+            "    checks.check(\n"
+            '        f"agreement with vector {vector.__version__} on all {len(mass):,} real pairs",\n'
+            "        bool(np.allclose(mass, theirs, rtol=1e-9, atol=1e-9)),\n"
+            '        f"max relative difference {rel.max():.3g}",\n'
+            "    )\n\n" + FINISH
+        ),
+    ]
+    return _notebook(cells)
+
+
 def _notebook(cells: list) -> nbformat.NotebookNode:
     for i, cell in enumerate(cells):
         cell.id = f"cell-{i:02d}"  # deterministic ids so rebuilds give identical files
@@ -254,6 +380,7 @@ def _notebook(cells: list) -> nbformat.NotebookNode:
 NOTEBOOKS = {
     "layer1_ingestion.ipynb": layer1,
     "layer2_objects.ipynb": layer2,
+    "layer5_kinematics.ipynb": layer5,
 }
 
 
