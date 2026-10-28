@@ -159,9 +159,10 @@ fails, report the failure. Do not weaken or edit a check to make it pass.
 
 | Layer | State |
 |---|---|
-| 1 ingestion | Not done: (a)(b)(c)(e) met; (d) live browser check pending (Chrome not connected). |
-| 2 objects | Not done: (a)(b)(c)(e) met; (d) live browser check pending (Chrome not connected). |
-| 3–10 | Not started. |
+| 1 ingestion | Done: (a)–(e) met; live browser check 2026-10-27. |
+| 2 objects | Done: (a)–(e) met; live browser check 2026-10-27. |
+| 5 kinematics | Done: (a)–(e) met; live browser check 2026-10-27. |
+| 3, 4, 6–10 | Not started. |
 
 ## Note on branch names
 
