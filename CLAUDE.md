@@ -77,6 +77,69 @@ plotting → pipeline → notebooks → packaging/README
   CMS Open Data label.
 - The README explains invariant mass and why the Z peak appears where it
   does.
+- Docstrings describe methods and physics and contain no numbers produced by
+  running on the real data (synthetic test inputs are fine). Notebooks in
+  `examples/` are committed with cleared outputs, and their markdown cells
+  make no claims about measured values.
+- CLAUDE.md may keep status lines but must NOT contain measured results.
+
+## Documentation freeze
+
+Protected paths: never edit, add, delete or regenerate them without the
+user's explicit written instruction in a prompt.
+
+- `README.md`, `DATA.md`, `LICENSE`, `CITATION.cff` (if present)
+- `docs/**`, `notebooks/**`
+- `results/production.json` (may only ever be created by the future
+  production run)
+
+`python scripts/check_docs_frozen.py --since <rev>` fails if any protected
+path was modified, added, deleted or renamed since `<rev>`, in commits or in
+the working tree (including untracked files). `examples/make_figures.py`
+writes to the untracked `build/figures/` by default and writes into
+`docs/figures/` only with `--production`, which must never be run without
+that explicit instruction.
+
+## Results integrity
+
+- The README and all results-bearing documentation are written ONCE, from
+  the final production run. They contain only numbers and figures produced
+  by the committed code from the pre-registered production sample
+  (`results/production_files.json`), whether or not those numbers look good.
+- Development-file numbers never appear in them.
+- Targets (`dev/targets.md`) are always labelled as targets and are never
+  presented as measured or achieved results. A missed target is reported as
+  missed, with the measured value; it is not corrected after the fact.
+- All analysis choices (cuts, models, fit ranges, binning) are made on the
+  development file `data/45F7AE81-7A79-4CB1-998E-7BD156490294.root` before
+  the production sample is opened.
+- Blinding: no production filename appears in any tracked file other than
+  the registry, and the registry matches `dev/registry.sha256`
+  (`python scripts/check_blinding.py`). The README results block (between
+  `<!-- RESULTS:BEGIN -->` and `<!-- RESULTS:END -->`) must equal the text
+  rendered from `results/production.json`, and contains no digits while that
+  file does not exist (`python scripts/check_readme_numbers.py`).
+
+## Planned quality gates (work for the next prompts; not yet in place)
+
+These are requirements to build and then measure. Until measured, nothing
+here may be described as achieved.
+
+1. Engineering: pytest-cov with `pytest --cov=cmsopen --cov-fail-under=90`,
+   mypy with `disallow_untyped_defs` and `warn_unused_ignores`,
+   `ruff check src/`, enforced in CI; coverage from genuine tests, not
+   exclusions.
+2. Parallel processing: `n_workers` in `analyze()` (`None` serial, > 1 a
+   `ProcessPoolExecutor`), deterministic merging with exactly equal masses,
+   cutflow and fit results; `scripts/benchmark.py` measuring serial, 2-,
+   4- and all-core throughput and peak memory, its output kept separately.
+3. Test rigor: at least 1,000 pull-test toys, at least three deliberate-
+   breakage checks per layer, at least 5,000 validation pairs per category.
+4. J/psi channel: at least 2,000 opposite-sign pairs in 2.9-3.3 GeV, a
+   clearly visible peak, sideband signal-to-background at least 1; the
+   decision to pursue the channel stays evidence-based.
+5. Self-checks for that phase: parallel equals serial exactly, coverage gate,
+   mypy, ruff.
 
 ## Workflow
 
@@ -106,6 +169,12 @@ Standing rule for every layer. A layer is NOT done until ALL of these hold:
     and reported.
 (e) The user has been given exact copy-paste commands to reproduce the
     verification themselves.
+(f) The docs-freeze check passes against this layer's START commit
+    (`python scripts/check_docs_frozen.py --since <START>`).
+(g) `python scripts/check_blinding.py` and
+    `python scripts/check_readme_numbers.py` pass.
+(h) From Layer 8 onward: line coverage of `src/cmsopen` at or above 90 %,
+    mypy and ruff clean (the tooling is set up in the Layer 8 work).
 
 Never claim success without showing real command output. If a check
 fails, report the failure. Do not weaken or edit a check to make it pass.
@@ -126,7 +195,13 @@ fails, report the failure. Do not weaken or edit a check to make it pass.
    the URL with its token from the server log. Before closing the tab, save
    the notebook (it is the temp clone's copy) so no "Leave site?" prompt
    appears.
-4. In Chrome, open a NEW tab to that URL, open the layer's demo notebook,
+4. PREFLIGHT, before running the notebook: in the chosen browser open the
+   Jupyter URL in a new tab and confirm the page title (it must load and
+   show JupyterLab). If it cannot load (the browser may be on another
+   machine and unable to reach this Mac's 127.0.0.1), pick another browser
+   with /chrome "Select browser" or the tool's browser-selection step. Never
+   count a run in the wrong browser.
+5. In Chrome, open a NEW tab to that URL, open the layer's demo notebook,
    and do what a human would: Run > Run All Cells. Wait until every cell
    has finished (no busy indicators), then read the output cells from the
    page. Confirm the final self-check cell says "All checks passed" and
@@ -134,12 +209,12 @@ fails, report the failure. Do not weaken or edit a check to make it pass.
    GIF of the run. Save both OUTSIDE the repo in
    `~/Developer/cmsopen-verification/` (named `layerN-chrome.png` and
    `layerN-chrome.gif`) and never commit them.
-5. Browse ONLY the localhost Jupyter URL. Do not visit any other site, do
+6. Browse ONLY the localhost Jupyter URL. Do not visit any other site, do
    not use the user's other tabs, never enter credentials. If a login page
    or CAPTCHA appears, pause and ask the user.
-6. Afterwards, shut down only the Jupyter process you started and close
+7. Afterwards, shut down only the Jupyter process you started and close
    only the tab you opened.
-7. Report what you saw on screen: notebook name, how many cells ran, and
+8. Report what you saw on screen: notebook name, how many cells ran, and
    the final check lines.
 
 ### Verification procedure (for each layer's demos)
