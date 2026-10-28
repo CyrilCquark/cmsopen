@@ -27,6 +27,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 
+[project.scripts]
+cmsopen = "cmsopen.__main__:main"
+
 [project.optional-dependencies]
 dev = ["pytest", "jupyter", "nbformat", "vector>=1.3"]
 

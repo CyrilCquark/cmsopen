@@ -43,6 +43,14 @@ from cmsopen.kinematics import (
     sum_four_momenta,
 )
 from cmsopen.objects import Electron, FourMomentum, Muon
+from cmsopen.pipeline import (
+    CHANNELS,
+    AnalysisError,
+    AnalysisResult,
+    ChannelConfig,
+    analyze,
+    register_channel,
+)
 from cmsopen.plotting import (
     apply_paper_style,
     layout_overlaps,
@@ -73,7 +81,11 @@ from cmsopen.selection import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "CHANNELS",
     "ZMUMU_MUON_CUTS",
+    "AnalysisError",
+    "AnalysisResult",
+    "ChannelConfig",
     "CutFlow",
     "Electron",
     "EventCollection",
@@ -88,6 +100,7 @@ __all__ = [
     "Selection",
     "__version__",
     "all_pairs",
+    "analyze",
     "apply_paper_style",
     "best_pair",
     "compare_to_pdg",
@@ -125,6 +138,7 @@ __all__ = [
     "plot_pt_distribution",
     "polynomial",
     "quality_id",
+    "register_channel",
     "same_sign_pairs",
     "save_figure",
     "select_electrons",
