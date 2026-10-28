@@ -527,6 +527,46 @@ class CutFlow:
             raise ValueError("a CutFlow needs at least the starting row")
         self.steps: tuple[CutStep, ...] = tuple(steps)
 
+    @classmethod
+    def combine(cls, cutflows: Sequence[CutFlow]) -> CutFlow:
+        """Add cutflows of disjoint event samples (chunks of a file, or several files) row by row.
+
+        Events are independent collisions, so every count in a cutflow, the
+        particles, the events with at least one particle and the events, is
+        a sum over events. The cutflow of a sample split into pieces is
+        therefore exactly the row-by-row sum of the pieces' cutflows, provided
+        every piece went through the same cuts in the same order.
+
+        Raises
+        ------
+        ValueError
+            If no cutflow is given or their steps (name, parameters, level)
+            differ.
+        """
+        cutflows = list(cutflows)
+        if not cutflows:
+            raise ValueError("CutFlow.combine() needs at least one cutflow")
+        first = cutflows[0]
+        for other in cutflows[1:]:
+            mismatch = len(other) != len(first) or any(
+                (a.name, dict(a.params), a.level) != (b.name, dict(b.params), b.level) for a, b in zip(first, other)
+            )
+            if mismatch:
+                raise ValueError(
+                    "cannot combine cutflows with different cuts: "
+                    f"{[s.label for s in first]} vs {[s.label for s in other]}"
+                )
+        steps = [
+            CutStep(
+                step.name, dict(step.params), step.level,
+                sum(cf.steps[i].n_particles for cf in cutflows),
+                sum(cf.steps[i].n_events_with_particles for cf in cutflows),
+                sum(cf.steps[i].n_events for cf in cutflows),
+            )
+            for i, step in enumerate(first.steps)
+        ]
+        return cls(steps)
+
     def __len__(self) -> int:
         return len(self.steps)
 
