@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "purpose": "Pre-registered production sample for the cmsopen Z -> mu+ mu- analysis. Fixed before any of these files is downloaded or opened; analysis choices are made on the development file only.",
+  "date": "2026-10-28",
+  "record_ids": [
+    31129,
+    31123
+  ],
+  "development_file": "45F7AE81-7A79-4CB1-998E-7BD156490294.root",
+  "rule": {
+    "description": "For each record: take the per-file ROOT file index (not the merged-file index), sort the file names alphabetically (Python str ordering), and for j = 1..k select position round((j - 0.5) * N / k), where N is the number of files in the record. If the selected file is the development file (or already selected), advance to the next unused name in alphabetical order, wrapping around.",
+    "positions": "0-based index into the sorted list",
+    "rounding": "round half up: floor(x + 0.5)",
+    "k": {
+      "31129": 12,
+      "31123": 8
+    }
+  },
+  "development_file_skips": [],
+  "listing_source": "https://opendata.cern.ch/api/records/<record_id>, metadata._file_indices",
+  "records": [
+    {
+      "record_id": 31129,
+      "run_period": "Run2012C",
+      "title": "Run2012C_DoubleMuParked dataset in Run1 NanoAOD-like format",
+      "record_url": "https://opendata.cern.ch/record/31129",
+      "file_index": "Run2012C_DoubleMuParked_NanoAODRun1_01-Jul-22_root_file_index.json",
+      "n_files_in_record": 73,
+      "n_selected": 12,
+      "selected": [
+        {
+          "j": 1,
+          "position": 3,
+          "index": 3,
+          "filename": "0C10E4E7-4790-458D-BDA2-2EF3E4E4879E.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/0C10E4E7-4790-458D-BDA2-2EF3E4E4879E.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/0C10E4E7-4790-458D-BDA2-2EF3E4E4879E.root",
+          "size_bytes": 1439650504,
+          "checksum": "adler32:e5781397"
+        },
+        {
+          "j": 2,
+          "position": 9,
+          "index": 9,
+          "filename": "2106F8E6-4F0C-459C-80FD-59FEEBF6A888.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/2106F8E6-4F0C-459C-80FD-59FEEBF6A888.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/2106F8E6-4F0C-459C-80FD-59FEEBF6A888.root",
+          "size_bytes": 1520772810,
+          "checksum": "adler32:eec8aa1c"
+        },
+        {
+          "j": 3,
+          "position": 15,
+          "index": 15,
+          "filename": "3AB5CFA1-0EF1-4FEC-A331-6D468CDF74AB.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/3AB5CFA1-0EF1-4FEC-A331-6D468CDF74AB.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/3AB5CFA1-0EF1-4FEC-A331-6D468CDF74AB.root",
+          "size_bytes": 1542846675,
+          "checksum": "adler32:cbabfaaf"
+        },
+        {
+          "j": 4,
+          "position": 21,
+          "index": 21,
+          "filename": "4D18C6F7-BD21-4834-8C2A-FFD9C35063C2.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/4D18C6F7-BD21-4834-8C2A-FFD9C35063C2.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/4D18C6F7-BD21-4834-8C2A-FFD9C35063C2.root",
+          "size_bytes": 1527963949,
+          "checksum": "adler32:8f659920"
+        },
+        {
+          "j": 5,
+          "position": 27,
+          "index": 27,
+          "filename": "5DCC649B-C4AA-443B-812D-CF5FB4D898B6.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/5DCC649B-C4AA-443B-812D-CF5FB4D898B6.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/5DCC649B-C4AA-443B-812D-CF5FB4D898B6.root",
+          "size_bytes": 1447828594,
+          "checksum": "adler32:95193a2b"
+        },
+        {
+          "j": 6,
+          "position": 33,
+          "index": 33,
+          "filename": "6A603BDC-2F73-46B5-B347-13A888034CD6.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/6A603BDC-2F73-46B5-B347-13A888034CD6.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/6A603BDC-2F73-46B5-B347-13A888034CD6.root",
+          "size_bytes": 1475659824,
+          "checksum": "adler32:d24d9ad0"
+        },
+        {
+          "j": 7,
+          "position": 40,
+          "index": 40,
+          "filename": "844AB085-7F65-4D38-B648-9EE783B60098.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/844AB085-7F65-4D38-B648-9EE783B60098.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/844AB085-7F65-4D38-B648-9EE783B60098.root",
+          "size_bytes": 1621487495,
+          "checksum": "adler32:f447a199"
+        },
+        {
+          "j": 8,
+          "position": 46,
+          "index": 46,
+          "filename": "9E7B186D-A96D-4A9D-84AB-CD9E4093362B.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/9E7B186D-A96D-4A9D-84AB-CD9E4093362B.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/9E7B186D-A96D-4A9D-84AB-CD9E4093362B.root",
+          "size_bytes": 1579025847,
+          "checksum": "adler32:665f82cd"
+        },
+        {
+          "j": 9,
+          "position": 52,
+          "index": 52,
+          "filename": "C192F0E6-3CE7-4AB7-B600-9E2654994C39.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/C192F0E6-3CE7-4AB7-B600-9E2654994C39.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/C192F0E6-3CE7-4AB7-B600-9E2654994C39.root",
+          "size_bytes": 1560210288,
+          "checksum": "adler32:39414ab4"
+        },
+        {
+          "j": 10,
+          "position": 58,
+          "index": 58,
+          "filename": "D347E87B-81DA-4BEC-A5E5-069536EA1B1F.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/D347E87B-81DA-4BEC-A5E5-069536EA1B1F.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/D347E87B-81DA-4BEC-A5E5-069536EA1B1F.root",
+          "size_bytes": 1433884722,
+          "checksum": "adler32:76cccbff"
+        },
+        {
+          "j": 11,
+          "position": 64,
+          "index": 64,
+          "filename": "E7B14445-E35B-4DBF-9CAA-D54C42693A7F.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/E7B14445-E35B-4DBF-9CAA-D54C42693A7F.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/E7B14445-E35B-4DBF-9CAA-D54C42693A7F.root",
+          "size_bytes": 1566976743,
+          "checksum": "adler32:64a74d3c"
+        },
+        {
+          "j": 12,
+          "position": 70,
+          "index": 70,
+          "filename": "F3535EA9-155F-4F2C-99A3-104AB8A07306.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/F3535EA9-155F-4F2C-99A3-104AB8A07306.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/F3535EA9-155F-4F2C-99A3-104AB8A07306.root",
+          "size_bytes": 1562551541,
+          "checksum": "adler32:53cfbfbc"
+        }
+      ]
+    },
+    {
+      "record_id": 31123,
+      "run_period": "Run2012B",
+      "title": "Run2012B_DoubleMuParked dataset in Run1 NanoAOD-like format",
+      "record_url": "https://opendata.cern.ch/record/31123",
+      "file_index": "Run2012B_DoubleMuParked_NanoAODRun1_01-Jul-22_root_file_index.json",
+      "n_files_in_record": 56,
+      "n_selected": 8,
+      "selected": [
+        {
+          "j": 1,
+          "position": 4,
+          "index": 4,
+          "filename": "1F35A64B-BBB2-4F69-9B08-36472C8D8880.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/1F35A64B-BBB2-4F69-9B08-36472C8D8880.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/1F35A64B-BBB2-4F69-9B08-36472C8D8880.root",
+          "size_bytes": 1407566465,
+          "checksum": "adler32:2fecef4d"
+        },
+        {
+          "j": 2,
+          "position": 11,
+          "index": 11,
+          "filename": "2FDAC4ED-A79C-4564-85F5-5301C2175015.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/2FDAC4ED-A79C-4564-85F5-5301C2175015.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/2FDAC4ED-A79C-4564-85F5-5301C2175015.root",
+          "size_bytes": 1435872658,
+          "checksum": "adler32:c25d58f3"
+        },
+        {
+          "j": 3,
+          "position": 18,
+          "index": 18,
+          "filename": "4D8C9EF6-8E60-426B-8D94-07D5C10EDE73.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/4D8C9EF6-8E60-426B-8D94-07D5C10EDE73.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/4D8C9EF6-8E60-426B-8D94-07D5C10EDE73.root",
+          "size_bytes": 1341461164,
+          "checksum": "adler32:f11f4450"
+        },
+        {
+          "j": 4,
+          "position": 25,
+          "index": 25,
+          "filename": "75DF5A60-EB02-42C3-8CC1-3F9611F451B3.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/75DF5A60-EB02-42C3-8CC1-3F9611F451B3.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/75DF5A60-EB02-42C3-8CC1-3F9611F451B3.root",
+          "size_bytes": 1515001789,
+          "checksum": "adler32:d558c670"
+        },
+        {
+          "j": 5,
+          "position": 32,
+          "index": 32,
+          "filename": "9ABB5EA3-3109-4676-B0B0-9A2A12609983.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/9ABB5EA3-3109-4676-B0B0-9A2A12609983.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/9ABB5EA3-3109-4676-B0B0-9A2A12609983.root",
+          "size_bytes": 1481290146,
+          "checksum": "adler32:7a119772"
+        },
+        {
+          "j": 6,
+          "position": 39,
+          "index": 39,
+          "filename": "B542C46C-63C1-4CE5-AFBD-60DC23E7EF43.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/B542C46C-63C1-4CE5-AFBD-60DC23E7EF43.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/B542C46C-63C1-4CE5-AFBD-60DC23E7EF43.root",
+          "size_bytes": 1573571686,
+          "checksum": "adler32:eb9da552"
+        },
+        {
+          "j": 7,
+          "position": 46,
+          "index": 46,
+          "filename": "D1704661-38F4-4554-B24B-4C54965D3E82.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/D1704661-38F4-4554-B24B-4C54965D3E82.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/D1704661-38F4-4554-B24B-4C54965D3E82.root",
+          "size_bytes": 1450105457,
+          "checksum": "adler32:58cd5a83"
+        },
+        {
+          "j": 8,
+          "position": 53,
+          "index": 53,
+          "filename": "F42E2A97-65CA-48B7-8CBE-332B144AFDB5.root",
+          "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/F42E2A97-65CA-48B7-8CBE-332B144AFDB5.root",
+          "xrootd_url": "root://eospublic.cern.ch//eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/F42E2A97-65CA-48B7-8CBE-332B144AFDB5.root",
+          "size_bytes": 1503665129,
+          "checksum": "adler32:f9d38c09"
+        }
+      ]
+    }
+  ],
+  "n_files_total": 20
+}
