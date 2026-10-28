@@ -8,6 +8,11 @@ spectrum of the two leading opposite-charge muons with the crude layer 5
 selection. Pairing proper is layer 4, so the opposite-charge requirement
 here is a plain awkward mask.
 
+The last check compares the peak fraction: the fraction of pairs in
+60-120 GeV that lie in 85-97 GeV. It is a rough measure of how
+concentrated the spectrum is around the Z, not a true purity (that would
+need the background under the peak to be modelled and subtracted).
+
 Usage:
     python examples/layer3_selection.py [--file PATH]
 
@@ -217,7 +222,7 @@ def main() -> int:
     f_sel, n_core_s, n_wide_s = fraction_in(selected, CORE, WIDE)
     f_crude, n_core_c, n_wide_c = fraction_in(crude, CORE, WIDE)
     checks.check(
-        f"purity: fraction of {WIDE[0]:.0f}-{WIDE[1]:.0f} GeV pairs inside {CORE[0]:.0f}-{CORE[1]:.0f} GeV "
+        f"peak fraction: fraction of {WIDE[0]:.0f}-{WIDE[1]:.0f} GeV pairs inside {CORE[0]:.0f}-{CORE[1]:.0f} GeV "
         "is higher after the full selection than for the crude selection",
         f_sel > f_crude,
         f"full {f_sel:.4f} ({n_core_s:,}/{n_wide_s:,}) vs crude {f_crude:.4f} ({n_core_c:,}/{n_wide_c:,})",
