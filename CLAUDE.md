@@ -162,8 +162,9 @@ fails, report the failure. Do not weaken or edit a check to make it pass.
 | 1 ingestion | Done: (a)–(e) met; live browser check 2026-10-27. |
 | 2 objects | Done: (a)–(e) met; live browser check 2026-10-27. |
 | 3 selection | Done: (a)–(e) met; live browser check 2026-10-27, Tier 1 (Claude in Chrome). |
+| 4 combinatorics | Done: (a)–(e) met; live browser check 2026-10-27, Tier 1 (Claude in Chrome). |
 | 5 kinematics | Done: (a)–(e) met; live browser check 2026-10-27. |
-| 4, 6–10 | Not started. |
+| 6–10 | Not started. |
 
 ## Note on branch names
 
