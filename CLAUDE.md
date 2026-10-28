@@ -107,8 +107,9 @@ that explicit instruction.
   by the committed code from the pre-registered production sample
   (`results/production_files.json`), whether or not those numbers look good.
 - Development-file numbers never appear in them.
-- Targets and controlling benchmarks (`dev/targets.md`) are always labelled
-  as such and are never presented as measured or achieved results. A missed target is reported as
+- Targets and controlling benchmarks (`dev/targets.md`) may appear in them
+  only labelled as benchmarks, next to the observed value (see "Controlling
+  benchmarks"). A missed target is reported as
   missed, with the measured value; it is not corrected after the fact.
 - All analysis choices (cuts, models, fit ranges, binning) are made on the
   development file `data/45F7AE81-7A79-4CB1-998E-7BD156490294.root` before
@@ -126,31 +127,28 @@ Adopted from the user's AMBITION OVERRIDES. Binding on every layer, phase and
 future prompt.
 
 1. Every metric has one permanent controlling benchmark: the most ambitious
-   value among all historical targets, requirements and verified production
-   results for that metric (the largest for higher-is-better metrics, the
+   value ever established for it, whether a target, a requirement or a
+   verified production result (the largest for higher-is-better metrics, the
    smallest for lower-is-better metrics).
-2. A higher target always supersedes a lower production measurement for the
-   controlling benchmark. A lower measurement never lowers the benchmark; a
-   verified production result that beats the benchmark raises it.
-3. No later phase may reduce a controlling benchmark without the user's
-   explicit written authorization in a prompt.
-4. All planning documents, acceptance criteria, specifications and future
-   prompts use the controlling value. If a prompt states a less ambitious
-   value, the controlling value applies and the discrepancy is pointed out
-   to the user.
-5. The AMBITION OVERRIDES implementation requirements below are mandatory.
-
-The table of controlling benchmarks is in `dev/targets.md`; update it
-whenever a benchmark is raised.
-
-Benchmark versus result. A controlling benchmark is the bar a result is
-measured against; it is not itself a result. Every reported result (README,
-`results/production.json`, figures, summaries, status lines) is the measured
-value, stated next to its controlling benchmark as met or not met. NOT
-ADOPTED, by Claude's decision and recorded so it is not silently replaced:
-AMBITION OVERRIDES 0.2, the last sentence of 0.4, the last sentence of
-section 3 and section 8, which would present an unmeasured benchmark as an
-achieved result. The user has been told this.
+2. The controlling benchmark is applied consistently in all requirements,
+   project descriptions, planning documents, acceptance criteria,
+   specifications and future prompts. No lower value displaces it: a weaker
+   measured result never replaces it, and a less ambitious value stated in a
+   later prompt does not apply (the discrepancy is pointed out to the user).
+   A verified production result that beats the benchmark becomes the new
+   benchmark.
+3. Only the user's explicit written authorization in a prompt can reduce a
+   controlling benchmark.
+4. Every project summary shows two clearly labelled values for each metric:
+   the controlling benchmark ("benchmark", kept prominent) and the observed
+   value ("observed", the measured result, with "met" or "not met"). The
+   benchmark is never labelled as observed or achieved, and an observed value
+   is never labelled as the benchmark.
+5. Experimental output, verification logs, statistical reports and test
+   results always record the accurate measured values.
+6. The AMBITION OVERRIDES implementation requirements below and the
+   historical benchmark registry in `dev/targets.md` are permanent and are
+   updated whenever a stronger value is established.
 
 ### Mandatory AMBITION OVERRIDES requirements
 

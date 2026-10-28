@@ -1,20 +1,21 @@
 # Method targets
 
 These are targets and controlling benchmarks: requirements fixed before the
-production sample is analysed. They are not results. This file contains no measured values, and a
-target is never reported as achieved unless the measurement shows it was met
-(see "Results integrity" in CLAUDE.md).
+production sample is analysed. This file contains no measured values; observed
+values are reported separately, next to the benchmarks (see "Controlling
+benchmarks" and "Results integrity" in CLAUDE.md).
 
 ## Controlling benchmarks (all-time-highest policy)
 
-Policy: "Controlling benchmarks" in CLAUDE.md. Each metric's controlling
-benchmark is the most ambitious value among all historical targets,
-requirements and verified production results. A lower measurement never
-lowers it, a verified production result that beats it raises it, and only
-the user's explicit written authorization can reduce it. Planning documents,
-acceptance criteria, specifications and prompts use the controlling value.
-A benchmark is the bar a result is measured against: results are always
-reported as measured, next to the benchmark, as met or not met.
+Policy: "Controlling benchmarks" in CLAUDE.md. This table is the permanent
+historical benchmark registry. Each metric's controlling benchmark is the most
+ambitious value ever established for it, whether a target, a requirement or a
+verified production result. No lower value displaces it; a verified production
+result that beats it becomes the new benchmark; only the user's explicit
+written authorization can reduce it. Requirements, project descriptions,
+planning documents, acceptance criteria, specifications and prompts use the
+controlling value. Summaries show the benchmark (prominent) and the observed
+value (measured, met or not met), each clearly labelled.
 
 Verified production results so far: none (the production sample has not
 been opened). Every benchmark below therefore comes from targets and
