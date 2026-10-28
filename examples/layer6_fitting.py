@@ -174,7 +174,7 @@ def main() -> int:
             f"{m}: fitted mass within 1.0 GeV of the PDG value (sanity only, not agreement within errors)",
             abs(c.difference) < 1.0,
             f"{c.fitted:.4f} +- {c.fitted_error:.4f} GeV vs PDG {c.pdg_mass:.4f}; offset {c.difference:+.4f} GeV, "
-            f"pull {c.pull:+.1f}",
+            f"pull {c.pull:+.1f} (statistical error only)",
         )
     for m, r in fits.items():
         s, se = r.resolution

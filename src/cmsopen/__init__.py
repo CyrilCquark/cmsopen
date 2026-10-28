@@ -17,6 +17,7 @@ from cmsopen.combinatorics import (
 from cmsopen.fitting import (
     FitError,
     FitResult,
+    FitWarning,
     MassHistogram,
     compare_to_pdg,
     fit_mass_peak,
@@ -67,6 +68,7 @@ __all__ = [
     "EventCollection",
     "FitError",
     "FitResult",
+    "FitWarning",
     "FourMomentum",
     "MassHistogram",
     "MissingFieldError",

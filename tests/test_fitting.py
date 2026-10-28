@@ -373,3 +373,60 @@ def test_real_file_z_peak():
         assert abs(r.peak_position[0] - 91.1876) < 1.0
         assert 0.5 < r.resolution[0] < 4.0
         assert np.all(np.isfinite(r.errors))
+
+
+# -- machine-readable warnings and the PDG output ----------------------------------------------------------------
+
+
+def _voigt_line_toy(c0, c1, scale=1.0):
+    centers = 0.5 * (EDGES[:-1] + EDGES[1:])
+    density = scale * voigt_plus_polynomial(centers, 25000.0, 91.0, 1.4, c0, c1, gamma=1.25, x0=90.0)
+    window = (centers > 70) & (centers < 110)
+    return MassHistogram(np.where(window, density, 0.0), EDGES)
+
+
+def test_warnings_are_machine_readable_and_yields_flagged():
+    from cmsopen.fitting import FitWarning
+
+    # significantly negative: the 4x-scaled line crossing zero at ~106.7 GeV (see the test above)
+    r = fit_mass_peak(_voigt_line_toy(30.0, -1.8, scale=4.0), model="voigt_poly", natural_width=2.5, poly_degree=1)
+    assert isinstance(r.warnings, tuple) and len(r.warnings) == 1
+    w = r.warnings[0]
+    assert isinstance(w, FitWarning) and isinstance(w, str)
+    assert w.code == "background_negative"
+    assert w.details["significant"] is True
+    assert w.details["min_density"] < 0 and 70 <= w.details["at_mass"] <= 110
+    assert w.details["min_density"] + 3 * w.details["error"] < 0
+    assert r.yields_reliable is False
+
+    # mildly negative: same shape at 1/4 the statistics, the dip is within 3 errors of zero
+    mild = fit_mass_peak(_voigt_line_toy(30.0, -1.8), model="voigt_poly", natural_width=2.5, poly_degree=1)
+    assert [x.code for x in mild.warnings] == ["background_negative"]
+    assert mild.warnings[0].details["significant"] is False and "dips below zero" in mild.warnings[0]
+    assert mild.yields_reliable is False
+    assert "WARNING" in mild.table()
+
+    # a positive background: no warning, yields reliable
+    clean = fit_mass_peak(_voigt_line_toy(30.0, -0.5), model="voigt_poly", natural_width=2.5, poly_degree=1)
+    assert np.all(clean.background(np.linspace(70, 110, 401)) >= 0)
+    assert clean.warnings == () and clean.yields_reliable is True
+
+
+def test_yields_reliable_matches_background_sign_on_toys():
+    for seed in range(5):
+        r = fit_mass_peak(gauss_exp_toy(np.random.default_rng(seed)))
+        negative = bool(np.any(r.background(np.linspace(*r.fit_range, 401)) < 0))
+        assert r.yields_reliable is (not negative)
+
+
+def test_compare_to_pdg_output_is_labelled_statistical():
+    r = fit_mass_peak(toy_histogram(np.random.default_rng(4)))
+    c = compare_to_pdg(r)
+    text = str(c)
+    assert c.relative_difference == pytest.approx(c.difference / c.pdg_mass)
+    assert "stat-only uncertainty" in text
+    assert "(statistical error only)" in text
+    assert f"{100 * c.relative_difference:+.3f} %" in text
+    assert f"{c.difference:+.4f} GeV" in text
+    assert "statistical sigma" not in text  # no bare pull presented as a significance
+    assert "FitWarning" in cmsopen.__all__

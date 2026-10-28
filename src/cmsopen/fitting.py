@@ -44,6 +44,7 @@ import math
 import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any
 
 import awkward as ak
@@ -56,6 +57,7 @@ __all__ = [
     "MODELS",
     "FitError",
     "FitResult",
+    "FitWarning",
     "MassHistogram",
     "PdgComparison",
     "PullTestResult",
@@ -89,6 +91,29 @@ class FitError(RuntimeError):
     predicts a negative count. A fit that fails loudly is better than a
     number that looks like a measurement but is not one.
     """
+
+
+class FitWarning(str):
+    """A problem with a fit that does not invalidate it: readable text plus a machine-readable code.
+
+    It is a ``str`` (its message), so it prints and searches like text, and
+    it carries ``code`` (a short identifier such as
+    ``"background_negative"``) and ``details`` (a read-only mapping of the
+    numbers behind the message) for programs that act on it, for example a
+    plot that must not show yields the fit cannot support.
+    """
+
+    code: str
+    details: Mapping[str, Any]
+
+    def __new__(cls, code: str, message: str, **details: Any) -> FitWarning:
+        obj = super().__new__(cls, message)
+        obj.code = code
+        obj.details = MappingProxyType(dict(details))
+        return obj
+
+    def __repr__(self) -> str:
+        return f"FitWarning({self.code!r}, {str(self)!r})"
 
 
 # -- particle data -------------------------------------------------------------------
@@ -378,9 +403,29 @@ class FitResult:
     x0: float
     gamma: float | None = None
     n_entries: int = 0
-    warnings: tuple[str, ...] = ()
-    """Problems that do not invalidate the peak position but limit other results (printed by :meth:`table`)."""
+    warnings: tuple[FitWarning, ...] = ()
+    """Problems that do not invalidate the peak position but limit other results.
+
+    A tuple of :class:`FitWarning` (each a string with a ``code`` and
+    ``details``), printed by :meth:`table`. Code ``"background_negative"``:
+    the fitted background density is below zero somewhere in the fit
+    range; ``details["significant"]`` says whether by more than 3 of its
+    own propagated errors.
+    """
     _density: Callable[..., np.ndarray] = field(default=None, repr=False)
+
+    @property
+    def yields_reliable(self) -> bool:
+        """False if the fitted background goes below zero anywhere in the fit range.
+
+        A negative background density is not physical. When it happens, the
+        polynomial is compensating for a feature the peak model misses (in
+        the 2012 data, the radiative tail below the Z), so how the events are
+        split between signal and background, and hence both yields, cannot
+        be trusted, even if the dip is within the statistical errors. The
+        peak position and width are much less affected.
+        """
+        return not any(w.code == "background_negative" for w in self.warnings)
 
     @property
     def chi2_ndf(self) -> float:
@@ -725,22 +770,35 @@ def fit_mass_peak(
             f"{model} fit over {lo:g}-{hi:g} GeV: the model predicts a negative count ({mu[bad]:.3g}) "
             f"in the bin at {centers[bad]:g} GeV, which no Poisson process can produce"
         )
-    # A background density that is significantly below zero (by more than 3 of its own errors) is
-    # unphysical as a component, though the total can still describe the data. It usually means the
-    # peak model misses a feature (e.g. the radiative tail) and the polynomial bends to absorb it.
-    # The peak position survives that; the signal/background split does not. Say so loudly.
+    # A background density below zero is unphysical as a component, though the total can still
+    # describe the data. It usually means the peak model misses a feature (e.g. the radiative tail)
+    # and the polynomial bends to absorb it. The peak position survives that; the signal/background
+    # split does not. Say so, loudly if the dip is significant (more than 3 of its own errors).
     notes = []
     grid = np.linspace(lo, hi, 401)
     basis = (grid[:, None] - x0) ** np.arange(poly_degree + 1)
     bkg = basis @ values[3:]
     bkg_err = np.sqrt(np.maximum(np.einsum("ij,jk,ik->i", basis, cov[3:, 3:], basis), 0.0))
-    worst = int(np.argmin(bkg + 3.0 * bkg_err))
-    if bkg[worst] + 3.0 * bkg_err[worst] < 0:
-        notes.append(
-            f"the fitted background is significantly negative ({bkg[worst]:.3g} +- {bkg_err[worst]:.2g} "
-            f"events/GeV at {grid[worst]:.1f} GeV): the peak model does not describe the data's shape and "
-            f"the polynomial compensates, so the signal and background yields are not reliable"
-        )
+    if np.any(bkg < 0):
+        worst = int(np.argmin(bkg + 3.0 * bkg_err))
+        significant = bool(bkg[worst] + 3.0 * bkg_err[worst] < 0)
+        if not significant:
+            worst = int(np.argmin(bkg))
+        details = {"min_density": float(bkg[worst]), "error": float(bkg_err[worst]),
+                   "at_mass": float(grid[worst]), "significant": significant}
+        if significant:
+            message = (
+                f"the fitted background is significantly negative ({bkg[worst]:.3g} +- {bkg_err[worst]:.2g} "
+                f"events/GeV at {grid[worst]:.1f} GeV): the peak model does not describe the data's shape and "
+                f"the polynomial compensates, so the signal and background yields are not reliable"
+            )
+        else:
+            message = (
+                f"the fitted background dips below zero ({bkg[worst]:.3g} +- {bkg_err[worst]:.2g} events/GeV "
+                f"at {grid[worst]:.1f} GeV, within 3 errors of zero): a negative background is not physical, "
+                f"so the signal and background yields are not reliable"
+            )
+        notes.append(FitWarning("background_negative", message, **details))
 
     chi2 = float(np.sum(((counts - mu) / errors) ** 2))
     ndf = len(counts) - n_par
@@ -782,20 +840,30 @@ class PdgComparison:
     pull: float
     note: str
 
+    @property
+    def relative_difference(self) -> float:
+        """(fitted - PDG) / PDG, as a fraction (multiply by 100 for percent)."""
+        return self.difference / self.pdg_mass
+
     def __str__(self) -> str:
         return (
-            f"{self.particle}: fitted {self.fitted:.4f} +- {self.fitted_error:.4f} GeV, "
-            f"PDG {self.pdg_mass:.4f} +- {self.pdg_mass_error:.4f} GeV; "
-            f"difference {self.difference:+.4f} GeV, pull {self.pull:+.2f}\n  {self.note}"
+            f"{self.particle}: fitted {self.fitted:.4f} +- {self.fitted_error:.4f} GeV (stat-only uncertainty), "
+            f"PDG {self.pdg_mass:.4f} +- {self.pdg_mass_error:.4f} GeV\n"
+            f"  offset {self.difference:+.4f} GeV ({100 * self.relative_difference:+.3f} %), "
+            f"pull {self.pull:+.1f} (statistical error only)\n  {self.note}"
         )
 
 
 def compare_to_pdg(result: FitResult, particle: str | int = "Z") -> PdgComparison:
     """Compare a fitted peak position with the PDG mass from the ``particle`` package.
 
-    Returns the difference (fitted - PDG) in GeV and the pull, difference /
-    fit uncertainty: how many statistical standard deviations apart the two
-    are (the PDG uncertainty, 0.002 GeV for the Z, is negligible here).
+    Returns the difference (fitted - PDG) in GeV (and, as
+    :attr:`PdgComparison.relative_difference`, as a fraction) and the pull,
+    difference / fit uncertainty. The fit uncertainty is statistical only,
+    so the pull is how many *statistical* standard deviations apart the two
+    are; it is not the significance of a disagreement, which would need the
+    systematic uncertainties too (the PDG uncertainty, 0.002 GeV for the Z,
+    is negligible here).
 
     Read the result with care. The fitted peak position of a Gaussian (or of
     a symmetric Voigt) is NOT the same quantity as the PDG *pole mass*,
@@ -826,8 +894,10 @@ def compare_to_pdg(result: FitResult, particle: str | int = "Z") -> PdgCompariso
             "model this reflects systematic effects of the analysis, not a disagreement with the PDG"
         )
     note = (
-        f"The {result.model_name} peak is {abs(diff):.3f} GeV {direction} the PDG mass "
-        f"({abs(pull):.1f} statistical sigma): {verdict}."
+        f"The {result.model_name} peak is {abs(diff):.3f} GeV ({100 * abs(diff) / mass:.2f} %) {direction} the PDG "
+        f"mass: {verdict}. The uncertainty is statistical only (stat-only uncertainty): it leaves out the muon "
+        f"momentum scale, the line-shape model and the fit choices, so the pull overstates how significant "
+        f"the offset is."
     )
     name = particle if isinstance(particle, str) else Particle.from_pdgid(particle).name
     return PdgComparison(name, mass, mass_err, width, fitted, err, diff, pull, note)
