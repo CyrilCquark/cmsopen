@@ -35,3 +35,11 @@ Point the demo notebooks at the file and run the tests:
 export CMSOPEN_DATA_FILE="$PWD/data/45F7AE81-7A79-4CB1-998E-7BD156490294.root"
 pytest
 ```
+
+## Figures
+
+The final figures of the analysis, made from the real 2012C DoubleMuParked file, are in
+[`docs/figures/`](docs/figures/) with a README that says how to regenerate them
+(`python examples/make_figures.py`). They are an unofficial analysis of CMS Open Data, not CMS results.
+
+![Z peak fit](docs/figures/z_peak_fit.png)
