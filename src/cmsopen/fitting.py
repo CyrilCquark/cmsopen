@@ -961,6 +961,7 @@ def fit_stability(
     poly_degrees: Sequence[int] = (1, 2, 3),
     models: Sequence[str] = MODELS,
     hist_range: tuple[float, float] = (60.0, 120.0),
+    natural_width: float | None = None,
 ) -> StabilityResult:
     """Refit the same masses under every combination of reasonable fit choices.
 
@@ -982,6 +983,9 @@ def fit_stability(
         The grid; every combination is fitted (default 3 x 3 x 3 x 2 = 54).
     hist_range : (float, float)
         Histogram range in GeV; each bin width must divide it evenly.
+    natural_width : float, optional
+        Breit-Wigner FWHM in GeV for the Voigt fits (default: the Z width), e.g.
+        the J/psi width for a J/psi spectrum.
 
     Returns
     -------
@@ -1004,7 +1008,8 @@ def fit_stability(
                 for degree in poly_degrees:
                     config = {"model": model, "fit_range": tuple(fit_range), "bin_width": w, "poly_degree": degree}
                     try:
-                        r = fit_mass_peak(hists[w], model=model, fit_range=fit_range, poly_degree=degree)
+                        r = fit_mass_peak(hists[w], model=model, fit_range=fit_range, poly_degree=degree,
+                                          natural_width=natural_width)
                     except FitError as exc:
                         failed.append({**config, "reason": str(exc)})
                         continue
