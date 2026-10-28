@@ -19,3 +19,7 @@ data/*
 
 # macOS
 .DS_Store
+
+# Stray verification dirs (verification runs in a mktemp dir instead)
+/clone/
+/freshenv/
