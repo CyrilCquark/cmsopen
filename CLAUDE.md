@@ -107,8 +107,8 @@ that explicit instruction.
   by the committed code from the pre-registered production sample
   (`results/production_files.json`), whether or not those numbers look good.
 - Development-file numbers never appear in them.
-- Targets (`dev/targets.md`) are always labelled as targets and are never
-  presented as measured or achieved results. A missed target is reported as
+- Targets and controlling benchmarks (`dev/targets.md`) are always labelled
+  as such and are never presented as measured or achieved results. A missed target is reported as
   missed, with the measured value; it is not corrected after the fact.
 - All analysis choices (cuts, models, fit ranges, binning) are made on the
   development file `data/45F7AE81-7A79-4CB1-998E-7BD156490294.root` before
@@ -120,26 +120,64 @@ that explicit instruction.
   rendered from `results/production.json`, and contains no digits while that
   file does not exist (`python scripts/check_readme_numbers.py`).
 
-## Planned quality gates (work for the next prompts; not yet in place)
+## Controlling benchmarks (all-time-highest policy)
 
-These are requirements to build and then measure. Until measured, nothing
+Adopted from the user's AMBITION OVERRIDES. Binding on every layer, phase and
+future prompt.
+
+1. Every metric has one permanent controlling benchmark: the most ambitious
+   value among all historical targets, requirements and verified production
+   results for that metric (the largest for higher-is-better metrics, the
+   smallest for lower-is-better metrics).
+2. A higher target always supersedes a lower production measurement for the
+   controlling benchmark. A lower measurement never lowers the benchmark; a
+   verified production result that beats the benchmark raises it.
+3. No later phase may reduce a controlling benchmark without the user's
+   explicit written authorization in a prompt.
+4. All planning documents, acceptance criteria, specifications and future
+   prompts use the controlling value. If a prompt states a less ambitious
+   value, the controlling value applies and the discrepancy is pointed out
+   to the user.
+5. The AMBITION OVERRIDES implementation requirements below are mandatory.
+
+The table of controlling benchmarks is in `dev/targets.md`; update it
+whenever a benchmark is raised.
+
+Benchmark versus result. A controlling benchmark is the bar a result is
+measured against; it is not itself a result. Every reported result (README,
+`results/production.json`, figures, summaries, status lines) is the measured
+value, stated next to its controlling benchmark as met or not met. NOT
+ADOPTED, by Claude's decision and recorded so it is not silently replaced:
+AMBITION OVERRIDES 0.2, the last sentence of 0.4, the last sentence of
+section 3 and section 8, which would present an unmeasured benchmark as an
+achieved result. The user has been told this.
+
+### Mandatory AMBITION OVERRIDES requirements
+
+Not yet in place unless the Status table says so; until measured, nothing
 here may be described as achieved.
 
-1. Engineering: pytest-cov with `pytest --cov=cmsopen --cov-fail-under=90`,
-   mypy with `disallow_untyped_defs` and `warn_unused_ignores`,
-   `ruff check src/`, enforced in CI; coverage from genuine tests, not
-   exclusions.
-2. Parallel processing: `n_workers` in `analyze()` (`None` serial, > 1 a
+1. Production sample: 20 pre-registered files, 12 from record 31129 (Run
+   2012C) and 8 from record 31123 (Run 2012B), chosen by the rule recorded in
+   `results/production_files.json` (done in Phase 1; never opened before the
+   production run).
+2. Engineering gates: pytest-cov with `pytest --cov=cmsopen
+   --cov-fail-under=90`, mypy with `disallow_untyped_defs` and
+   `warn_unused_ignores`, `ruff check src/`, all enforced in CI; coverage
+   from genuine tests, not exclusions.
+3. Parallel processing: `n_workers` in `analyze()` (`None` serial, > 1 a
    `ProcessPoolExecutor`), deterministic merging with exactly equal masses,
    cutflow and fit results; `scripts/benchmark.py` measuring serial, 2-,
    4- and all-core throughput and peak memory, its output kept separately.
-3. Test rigor: at least 1,000 pull-test toys, at least three deliberate-
+4. Test rigor: at least 1,000 pull-test toys, at least three deliberate-
    breakage checks per layer, at least 5,000 validation pairs per category.
-4. J/psi channel: at least 2,000 opposite-sign pairs in 2.9-3.3 GeV, a
+5. J/psi channel: at least 2,000 opposite-sign pairs in 2.9-3.3 GeV, a
    clearly visible peak, sideband signal-to-background at least 1; the
    decision to pursue the channel stays evidence-based.
-5. Self-checks for that phase: parallel equals serial exactly, coverage gate,
+6. Self-checks for that phase: parallel equals serial exactly, coverage gate,
    mypy, ruff.
+7. Targets T2 (chi2/ndf at most 2.0), T4 (the 20-file sample), T6 (Run 2012B
+   versus 2012C consistency) and T7 (engineering) as in `dev/targets.md`.
 
 ## Workflow
 
