@@ -39,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     a.add_argument("--no-stability", action="store_true", help="skip the fit-choice stability scan")
+    a.add_argument(
+        "--validation",
+        action="store_true",
+        help="also run the pre-registered validation (categories, charge, pT, pileup, working points)",
+    )
     a.add_argument("--quiet", action="store_true", help="do not print the summary")
     f = sub.add_parser("fetch", help="download the development data file (resumable, size and adler32 verified)")
     f.add_argument("--dest", type=Path, default=Path("data"), help="directory to download into (default: data)")
@@ -79,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
             verbose=not args.quiet,
             stability=not args.no_stability,
             n_workers=args.workers,
+            validation=args.validation,
         )
     except (AnalysisError, ValueError, TypeError, OSError, KeyError) as exc:
         message = exc.args[0] if isinstance(exc, KeyError) and exc.args else exc

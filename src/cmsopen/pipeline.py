@@ -41,6 +41,7 @@ Nothing loops over events in Python.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import platform
@@ -72,6 +73,7 @@ from cmsopen.fitting import (
 )
 from cmsopen.ingestion import DIMUON_TRIGGERS_2012, NotNanoAODError, open_events
 from cmsopen.selection import MUON_ID_WORKING_POINTS, ZMUMU_MUON_CUTS, CutFlow, select_muons
+from cmsopen.validation import PAIR_FIELDS, ValidationResult
 
 __all__ = [
     "CHANNELS",
@@ -419,6 +421,10 @@ class AnalysisResult:
     warnings : list of str
     versions : dict
         Package name -> version, for reproducibility.
+    validation : ValidationResult or None
+        With ``analyze(..., validation=True)``: the pre-registered categories,
+        bins and working points and the systematics summary
+        (:mod:`cmsopen.validation`).
     """
 
     config: ChannelConfig
@@ -436,6 +442,7 @@ class AnalysisResult:
     figures: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     versions: dict[str, str] = field(default_factory=dict)
+    validation: ValidationResult | None = None
 
     # -- text --------------------------------------------------------------------------------
 
@@ -508,12 +515,14 @@ class AnalysisResult:
             lines.append("")
             lines.append("Warnings:")
             lines += [f"  - {w}" for w in self.warnings]
+        if self.validation is not None:
+            lines += ["", self.validation.table()]
         return "\n".join(lines)
 
     def to_dict(self) -> dict[str, Any]:
         """A JSON-serializable summary (no Figure objects, no per-pair arrays)."""
         st = self.stability
-        return _jsonable(
+        d = _jsonable(
             {
                 "schema": "cmsopen.AnalysisResult/1",
                 "channel": self.config.to_dict(),
@@ -566,6 +575,9 @@ class AnalysisResult:
                 "versions": dict(self.versions),
             }
         )
+        if self.validation is not None:  # only with analyze(validation=True): otherwise unchanged
+            d["validation"] = self.validation.to_dict()
+        return cast(dict[str, Any], d)
 
     def save(self, directory: str | Path) -> list[Path]:
         """Write figures (png and pdf), summary.txt and summary.json into ``directory``; return the paths.
@@ -663,6 +675,7 @@ class _ChunkResult:
     masses: np.ndarray
     same_sign: np.ndarray
     n_os: int
+    pairs: dict[str, np.ndarray] | None = None  # per chosen pair, for validation (aligned with masses)
 
 
 def _open(path: str) -> Any:
@@ -706,20 +719,50 @@ def _run_chunk(
     fields: tuple[str, ...],
     start: int,
     stop: int,
+    pair_info: bool = False,
 ) -> _ChunkResult:
-    """Selection, trigger, pairing and masses for one event range of an open file (the unit of work)."""
+    """Selection, trigger, pairing and masses for one event range of an open file (the unit of work).
+
+    With ``pair_info`` it also returns, for every chosen pair in the same order as the masses, the pseudorapidity
+    and azimuth of its mu+ and mu-, the pT of its lower-pT muon and the event's PV_npvsGood (for validation).
+    """
     sel = select_muons(events, fields=fields, entry_start=start, entry_stop=stop)
     if triggers:
         sel = sel.require_trigger(*triggers)
     sel = sel.apply(**cuts).require(2)
     os_pairs = opposite_sign_pairs(sel)
     chosen = best_pair(os_pairs, strategy)
+    masses = ak.to_numpy(ak.flatten(chosen.mass)).astype(np.float64)
     return _ChunkResult(
         cutflow=sel.cutflow(),
-        masses=ak.to_numpy(ak.flatten(chosen.mass)).astype(np.float64),
+        masses=masses,
         same_sign=ak.to_numpy(ak.flatten(same_sign_pairs(sel).mass)).astype(np.float64),
         n_os=os_pairs.n_pairs,
+        pairs=_pair_info(events, chosen, masses, start, stop) if pair_info else None,
     )
+
+
+def _pair_info(events: Any, chosen: Any, masses: np.ndarray, start: int, stop: int) -> dict[str, np.ndarray]:
+    def flat(values: Any) -> np.ndarray:
+        return ak.to_numpy(ak.flatten(values)).astype(np.float64)
+
+    leg1, leg2 = chosen.leg1, chosen.leg2  # leg1 is the higher-pT muon
+    plus = flat(leg1.charge) > 0
+    eta1, eta2, phi1, phi2 = flat(leg1.p4.eta), flat(leg2.p4.eta), flat(leg1.p4.phi), flat(leg2.p4.phi)
+    rows = ak.to_numpy(chosen.event_index[ak.num(chosen.mass) > 0]) - start
+    try:
+        npv = ak.to_numpy(events.arrays(["PV_npvsGood"], entry_start=start, entry_stop=stop)["PV_npvsGood"])
+    except Exception as exc:  # any reader error: the branch is required for validation
+        raise AnalysisError(f"validation needs the PV_npvsGood branch: {type(exc).__name__}: {exc}") from None
+    return {
+        "mass": masses,
+        "eta_plus": np.where(plus, eta1, eta2),
+        "eta_minus": np.where(plus, eta2, eta1),
+        "phi_plus": np.where(plus, phi1, phi2),
+        "phi_minus": np.where(plus, phi2, phi1),
+        "pt_sublead": flat(leg2.p4.pt),
+        "npv": np.asarray(npv[rows], dtype=np.float64),
+    }
 
 
 _WORKER_FILE: dict[str, Any] = {}
@@ -734,6 +777,7 @@ def _chunk_worker(
     fields: tuple[str, ...],
     start: int,
     stop: int,
+    pair_info: bool = False,
 ) -> _ChunkResult:
     """Process-pool entry point: process one chunk, keeping the worker's current file open between chunks.
 
@@ -748,11 +792,15 @@ def _chunk_worker(
             old.close()
         _WORKER_FILE.clear()
         events = _WORKER_FILE[path] = open_events(path)
-    return _run_chunk(events, triggers, cuts, strategy, fields, start, stop)
+    return _run_chunk(events, triggers, cuts, strategy, fields, start, stop, pair_info)
 
 
 def _execute(
-    units: list[_Unit], config: ChannelConfig, fields: tuple[str, ...], n_workers: int | None
+    units: list[_Unit],
+    config: ChannelConfig,
+    fields: tuple[str, ...],
+    n_workers: int | None,
+    pair_info: bool = False,
 ) -> list[_ChunkResult]:
     """Process every unit, serially or in a process pool, and return the results in unit order.
 
@@ -771,7 +819,9 @@ def _execute(
                 while i < len(units) and units[i].path == path:
                     unit = units[i]
                     try:
-                        results.append(_run_chunk(events, triggers, cuts, strategy, fields, unit.start, unit.stop))
+                        results.append(
+                            _run_chunk(events, triggers, cuts, strategy, fields, unit.start, unit.stop, pair_info)
+                        )
                     except AnalysisError:
                         raise
                     except Exception as exc:
@@ -781,7 +831,10 @@ def _execute(
     from concurrent.futures import ProcessPoolExecutor
 
     with ProcessPoolExecutor(max_workers=min(n_workers, len(units))) as pool:
-        futures = [pool.submit(_chunk_worker, u.path, triggers, cuts, strategy, fields, u.start, u.stop) for u in units]
+        futures = [
+            pool.submit(_chunk_worker, u.path, triggers, cuts, strategy, fields, u.start, u.stop, pair_info)
+            for u in units
+        ]
         for unit, future in zip(units, futures, strict=False):
             try:
                 results.append(future.result())
@@ -789,6 +842,28 @@ def _execute(
                 pool.shutdown(wait=False, cancel_futures=True)
                 raise AnalysisError(f"worker failed on {unit.describe()}: {type(exc).__name__}: {exc}") from None
     return results
+
+
+def _validate(
+    files: list[str],
+    cfg: ChannelConfig,
+    model: str,
+    n_events: int | None,
+    chunk_size: int,
+    n_workers: int | None,
+    chunks: list[_ChunkResult],
+) -> ValidationResult:
+    """The pre-registered validation: per-pair categories from ``chunks``, plus one pass per working point."""
+    from cmsopen.validation import WORKING_POINTS, run_validation, working_point_cuts
+
+    pairs = {k: np.concatenate([cast(dict[str, np.ndarray], c.pairs)[k] for c in chunks]) for k in PAIR_FIELDS}
+    wp_masses = {}
+    for qid, iso in WORKING_POINTS:
+        wp_cfg = dataclasses.replace(cfg, muon_cuts=working_point_cuts(cfg.muon_cuts, qid, iso))
+        fields = _muon_fields(wp_cfg.muon_cuts)
+        units, _ = _plan(files, wp_cfg, n_events, chunk_size, fields)
+        wp_masses[(qid, iso)] = np.concatenate([c.masses for c in _execute(units, wp_cfg, fields, n_workers)])
+    return run_validation(cfg, model, pairs, wp_masses)
 
 
 def _figures(
@@ -828,6 +903,7 @@ def analyze(
     stability: bool = True,
     config: ChannelConfig | None = None,
     n_workers: int | None = None,
+    validation: bool = False,
 ) -> AnalysisResult:
     """Run the full dimuon resonance analysis on one or more NanoAOD files.
 
@@ -886,6 +962,15 @@ def analyze(
         script: a script that passes ``n_workers`` must put its top-level
         code under ``if __name__ == "__main__":``. Notebook cells and the
         ``cmsopen`` command need nothing extra.
+    validation : bool
+        Also run the pre-registered validation (dev/validation_plan.md,
+        :func:`cmsopen.validation.run_validation`): the primary model fitted
+        in barrel/endcap categories, mu+ and mu- azimuth and pseudorapidity
+        bins, sub-leading muon pT bins, pileup bins and six muon ID and
+        isolation working points (each a further pass over the files), and
+        the systematics summary. Needs the PV_npvsGood branch. Off by
+        default; with it off the result and every output are exactly as
+        without this option.
 
     Raises
     ------
@@ -921,7 +1006,7 @@ def analyze(
     muon_fields = _muon_fields(cfg.muon_cuts)
 
     units, n_done = _plan(files, cfg, n_events, chunk_size, muon_fields)
-    chunks = _execute(units, cfg, muon_fields, n_workers)
+    chunks = _execute(units, cfg, muon_fields, n_workers, pair_info=validation)
     cutflow = CutFlow.combine([c.cutflow for c in chunks])
     _check_survivors(cutflow)
     masses = np.concatenate([c.masses for c in chunks])
@@ -991,6 +1076,7 @@ def analyze(
         figures=figures,
         warnings=warnings,
         versions=_versions(),
+        validation=_validate(files, cfg, model, n_events, chunk_size, n_workers, chunks) if validation else None,
     )
     if verbose:
         print(result.summary())
