@@ -31,12 +31,13 @@ M_MU = 0.1056583755
 TRUE_MASS, TRUE_SIGMA = 91.0, 1.5  # injected peak position and Gaussian resolution, GeV (synthetic)
 
 
-def write_z_file(path, n_events, seed=1, triggers=("HLT_Mu17_Mu8", "HLT_Mu17_TkMu8"), tree="Events"):
+def write_z_file(path, n_events, seed=1, triggers=("HLT_Mu17_Mu8", "HLT_Mu17_TkMu8"), tree="Events", fsr=0.0):
     """A NanoAOD-like file: one Z-like or background opposite-sign pair per event, plus junk muons.
 
     Signal masses follow a Breit-Wigner of the PDG Z width convolved with a Gaussian of TRUE_SIGMA,
     centred on TRUE_MASS; the background falls exponentially. Junk muons are soft or outside |eta| < 2.4,
-    and 5 % of events have one pair muon non-isolated, so the cuts have work to do.
+    and 5 % of events have one pair muon non-isolated, so the cuts have work to do. With ``fsr`` > 0, that fraction
+    of signal events loses an exponentially distributed mass (mean 4 GeV): a radiative low-mass tail.
     """
     rng = np.random.default_rng(seed)
     gamma = 0.5 * pdg_mass_width("Z")[2]
@@ -49,6 +50,8 @@ def write_z_file(path, n_events, seed=1, triggers=("HLT_Mu17_Mu8", "HLT_Mu17_TkM
         if k == 0:
             break
         sig = TRUE_MASS + gamma * rng.standard_cauchy(k) + TRUE_SIGMA * rng.standard_normal(k)
+        if fsr:
+            sig -= np.where(rng.random(k) < fsr, rng.exponential(4.0, k), 0.0)
         bkg = 60 + rng.exponential(25.0, k)
         m[bad] = np.where(is_sig[bad], sig, bkg)
     a = rng.uniform(-0.8, 0.8, n)

@@ -609,7 +609,12 @@ def _fmt_pm(value: float, error: float) -> tuple[str, str]:
     return f"{value:.{digits}f}", f"{error:.{digits}f}"
 
 
-_MODEL_LABELS = {"gauss_poly": "Gaussian", "voigt_poly": "Voigt"}
+_MODEL_LABELS = {
+    "gauss_poly": "Gaussian",
+    "voigt_poly": "Voigt",
+    "cb_bw_exp": r"BW$\otimes$CB",
+    "cb_bw_poly2": r"BW$\otimes$CB",
+}
 
 
 def _width_text(width: float) -> str:
@@ -626,7 +631,7 @@ def _resonance_symbol(resonance_label: str | None, symbol: str) -> str:
 
 def _fit_annotation(fit: FitResult, resonance_label: str | None = None, natural_width: float | None = None) -> str:
     lines = [
-        f"{_MODEL_LABELS.get(fit.model_name, fit.model_name)} + pol{fit.poly_degree} fit, "
+        f"{_MODEL_LABELS.get(fit.model_name, fit.model_name)} + {fit.background_label} fit, "
         f"{fit.fit_range[0]:g}$-${fit.fit_range[1]:g} GeV"
     ]
     m, me = _fmt_pm(*fit.peak_position)
@@ -639,6 +644,9 @@ def _fit_annotation(fit: FitResult, resonance_label: str | None = None, natural_
         width = 2 * fit.gamma if natural_width is None else natural_width
         gamma_symbol = _resonance_symbol(resonance_label, r"\Gamma")
         lines.append(f"{gamma_symbol} = {_width_text(width)} (fixed)")
+    if fit.cb_n is not None:
+        a, ae = _fmt_pm(*fit.parameters["alpha"])
+        lines.append(rf"$\alpha$ = {a} $\pm$ {ae},  $n$ = {fit.cb_n:g} (fixed)")
     lines.append(rf"$\chi^2$/ndf = {fit.chi2:.1f}/{fit.ndf}")
     if fit.yields_reliable:
         sy, sye = fit.signal_yield
@@ -810,7 +818,7 @@ def plot_mass_spectrum(
                 color=OKABE_ITO["vermillion"],
                 linestyle="--",
                 linewidth=1.2,
-                label=f"Background (pol{fit.poly_degree})",
+                label=f"Background ({fit.background_label})",
                 gid="fit-background",
             )
             ax.plot(

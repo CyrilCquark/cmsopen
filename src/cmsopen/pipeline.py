@@ -57,6 +57,7 @@ import numpy as np
 from cmsopen.combinatorics import best_pair, opposite_sign_pairs, same_sign_pairs
 from cmsopen.fitting import (
     MODELS,
+    STABILITY_MODELS,
     FitError,
     FitResult,
     MassHistogram,
@@ -133,6 +134,12 @@ class ChannelConfig:
     resonance : str
         ``particle`` package name of the resonance, for the PDG comparison
         and the natural width of the Voigt model.
+    cb_n : float
+        The fixed tail exponent n of the Crystal Ball in the ``cb_bw_*``
+        models. n and alpha are strongly correlated (a tail that starts a
+        little later and falls a little faster looks almost the same), so
+        fitting both is unstable; n is chosen once per channel on the
+        development file (dev/model_choice.md) and kept fixed.
     resonance_label : str, optional
         The resonance in matplotlib mathtext (no dollar signs), used in the
         figures' "PDG m_..." and "Gamma_..." labels, e.g. ``"Z"`` or
@@ -160,6 +167,7 @@ class ChannelConfig:
     stability_bin_widths: tuple[float, ...] = ()
     min_pairs: int = 100
     resonance_label: str | None = None
+    cb_n: float = 3.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "muon_cuts", MappingProxyType(dict(self.muon_cuts)))
@@ -175,6 +183,8 @@ class ChannelConfig:
             )
         if self.bins < 1 or self.poly_degree < 0:
             raise ValueError("bins must be >= 1 and poly_degree >= 0")
+        if not (math.isfinite(self.cb_n) and self.cb_n > 0):
+            raise ValueError(f"cb_n must be a positive number, got {self.cb_n!r}")
 
     def to_dict(self) -> dict[str, Any]:
         """The configuration as plain JSON types."""
@@ -241,6 +251,11 @@ def resonance_label(config: ChannelConfig) -> str:
     """The resonance of a channel in mathtext for figure labels: ``config.resonance_label``, or else the
     ``particle`` package's LaTeX name (e.g. ``Z^{0}``)."""
     return config.resonance_label or pdg_latex_name(config.resonance)
+
+
+# The second fit reported next to the primary one, to show how the result depends on the line shape.
+_ALTERNATE_MODEL = {"gauss_poly": "voigt_poly", "voigt_poly": "gauss_poly", "cb_bw_exp": "voigt_poly",
+                    "cb_bw_poly2": "voigt_poly"}
 
 
 def _channel(channel: str, config: ChannelConfig | None) -> ChannelConfig:
@@ -320,6 +335,8 @@ def _fit_dict(fit: FitResult | None) -> dict[str, Any] | None:
         "model": fit.model_name,
         "fit_range_gev": list(fit.fit_range),
         "poly_degree": fit.poly_degree,
+        "background": fit.background_label,
+        "cb_n": fit.cb_n,
         "parameters": {k: {"value": v, "error": e} for k, (v, e) in fit.parameters.items()},
         "peak_position_gev": m,
         "peak_position_stat_error_gev": me,
@@ -446,7 +463,8 @@ class AnalysisResult:
         lo, hi = self.fit.fit_range
         lines.append(f"Histogram: {self.histogram!r}; fit range {lo:g}-{hi:g} GeV, {self.fit.n_entries:,} entries")
         lines.append("")
-        lines.append("Fits (signal + polynomial background):")
+        polynomial_only = all(f is None or f.poly_degree is not None for f in (self.fit, self.alternate_fit))
+        lines.append("Fits (signal + polynomial background):" if polynomial_only else "Fits (signal + background):")
         lines += self._fit_rows()
         lines.append("")
         c = self.pdg[self.fit.model_name]
@@ -827,8 +845,11 @@ def analyze(
         Process at most this many events in total, taking files in order.
     chunk_size : int
         Events per chunk.
-    model : {"voigt_poly", "gauss_poly"}
-        The primary peak model.
+    model : {"voigt_poly", "gauss_poly", "cb_bw_exp", "cb_bw_poly2"}
+        The primary peak model. The ``cb_bw_*`` models (Breit-Wigner (x)
+        Crystal Ball, see :func:`cmsopen.fitting.crystalball_bw`) use the
+        channel's fixed ``cb_n``. The other fit reported next to it is
+        ``gauss_poly`` for ``voigt_poly`` and ``voigt_poly`` for the rest.
     fit_range : (float, float), optional
         Overrides the channel's fit range (GeV).
     bins : int, optional
@@ -839,7 +860,9 @@ def analyze(
     verbose : bool
         Print the summary.
     stability : bool
-        Run :func:`cmsopen.fitting.fit_stability` over the channel's grid.
+        Run :func:`cmsopen.fitting.fit_stability` over the channel's grid
+        (with both Gaussian and Voigt peaks for those primary models, with
+        the primary model alone for ``cb_bw_*``).
     config : ChannelConfig, optional
         Use this configuration instead of a registered channel.
     n_workers : int, optional
@@ -902,13 +925,15 @@ def analyze(
     width = pdg_mass_width(cfg.resonance)[2]
     warnings: list[str] = []
     try:
-        fit = fit_mass_peak(hist, model=model, fit_range=frange, poly_degree=cfg.poly_degree, natural_width=width)
+        fit = fit_mass_peak(
+            hist, model=model, fit_range=frange, poly_degree=cfg.poly_degree, natural_width=width, cb_n=cfg.cb_n
+        )
     except FitError as exc:
         raise AnalysisError(f"the {model} fit failed: {exc}") from None
-    other = next(m for m in MODELS if m != model)
+    other = _ALTERNATE_MODEL[model]
     try:
         alternate: FitResult | None = fit_mass_peak(
-            hist, model=other, fit_range=frange, poly_degree=cfg.poly_degree, natural_width=width
+            hist, model=other, fit_range=frange, poly_degree=cfg.poly_degree, natural_width=width, cb_n=cfg.cb_n
         )
     except FitError as exc:
         alternate = None
@@ -926,6 +951,8 @@ def analyze(
             bin_widths=cfg.stability_bin_widths or ((cfg.mass_range[1] - cfg.mass_range[0]) / n_bins,),
             hist_range=cfg.mass_range,
             natural_width=width,
+            models=STABILITY_MODELS if model in STABILITY_MODELS else (model,),
+            cb_n=cfg.cb_n,
         )
         if stab.failed:
             warnings.append(
