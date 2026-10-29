@@ -1,16 +1,22 @@
-"""Layer 6b demo: the Breit-Wigner (x) Crystal Ball fit, the model comparison, the validation scan, the systematics.
+"""Layer 6b/6c demo: the Breit-Wigner (x) Crystal Ball fits, resolution mixtures, model comparison, validation.
 
 For each channel (Z_mumu, Jpsi_mumu) the demo fits the default model
-(cb_bw_exp for the Z, cb_bw_poly2 for the J/psi, chosen on the development
-file by the rule in dev/model_choice.md), compares voigt_poly, cb_bw_exp and
-cb_bw_poly2 on the same histogram, runs the pre-registered validation
-(dev/validation_plan.md) and prints its table and systematics summary.
+(chosen on the development file by the rules in dev/model_choice.md: since
+Amendment 2 the resolution mixtures cb2_bw_exp for the Z and cb2_bw_poly2 for
+the J/psi), compares voigt_poly, cb_bw_exp, cb_bw_poly2, cb2_bw_exp and
+cb2_bw_poly2 on the same histogram, shows the Amendment 2 comparison and the
+mixture parameters (sigma1, r, f, FWHM/2.355), runs the pre-registered
+validation (dev/validation_plan.md) and prints its table and systematics
+summary.
 
 The self-checks are STRUCTURAL only; no physics number is asserted to be
 correct: the categories partition the pairs; a fit that claims reliable
 yields has a background that is not negative anywhere in its fit range;
 parallel equals serial; validation off gives exactly the old output; the
-5,000-pair rule fires exactly for the entries below 5,000 pairs.
+5,000-pair rule fires exactly for the entries below 5,000 pairs; a mixture
+with f = 1 is the single-resolution model; a mixture fitted to a sample with
+one resolution is ineligible; a mixture's reported resolution is its
+numerical FWHM / 2.355.
 
 On macOS a script that uses n_workers needs the ``if __name__ == "__main__":``
 guard, as here.
@@ -34,14 +40,24 @@ from typing import Any
 import numpy as np
 
 import cmsopen
-from cmsopen.fitting import FitError, FitResult, fit_mass_peak, pdg_mass_width
+from cmsopen.fitting import (
+    MIXTURE_MODELS,
+    FitError,
+    FitResult,
+    MassHistogram,
+    crystalball2_bw,
+    crystalball_bw,
+    fit_mass_peak,
+    pdg_mass_width,
+)
 from cmsopen.pipeline import CHANNELS
 from cmsopen.validation import MIN_PAIRS
 
 REPO = Path(__file__).resolve().parents[1]
-COMPARED = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2")
+COMPARED = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2")
+SINGLE_OF = {"cb2_bw_exp": "cb_bw_exp", "cb2_bw_poly2": "cb_bw_poly2"}
+FWHM_PER_SIGMA = 2.3548200450309493
 PARTITIONS = ("region", "phi(mu+)", "phi(mu-)", "eta(mu+)", "eta(mu-)", "pT(sublead)", "PV_npvsGood")
-PARALLEL_EVENTS = 150_000
 
 
 class Checks:
@@ -100,6 +116,51 @@ def print_comparison(name: str, fits: dict[str, FitResult | str]) -> None:
         )
 
 
+def print_mixtures(name: str, fits: dict[str, FitResult | str]) -> None:
+    """The mixture parameters and the Amendment 2 comparison with the single-resolution model of the same background."""
+    print(f"Resolution mixtures, {name} (Amendment 2):")
+    for model in MIXTURE_MODELS:
+        fit, single = fits[model], fits[SINGLE_OF[model]]
+        if isinstance(fit, str):
+            print(f"  {model:<12} {fit}")
+            continue
+        p = fit.parameters
+        s, se = fit.resolution
+        line = (
+            f"  {model:<12} sigma1 {p['sigma'][0]:.4f} +- {p['sigma'][1]:.4f} GeV, r {p['r'][0]:.3f} +- "
+            f"{p['r'][1]:.3f}, f {p['f'][0]:.3f} +- {p['f'][1]:.3f}, FWHM/2.355 {s:.4f} +- {se:.4f} GeV, "
+            f"on a bound: {fit.on_bound or 'none'}"
+        )
+        if isinstance(single, FitResult):
+            line += f"; AIC {aic(fit):.1f} vs {SINGLE_OF[model]} {aic(single):.1f}"
+        print(line)
+
+
+def aic(fit: FitResult) -> float:
+    """chi2 + 2k."""
+    return fit.chi2 + 2 * len(fit.values)
+
+
+def f_one_matches_single(fit: FitResult) -> float:
+    """Largest relative difference between the mixture with f = 1 and the single-resolution signal, same parameters."""
+    a, m, s1, alpha, r, _ = fit.values[:6]
+    edges = fit._fit_edges()
+    x = np.linspace(edges[0], edges[-1], 801)
+    kw = dict(n=fit.cb_n, gamma=fit.gamma, norm_edges=edges)
+    mix = crystalball2_bw(x, a, m, s1, alpha, r, 1.0, **kw)
+    single = crystalball_bw(x, a, m, s1, alpha, **kw)
+    return float(np.max(np.abs(mix - single) / single.max()))
+
+
+def one_resolution_toy(seed: int = 2) -> MassHistogram:
+    """A Z-like sample with a single resolution (Breit-Wigner (x) one Gaussian) on a flat background."""
+    rng = np.random.default_rng(seed)
+    gamma = 0.5 * pdg_mass_width("Z")[2]
+    sig = 91.0 + gamma * rng.standard_cauchy(40000) + 1.4 * rng.standard_normal(40000)
+    counts, edges = np.histogram(np.r_[sig, rng.uniform(60, 120, 8000)], bins=60, range=(60.0, 120.0))
+    return MassHistogram(counts.astype(np.float64), edges)
+
+
 def background_ok(fit: FitResult) -> bool:
     """A fit claiming reliable yields must have a background that is >= 0 everywhere in its fit range."""
     if not fit.yields_reliable:
@@ -124,18 +185,20 @@ def main() -> int:
     print(f"Data file: {path}")
     tmp = Path(tempfile.mkdtemp(prefix="cmsopen-layer6b-"))
     checks = Checks()
+    results: dict[str, cmsopen.AnalysisResult] = {}
 
     for name in ("Z_mumu", "Jpsi_mumu"):
         cfg = CHANNELS[name]
         print(f"\n=== {name}: default model {cfg.model} (cb_n = {cfg.cb_n:g})")
         start = time.perf_counter()
-        result = cmsopen.analyze(path, channel=name, validation=True, verbose=False)
+        result = results[name] = cmsopen.analyze(path, channel=name, validation=True, verbose=False)
         print(f"[time] analyze with validation: {time.perf_counter() - start:.1f} s")
         print(result.fit.table())
         saved = result.save(tmp / name)
         print(f"Figures and summaries written to {tmp / name} ({len(saved)} files)")
         fits = compare_models(result)
         print_comparison(name, fits)
+        print_mixtures(name, fits)
         v = result.validation
         assert v is not None
         print()
@@ -163,6 +226,21 @@ def main() -> int:
             all(background_ok(f) for f in claims),
             ", ".join(f"{f.model_name}: {'claims' if f.yields_reliable else 'does not claim'}" for f in claims),
         )
+        mixtures = [f for m, f in fits.items() if m in MIXTURE_MODELS and isinstance(f, FitResult)]
+        diffs = [f_one_matches_single(f) for f in mixtures]
+        checks.check(
+            f"{name}: a mixture with f = 1 is the single-resolution model",
+            bool(mixtures) and max(diffs) < 1e-6,
+            ", ".join(
+                f"{f.model_name}: max difference {d:.1e} of the peak" for f, d in zip(mixtures, diffs, strict=True)
+            ),
+        )
+        ratios = [abs(f.resolution[0] - f.fwhm[0] / FWHM_PER_SIGMA) for f in mixtures]
+        checks.check(
+            f"{name}: a mixture's reported resolution is its numerical FWHM / 2.355",
+            bool(mixtures) and max(ratios) < 1e-12,
+            ", ".join(f"{f.model_name}: {f.resolution[0]:.5f} GeV = {f.fwhm[0]:.5f} / 2.355" for f in mixtures),
+        )
         small = [e for e in (v.inclusive, *v.entries) if e.n_pairs < MIN_PAIRS]
         large = [e for e in (v.inclusive, *v.entries) if e.n_pairs >= MIN_PAIRS]
         checks.check(
@@ -173,12 +251,27 @@ def main() -> int:
             f"{sum(e.status == 'failed' for e in large)} failed",
         )
 
-    print(f"\n=== Parallel equals serial (Z_mumu with validation, first {PARALLEL_EVENTS:,} events)")
-    first = dict(
-        channel="Z_mumu", n_events=PARALLEL_EVENTS, chunk_size=50_000, validation=True, verbose=False, stability=False
+    print("\n=== Eligibility on a sample with one resolution (Amendment 2 rule)")
+    toy = one_resolution_toy()
+    outcomes = {}
+    for model in MIXTURE_MODELS:
+        try:
+            fit = fit_mass_peak(toy, model=model, natural_width=pdg_mass_width("Z")[2], cb_n=CHANNELS["Z_mumu"].cb_n)
+            outcomes[model] = "eligible" if not fit.on_bound and fit.yields_reliable else f"on a bound: {fit.on_bound}"
+        except FitError as exc:
+            outcomes[model] = f"ineligible: {str(exc)[str(exc).find('parameter') :][:70]}"
+        print(f"  {model}: {outcomes[model]}")
+    checks.check(
+        "a mixture fitted to a sample with one resolution is ineligible (rule (a)/(b) of Amendment 2)",
+        all(not o.startswith("eligible") for o in outcomes.values()),
+        "; ".join(f"{m}: {o.split(':')[0]}" for m, o in outcomes.items()),
     )
-    serial = cmsopen.analyze(path, **first)
-    parallel = cmsopen.analyze(path, n_workers=2, **first)
+
+    # The whole file: the default resolution mixture needs the full sample (on a subset its second core can be
+    # undetermined, and the fit then fails by design).
+    print("\n=== Parallel equals serial (Z_mumu with validation, the whole file)")
+    serial = results["Z_mumu"]
+    parallel = cmsopen.analyze(path, channel="Z_mumu", validation=True, verbose=False, n_workers=2)
     checks.check(
         "parallel (n_workers=2) equals serial with validation on",
         json.dumps(serial.to_dict(), sort_keys=True) == json.dumps(parallel.to_dict(), sort_keys=True)
