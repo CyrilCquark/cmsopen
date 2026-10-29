@@ -210,7 +210,10 @@ Standing rule for every layer. A layer is NOT done until ALL of these hold:
 (g) `python scripts/check_blinding.py` and
     `python scripts/check_readme_numbers.py` pass.
 (h) From Layer 8 onward: line coverage of `src/cmsopen` at or above 90 %,
-    mypy and ruff clean (the tooling is set up in the Layer 8 work).
+    mypy and ruff clean, shown by `python scripts/check_quality.py` ending in
+    "OK: quality gates pass" (it runs `pytest --cov=cmsopen
+    --cov-fail-under=90`, `mypy src` and `ruff check src tests scripts
+    examples`, configured in pyproject.toml).
 
 Never claim success without showing real command output. If a check
 fails, report the failure. Do not weaken or edit a check to make it pass.
