@@ -1,6 +1,8 @@
-"""Make the final figures of the Z -> mu+ mu- analysis from the real CMS file.
+"""Make the final figures of the Z -> mu+ mu- analysis from real CMS files.
 
-Runs the whole chain on every event of the file: the Z -> mu mu selection
+Runs the whole chain on every event of one or more files (one file at a
+time, in the order given, so memory holds one file's arrays; the masses and
+muon values are concatenated in that order and the cutflows added): the Z -> mu mu selection
 (dimuon trigger, then cmsopen.ZMUMU_MUON_CUTS, then at least two muons),
 opposite-sign pairs, one per event with best_pair "highest_pt_sum", and
 both fit models over 70-110 GeV. Writes to OUTDIR (default build/figures/,
@@ -20,8 +22,8 @@ if the git working tree is clean. That is for the final production run,
 on the user's explicit instruction; never run it otherwise.
 
 Usage:
-    python examples/make_figures.py [--file PATH] [--outdir DIR]
-    python examples/make_figures.py --production [--file PATH]
+    python examples/make_figures.py [--file PATH [PATH ...]] [--outdir DIR]
+    python examples/make_figures.py --production [--file PATH [PATH ...]]
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 import awkward as ak
+import numpy as np
 
 from cmsopen import (
     ZMUMU_MUON_CUTS,
@@ -58,6 +61,7 @@ from cmsopen.plotting import (
     plot_pt_distribution,
     save_figure,
 )
+from cmsopen.selection import CutFlow
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUTDIR = REPO / "build" / "figures"
@@ -82,7 +86,47 @@ class Figures:
     figures: dict[str, Any] = field(default_factory=dict)
     fits: dict[str, Any] = field(default_factory=dict)
     files: dict[str, list[Path]] = field(default_factory=dict)
-    data_file: Path | None = None
+    data_files: list[Path] = field(default_factory=list)
+    histograms: dict[str, Any] = field(default_factory=dict)
+    cutflow: CutFlow | None = None
+
+
+@dataclass
+class _FileValues:
+    """What one file contributes: chosen-pair masses, loose OS/SS masses, muon pT/eta and the cutflow."""
+
+    mass: np.ndarray
+    os_mass: np.ndarray
+    ss_mass: np.ndarray
+    pt: np.ndarray
+    eta: np.ndarray
+    pt_all: np.ndarray
+    eta_all: np.ndarray
+    cutflow: CutFlow
+
+
+def _flat(array: Any) -> np.ndarray:
+    return np.asarray(ak.to_numpy(ak.flatten(array, axis=None)), dtype=np.float64)
+
+
+def _file_values(path: Path) -> _FileValues:
+    """Run the selection on one file and keep only the flat values the figures need."""
+    with open_events(path) as events:
+        everything = select_muons(events)
+        triggered = everything.require_trigger(*DIMUON_TRIGGERS_2012)
+        loose = events.muons(min_pt=20.0, max_eta=2.4).require_trigger(*DIMUON_TRIGGERS_2012).require(2)
+    final = triggered.apply(**ZMUMU_MUON_CUTS).require(2)
+    best = best_pair(opposite_sign_pairs(final), "highest_pt_sum")
+    return _FileValues(
+        mass=_flat(best.mass),
+        os_mass=_flat(opposite_sign_pairs(loose).mass),
+        ss_mass=_flat(same_sign_pairs(loose).mass),
+        pt=_flat(final.particles.p4.pt),
+        eta=_flat(final.particles.p4.eta),
+        pt_all=_flat(everything.particles.p4.pt),
+        eta_all=_flat(everything.particles.p4.eta),
+        cutflow=final.cutflow(),
+    )
 
 
 def default_file() -> Path:
@@ -93,17 +137,25 @@ def default_file() -> Path:
     return files[0]
 
 
-def build(path: Path) -> Figures:
-    """Run the analysis on ``path`` and build every figure (nothing is written)."""
-    out = Figures(data_file=path)
-    with open_events(path) as events:
-        everything = select_muons(events)
-        triggered = everything.require_trigger(*DIMUON_TRIGGERS_2012)
-        loose = events.muons(min_pt=20.0, max_eta=2.4).require_trigger(*DIMUON_TRIGGERS_2012).require(2)
-    final = triggered.apply(**ZMUMU_MUON_CUTS).require(2)
+def build(paths: Path | list[Path]) -> Figures:
+    """Run the analysis on ``paths`` (one file or several, in order) and build every figure (nothing is written).
 
-    best = best_pair(opposite_sign_pairs(final), "highest_pt_sum")
-    h = make_histogram(best.mass, bins=60, range=(60.0, 120.0))
+    Each file is processed on its own; the per-file values are concatenated in
+    file order and the cutflows added (:meth:`CutFlow.combine`), so the
+    figures of several files are those of their union.
+    """
+    files = [paths] if isinstance(paths, Path) else list(paths)
+    if not files:
+        raise ValueError("build() needs at least one file")
+    parts = [_file_values(p) for p in files]
+
+    def cat(name: str) -> np.ndarray:
+        return np.concatenate([getattr(v, name) for v in parts])
+
+    out = Figures(data_files=files)
+    out.cutflow = CutFlow.combine([v.cutflow for v in parts])
+    h = make_histogram(cat("mass"), bins=60, range=(60.0, 120.0))
+    out.histograms["z_peak"] = h
     for model in (MAIN_MODEL, OTHER_MODEL):
         out.fits[model] = fit_mass_peak(h, model=model, fit_range=(70.0, 110.0), poly_degree=2)
     channel = CHANNELS["Z_mumu"]
@@ -112,15 +164,16 @@ def build(path: Path) -> Figures:
         h, out.fits[MAIN_MODEL], resonance_label=symbol, pdg_mass=pdg_mass
     )
 
-    h_os = make_histogram(ak.flatten(opposite_sign_pairs(loose).mass), bins=60, range=(60.0, 120.0))
-    h_ss = make_histogram(ak.flatten(same_sign_pairs(loose).mass), bins=60, range=(60.0, 120.0))
+    h_os = make_histogram(cat("os_mass"), bins=60, range=(60.0, 120.0))
+    h_ss = make_histogram(cat("ss_mass"), bins=60, range=(60.0, 120.0))
+    out.histograms["os"], out.histograms["ss"] = h_os, h_ss
     out.figures["z_os_vs_ss"], _ = plot_os_vs_ss(
         h_os, h_ss, selection="Loose selection: no ID, no isolation", resonance_label=symbol, pdg_mass=pdg_mass
     )
 
-    out.figures["muon_pt"], _ = plot_pt_distribution(final, before=everything)
-    out.figures["muon_eta"], _ = plot_eta_distribution(final, before=everything)
-    out.figures["cutflow"], _ = plot_cutflow(final.cutflow())
+    out.figures["muon_pt"], _ = plot_pt_distribution(cat("pt"), before=cat("pt_all"))
+    out.figures["muon_eta"], _ = plot_eta_distribution(cat("eta"), before=cat("eta_all"))
+    out.figures["cutflow"], _ = plot_cutflow(out.cutflow)
     return out
 
 
@@ -179,7 +232,17 @@ _ROW_OS_SS = (
 )
 
 
-def readme(fits: dict[str, Any], data_file: Path) -> str:
+def _data_section(data_files: list[Path]) -> str:
+    if len(data_files) == 1:
+        f = data_files[0]
+        return (f"`{f.name}` ({f.stat().st_size:,} bytes): Run2012C DoubleMuParked, NanoAOD Run 1, from the CERN "
+                "Open Data\nportal; see `DATA.md`.")
+    rows = "\n".join(f"| `{f.name}` | {f.stat().st_size:,} |" for f in data_files)
+    return (f"{len(data_files)} DoubleMuParked NanoAOD Run 1 files from the CERN Open Data portal, analysed in this "
+            f"order:\n\n| file | bytes |\n|---|---|\n{rows}")
+
+
+def readme(fits: dict[str, Any], data_files: list[Path]) -> str:
     """The README of the figures directory: what each figure is, how to regenerate it, data and versions."""
     try:
         commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"], capture_output=True,
@@ -205,15 +268,14 @@ Data: these are not CMS results.
 From the repository root, with the package installed (`pip install -e ".[dev]"`):
 
 ```bash
-python examples/make_figures.py --production --file data/{data_file.name}
+python examples/make_figures.py --production --file {" ".join(f"data/{f.name}" for f in data_files)}
 ```
 
 The output is deterministic: rerunning on the same data and software gives byte-identical files.
 
 ## Data
 
-`{data_file.name}` (1,145,602,936 bytes): Run2012C DoubleMuParked, NanoAOD Run 1, from the CERN Open Data
-portal; see `DATA.md`.
+{_data_section(data_files)}
 
 ## Software
 
@@ -231,7 +293,7 @@ def write(figs: Figures, outdir: Path) -> Figures:
     for name, formats in EXPECTED.items():
         figs.files[name] = save_figure(figs.figures[name], outdir / name, formats=formats)
     (outdir / "z_peak_fit_caption.md").write_text(caption(figs.fits))
-    (outdir / "README.md").write_text(readme(figs.fits, figs.data_file))
+    (outdir / "README.md").write_text(readme(figs.fits, figs.data_files))
     return figs
 
 
@@ -256,7 +318,8 @@ def _working_tree_clean() -> tuple[bool, str]:
 def main(argv: list[str] | None = None) -> int:
     """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--file", type=Path, default=None, help="NanoAOD ROOT file (default: first data/*.root)")
+    parser.add_argument("--file", type=Path, nargs="+", action="extend", default=None,
+                        help="NanoAOD ROOT file(s), analysed in the order given (default: first data/*.root)")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--outdir", type=Path, default=None, help=f"output directory (default {DEFAULT_OUTDIR})")
     group.add_argument(
@@ -285,8 +348,8 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-    path = (args.file or default_file()).resolve()
-    figs = write(build(path), args.outdir)
+    paths = [p.resolve() for p in (args.file or [default_file()])]
+    figs = write(build(paths), args.outdir)
     for paths in figs.files.values():
         for p in paths:
             print(f"{p}  {p.stat().st_size:,} bytes")

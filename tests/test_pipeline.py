@@ -46,6 +46,7 @@ def write_z_file(
     medium_id=False,
     wide_fraction=0.0,
     wide_sigma=None,
+    full_branches=False,
 ):
     """A NanoAOD-like file: one Z-like or background opposite-sign pair per event, plus junk muons.
 
@@ -61,6 +62,9 @@ def write_z_file(
     0-34, from a separate random stream); ``medium_id`` writes Muon_mediumId (true for the pair muons).
     ``wide_fraction`` > 0 gives that fraction of signal events a total Gaussian resolution ``wide_sigma`` (GeV)
     instead of TRUE_SIGMA: a two-resolution mixture, like barrel and endcap pairs (separate random stream).
+    ``full_branches`` also writes every other default muon branch of ``select_muons`` (IDs, PF and global flags,
+    impact parameters, pfRelIso03_all), computed from the arrays above without drawing random numbers, and moves
+    the hard junk muons inside |eta| < 2.4 (eta x 0.28), so that a loose selection also finds same-sign pairs.
     """
     rng = np.random.default_rng(seed)
     gamma = 0.5 * pdg_mass_width("Z")[2]
@@ -110,8 +114,6 @@ def write_z_file(
         "mass": np.full((n, 2), M_MU), "charge": np.column_stack([q, -q]),
         "tightId": np.ones((n, 2), bool), "pfRelIso04_all": np.column_stack([np.full(n, 0.02), iso2]),
     }
-    if medium_id:
-        pair["mediumId"] = np.ones((n, 2), bool)
     n_junk = rng.integers(0, 4, n)
     tot = int(n_junk.sum())
     soft = rng.random(tot) < 0.5
@@ -121,11 +123,19 @@ def write_z_file(
         "phi": rng.uniform(-np.pi, np.pi, tot), "mass": np.full(tot, M_MU), "charge": rng.choice([-1, 1], tot),
         "tightId": rng.random(tot) < 0.5, "pfRelIso04_all": rng.uniform(0, 1, tot),
     }
-    if medium_id:
+    if medium_id or full_branches:
+        pair["mediumId"] = np.ones((n, 2), bool)
         junk["mediumId"] = junk["tightId"] | (junk["pfRelIso04_all"] < 0.3)
+    flags = ("looseId", "softId", "isGlobal", "isTracker", "isPFcand")
+    if full_branches:
+        for d, shape in ((pair, (n, 2)), (junk, (tot,))):
+            d["pfRelIso03_all"] = d["pfRelIso04_all"]
+            d.update({f: np.ones(shape, bool) for f in flags})
+            d["dxy"] = d["dz"] = np.zeros(shape)
+        junk["eta"] = np.where(soft, junk["eta"], 0.28 * junk["eta"])
     muon = {}
     for k in pair:
-        dtype = {"charge": np.int32, "tightId": bool, "mediumId": bool}.get(k, np.float32)
+        dtype = {"charge": np.int32, "tightId": bool, "mediumId": bool, **dict.fromkeys(flags, bool)}.get(k, np.float32)
         left = ak.values_astype(ak.Array(pair[k].tolist()), dtype)
         right = ak.values_astype(ak.unflatten(junk[k], n_junk), dtype)
         muon[k] = ak.concatenate([left, right], axis=1)
