@@ -21,6 +21,7 @@ def zfile(tmp_path_factory):
 
 
 def run(path, **kw):
+    kw.setdefault("model", "voigt_poly")  # the synthetic peak is Voigt-shaped (one resolution, no tail)
     return analyze(path, verbose=False, stability=False, **kw)
 
 
@@ -110,7 +111,7 @@ def test_worker_function_in_process_reuses_its_open_file(zfile, tmp_path):
 
 
 def test_outdir_saves_in_process(zfile, tmp_path):
-    analyze(zfile, verbose=False, stability=False, outdir=tmp_path / "out")
+    analyze(zfile, verbose=False, stability=False, outdir=tmp_path / "out", model="voigt_poly")
     names = {p.name for p in (tmp_path / "out").iterdir()}
     assert {"cutflow.png", "mass_fit.png", "summary.json", "summary.txt"} <= names
 
@@ -118,7 +119,7 @@ def test_outdir_saves_in_process(zfile, tmp_path):
 def test_failed_stability_fits_are_reported(zfile):
     cfg = dataclasses.replace(Z, name="stab", stability_fit_ranges=((70.0, 110.0), (100.0, 110.0)),
                               stability_bin_widths=(1.0,))
-    r = analyze(zfile, config=cfg, verbose=False, stability=True)
+    r = analyze(zfile, config=cfg, verbose=False, stability=True, model="voigt_poly")
     assert r.stability.failed and any("stability fits failed" in w for w in r.warnings)
     assert "Warnings:" in r.summary()
 

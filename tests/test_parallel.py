@@ -118,9 +118,9 @@ def test_cli_workers(tmp_path, files):
 
 
 def test_default_cb_model_parallel_equals_serial(tmp_path):
-    """The channel's default model (cb_bw_exp for Z_mumu) on a file with a radiative tail: identical in parallel."""
-    f = write_z_file(tmp_path / "fsr.root", 3000, seed=3, fsr=0.3)
-    serial = analyze(f, verbose=False, stability=True, chunk_size=500)
-    parallel = analyze(f, verbose=False, stability=True, chunk_size=500, n_workers=2)
-    assert serial.fit.model_name == "cb_bw_exp"
+    """The channel's default model (cb2_bw_exp for Z_mumu) on a file with a tail and two resolutions: identical."""
+    f = write_z_file(tmp_path / "mix.root", 15000, seed=4, fsr=0.3, wide_fraction=0.5, wide_sigma=4.0)
+    serial = analyze(f, verbose=False, stability=True, chunk_size=2500)
+    parallel = analyze(f, verbose=False, stability=True, chunk_size=2500, n_workers=2)
+    assert serial.fit.model_name == "cb2_bw_exp"
     assert_identical(serial, parallel)

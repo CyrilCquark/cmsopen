@@ -13,13 +13,16 @@ def zfile(tmp_path_factory):
 
 
 def test_analyze_writes_outputs_quietly(tmp_path, zfile, capsys):
-    assert main(["analyze", str(zfile), "--outdir", str(tmp_path / "o"), "--no-stability", "--quiet"]) == 0
+    # --model voigt_poly: the synthetic peak is Voigt-shaped (one resolution, no tail)
+    assert main(["analyze", str(zfile), "--outdir", str(tmp_path / "o"), "--no-stability", "--quiet",
+                 "--model", "voigt_poly"]) == 0
     assert (tmp_path / "o" / "summary.json").exists() and (tmp_path / "o" / "mass_fit.png").exists()
     assert capsys.readouterr().out == ""
 
 
 def test_analyze_verbose_prints_summary_and_location(tmp_path, zfile, capsys):
-    assert main(["analyze", str(zfile), "--outdir", str(tmp_path / "v"), "--no-stability", "--chunk-size", "100"]) == 0
+    assert main(["analyze", str(zfile), "--outdir", str(tmp_path / "v"), "--no-stability", "--chunk-size", "100",
+                 "--model", "voigt_poly"]) == 0
     out = capsys.readouterr().out
     assert "Cutflow:" in out and "(statistical error only)" in out and f"to {tmp_path / 'v'}" in out
 

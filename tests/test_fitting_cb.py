@@ -345,19 +345,23 @@ def test_fit_records_its_bounds():
     assert stuck.on_bound == ["alpha"] and dataclasses.replace(r, bounds=None).on_bound == []
 
 
-def test_registered_default_models_follow_the_model_choice_rule(fsr_file, capsys):
-    """dev/model_choice.md (with Amendment 1) selected cb_bw_exp (Z, cb_n 2) and cb_bw_poly2 (J/psi, cb_n 100)."""
+def test_registered_default_models_follow_the_model_choice_rule(tmp_path, capsys):
+    """dev/model_choice.md: Amendment 1 set cb_n (Z 2, J/psi 100); Amendment 2 selected cb2_bw_exp and cb2_bw_poly2."""
     import dataclasses
+
+    from test_pipeline import write_z_file
 
     from cmsopen import analyze
     from cmsopen.__main__ import build_parser
     from cmsopen.pipeline import CHANNELS
 
-    assert (CHANNELS["Z_mumu"].model, CHANNELS["Z_mumu"].cb_n) == ("cb_bw_exp", 2.0)
-    assert (CHANNELS["Jpsi_mumu"].model, CHANNELS["Jpsi_mumu"].cb_n) == ("cb_bw_poly2", 100.0)  # Amendment 1
-    r = analyze(fsr_file, verbose=False, stability=False)  # no model given: the channel's default
-    assert r.fit.model_name == "cb_bw_exp" and r.alternate_fit.model_name == "voigt_poly"
-    assert analyze(fsr_file, verbose=False, stability=False, model="gauss_poly").fit.model_name == "gauss_poly"
+    assert (CHANNELS["Z_mumu"].model, CHANNELS["Z_mumu"].cb_n) == ("cb2_bw_exp", 2.0)
+    assert (CHANNELS["Jpsi_mumu"].model, CHANNELS["Jpsi_mumu"].cb_n) == ("cb2_bw_poly2", 100.0)
+    # a radiative tail and two resolutions, which the default mixture model describes
+    f = write_z_file(tmp_path / "mix.root", 15000, seed=4, fsr=0.3, wide_fraction=0.5, wide_sigma=4.0)
+    r = analyze(f, verbose=False, stability=False)  # no model given: the channel's default
+    assert r.fit.model_name == "cb2_bw_exp" and r.alternate_fit.model_name == "voigt_poly"
+    assert analyze(f, verbose=False, stability=False, model="gauss_poly").fit.model_name == "gauss_poly"
     with pytest.raises(ValueError, match="model must be one of"):
         dataclasses.replace(CHANNELS["Z_mumu"], model="breit_wigner")
     assert build_parser().parse_args(["analyze", "x.root"]).model is None

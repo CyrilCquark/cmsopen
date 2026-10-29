@@ -158,6 +158,9 @@ def small_files(tmp_path_factory):
 def run(path, **kw):
     kw.setdefault("verbose", False)
     kw.setdefault("stability", False)
+    # The synthetic peaks are Voigt-shaped (one resolution, no radiative tail): the Voigt model describes them. The
+    # channels' default models (resolution mixtures) are exercised on suitable files in test_fitting_cb*.py.
+    kw.setdefault("model", "voigt_poly")
     return analyze(path, **kw)
 
 
@@ -351,7 +354,7 @@ def test_summary_labels_and_yields(small_files):
 
 
 def test_verbose_prints_the_summary(small_files, capsys):
-    analyze(small_files[0], stability=False)
+    analyze(small_files[0], stability=False, model="voigt_poly")  # synthetic: Voigt-shaped, one resolution, no tail
     out = capsys.readouterr().out
     assert "Cutflow:" in out and "(statistical error only)" in out
 
@@ -372,6 +375,8 @@ def test_cli_module(tmp_path, small_files):
             str(tmp_path / "o"),
             "--no-stability",
             "--quiet",
+            "--model",
+            "voigt_poly",
         ],
         capture_output=True,
         text=True,
@@ -379,7 +384,8 @@ def test_cli_module(tmp_path, small_files):
     assert out.returncode == 0, out.stderr
     assert (tmp_path / "o" / "summary.json").exists() and (tmp_path / "o" / "mass_fit.png").exists()
     verbose = subprocess.run(
-        [sys.executable, "-m", "cmsopen", "analyze", str(small_files[0]), "--no-stability", "--n-events", "500"],
+        [sys.executable, "-m", "cmsopen", "analyze", str(small_files[0]), "--no-stability", "--n-events", "500",
+         "--model", "voigt_poly"],
         capture_output=True,
         text=True,
     )
@@ -408,7 +414,8 @@ def test_installed_script(tmp_path, small_files):
     if not script:
         pytest.skip("the cmsopen console script is not installed in this environment")
     out = subprocess.run(
-        [str(script), "analyze", str(small_files[0]), "--no-stability", "--quiet", "--outdir", str(tmp_path / "s")],
+        [str(script), "analyze", str(small_files[0]), "--no-stability", "--quiet", "--outdir", str(tmp_path / "s"),
+         "--model", "voigt_poly"],
         capture_output=True,
         text=True,
     )
@@ -432,10 +439,10 @@ def test_real_file_reproduces_development_results():
     last = r.cutflow[-1]
     assert (last.n_particles, last.n_events_with_particles, last.n_events) == (57_058, 28_528, 28_528)
     fits = {f.model_name: f for f in (r.fit, r.alternate_fit)}
-    assert r.fit.model_name == "cb_bw_exp" and set(fits) == {"cb_bw_exp", "voigt_poly"}
+    assert r.fit.model_name == "cb2_bw_exp" and set(fits) == {"cb2_bw_exp", "voigt_poly"}
     m, me = fits["voigt_poly"].peak_position  # the Layer 6 model, now reported next to the default
     assert abs(m - 90.7829) < me
-    pole, pole_err = r.fit.peak_position  # dev/model_choice.md: cb_bw_exp, cb_n = 2
-    assert abs(pole - 90.875) < 0.001 and abs(pole_err - 0.022) < 0.001
+    pole, pole_err = r.fit.peak_position  # dev/model_choice.md, Amendment 2: cb2_bw_exp, cb_n = 2
+    assert abs(pole - 90.852) < 0.001 and abs(pole_err - 0.023) < 0.001
     assert r.fit.n_entries == 26_195
     assert r.n_events == 396_766

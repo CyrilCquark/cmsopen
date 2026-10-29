@@ -233,7 +233,7 @@ register_channel(
         resonance="Z",
         resonance_label="Z",
         cb_n=2.0,  # dev/model_choice.md, step 1
-        model="cb_bw_exp",  # dev/model_choice.md, step 2
+        model="cb2_bw_exp",  # dev/model_choice.md, Amendment 2 (previously cb_bw_exp)
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((70.0, 110.0), (75.0, 105.0), (80.0, 100.0)),
         stability_bin_widths=(0.5, 1.0, 2.0),
@@ -253,7 +253,7 @@ register_channel(
         resonance="J/psi",
         resonance_label=r"J/\psi",
         cb_n=100.0,  # dev/model_choice.md, Amendment 1 (step 1 on the amended grid)
-        model="cb_bw_poly2",  # dev/model_choice.md, step 2
+        model="cb2_bw_poly2",  # dev/model_choice.md, Amendment 2 (previously cb_bw_poly2)
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((2.8, 3.4), (2.85, 3.35), (2.9, 3.3)),
         stability_bin_widths=(0.01, 0.02, 0.04),
