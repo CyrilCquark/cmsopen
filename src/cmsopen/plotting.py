@@ -931,7 +931,7 @@ def plot_mass_spectrum(
                 _place_boxes(ax, annotation, logy, {})
                 break
             except RuntimeError:
-                if annotation is None:
+                if annotation is None or fit is None:
                     raise
                 # start again from the original axis with a shorter annotation (never a smaller font)
                 ax.set_ylim(*ylim)

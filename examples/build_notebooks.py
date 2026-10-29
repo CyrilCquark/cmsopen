@@ -362,6 +362,7 @@ def layer3() -> nbformat.NotebookNode:
             "background pairs more than Z pairs."
         ),
         new_code_cell(
+            "from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings\n\n"
             "fig, (ax, rax) = plt.subplots(\n"
             "    2, 1, figsize=(7.5, 6.5), sharex=True, gridspec_kw={\"height_ratios\": [3, 1], \"hspace\": 0.05}\n"
             ")\n"
@@ -374,7 +375,6 @@ def layer3() -> nbformat.NotebookNode:
             "ax.set_xlim(edges[0], edges[-1])\n"
             "ax.set_ylim(0, 1.3 * max(c_counts.max(), s_counts.max()))\n"
             'ax.legend(loc="upper right", fontsize=9, frameon=False)\n'
-            "from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings\n"
             'ax.text(0.99, 1.01, f"CMS Open Data, {run_label(DATA_FILE)}", transform=ax.transAxes,\n'
             '        ha="right", va="bottom", fontsize=9)\n'
             "with np.errstate(divide=\"ignore\", invalid=\"ignore\"):\n"
@@ -671,6 +671,7 @@ def layer4() -> nbformat.NotebookNode:
             "pairs, so what remains is a nearly background-free Z peak in the OS pairs."
         ),
         new_code_cell(
+            "from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings\n\n"
             "fig, ax = plt.subplots(figsize=(7.5, 5.0))\n"
             'ax.stairs(os_counts, edges, linewidth=1.8, color="tab:blue",\n'
             '          label=f"opposite-sign pairs ({int(os_counts.sum()):,})")\n'
@@ -683,7 +684,6 @@ def layer4() -> nbformat.NotebookNode:
             'ax.set_xlabel("Dimuon invariant mass $M_{\\\\mu\\\\mu}$ [GeV]")\n'
             'ax.set_ylabel("Muon pairs / 2 GeV")\n'
             'ax.legend(loc="upper right", fontsize=9, frameon=False)\n'
-            "from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings\n"
             'ax.text(0.99, 1.01, f"CMS Open Data, {run_label(DATA_FILE)}", transform=ax.transAxes,\n'
             '        ha="right", va="bottom", fontsize=9)\n'
             "plt.show()"
@@ -771,12 +771,12 @@ def layer5() -> nbformat.NotebookNode:
             "width (2.4952 GeV) with the detector's momentum resolution."
         ),
         new_code_cell(
+            "from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings\n\n"
             "fig, ax = plt.subplots(figsize=(7, 4.5))\n"
             'ax.hist(mass, bins=BINS, histtype="step", linewidth=1.5, label="opposite-charge leading muon pairs")\n'
             'ax.axvline(91.1876, color="gray", linestyle="--", linewidth=1, label="PDG Z mass 91.1876 GeV")\n'
             'ax.set_xlabel("Dimuon invariant mass $M_{\\\\mu\\\\mu}$ [GeV]")\n'
             'ax.set_ylabel("Pairs / 2 GeV")\n'
-            "from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings\n"
             'ax.set_title(f"CMS Open Data, {run_label(DATA_FILE)} (first look)")\n'
             "ax.legend()\n"
             "plt.show()"
@@ -992,7 +992,9 @@ curve, each fitted polynomial background (dashed), and the PDG Z mass. Curves ar
 bin width, so they compare directly with the counts."""
         ),
         new_code_cell(
-            r"""x = np.linspace(*FIT_RANGE, 801)
+            r"""from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings
+
+x = np.linspace(*FIT_RANGE, 801)
 fig, ax = plt.subplots(figsize=(8, 5))
 ax.errorbar(h.centers, h.counts, yerr=h.errors, xerr=h.widths / 2, fmt="o", ms=3, color="black", label="data")
 colors = {"gauss_poly": "tab:blue", "voigt_poly": "tab:orange"}
@@ -1006,8 +1008,6 @@ ax.set_xlabel("Dimuon invariant mass [GeV]")
 ax.set_ylabel("Pairs / 1 GeV")
 ax.set_xlim(60, 120)
 ax.legend(fontsize=8)
-from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings
-
 ax.set_title(f"CMS Open Data, {run_label(DATA_FILE)}: Z peak fits (quick plot)", fontsize=10)
 plt.show()"""
         ),
