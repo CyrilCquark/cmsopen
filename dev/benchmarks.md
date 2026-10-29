@@ -136,3 +136,38 @@ results"). Errors statistical only. Resolution = FWHM/2.355 of the whole signal.
 
 chi2/ndf benchmark: <= 2.0 (T2, production sample). Observed here (development
 file, selected model): Z_mumu 0.8909, Jpsi_mumu 1.2332.
+
+## Validation rerun with the Amendment 2 defaults (2026-10-29)
+
+Development observations, `python scripts/run_validation.py` at commit 4df6c09,
+the pre-registered plan unchanged (plus the addendum: mixtures in the summary's
+model list). Defaults: Z_mumu cb2_bw_exp, Jpsi_mumu cb2_bw_poly2. Resolution
+column = FWHM/2.355 of the whole signal (includes the Z natural width).
+
+Z_mumu:
+
+- Inclusive 90.8515 +- 0.0232 GeV (was 90.8754 +- 0.0225 with cb_bw_exp),
+  chi2/ndf 0.891 (was 1.644).
+- 9 entries now fail to fit (was 1): BB (r on its bound), phi(mu+) [-pi/2, 0)
+  (r not constrained), phi(mu-) [pi/2, pi] (exponential c0 on its bound),
+  central eta for mu+ and mu- (r, and f, on bounds), all three fitted pT bins
+  (r and/or f not constrained) and PV [15, 23) (r on its bound). In samples
+  dominated by one resolution the second core is not determined. Insufficient
+  entries unchanged (EE, pT [50, inf), PV [23, inf)).
+- Fitted entries move little: BE 90.8376 +- 0.0347 (was 90.8562 +- 0.0335);
+  phi(mu-) [0, pi/2) 90.6755 (was 90.7036); working points 90.852-90.856
+  (spread 0.005 GeV, was 0.020).
+- Systematics summary: offset from PDG -0.3364 +- 0.0232 GeV (stat.); eligible
+  models cb_bw_exp, cb2_bw_exp, cb2_bw_poly2 (spread 0.027 GeV); range x bin
+  width spread 0.017 GeV (6 fits, 3 failed); background variation -0.003 GeV;
+  category spread n/a (BB not fitted); mu+ minus mu- now only in phi quarters
+  1 and 3 (-0.151 +- 0.063, +0.236 +- 0.062 GeV) and the outer eta bins.
+
+Jpsi_mumu:
+
+- Inclusive 3.09307 +- 0.00034 GeV (was 3.09335), chi2/ndf 1.233 (was 2.847).
+- Every sufficient entry fits; chi2/ndf lower everywhere (BB 0.744, was 1.422).
+  Positions move by less than 0.0004 GeV.
+- Systematics summary: offset from PDG -0.0038 +- 0.0003 GeV (stat.); all five
+  models eligible, spread 0.0013 GeV; range x bin width spread 0.0002 GeV
+  (6 fits, 3 failed); background variation +0.0001 GeV.
