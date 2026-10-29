@@ -16,12 +16,16 @@ Usage:
 ``--grid amended`` uses the cb_n grid of Amendment 1 in dev/model_choice.md.
 ``--amendment2`` instead applies the resolution-mixture rule of Amendment 2
 (the channel's current default against the mixture with the same background,
-at the channel's current cb_n).
+at the channel's current cb_n). ``--amendment3`` applies the three-resolution
+rule of Amendment 3 on the 6-file development set (dev/development_set.json,
+in its fixed order); with ``--single`` it fits the development file alone,
+for information only.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -177,13 +181,107 @@ def amendment2(h: MassHistogram, cfg: ChannelConfig) -> tuple[str, list[str], li
     return chosen, rows, why
 
 
+THREE_OF = {"cb2_bw_exp": "cb3_bw_exp", "cb2_bw_poly2": "cb3_bw_poly2"}  # Amendment 3: same background
+GEV_FWHM = 2.3548200450309493
+
+
+def development_set() -> list[Path]:
+    """The 6 development files in their fixed order (dev/development_set.md)."""
+    d = json.loads((REPO / "dev" / "development_set.json").read_text())
+    return [REPO / "data" / d["original_development_file"], *(REPO / "data" / f["filename"] for f in d["files"])]
+
+
+def amendment3(h: MassHistogram, cfg: ChannelConfig) -> tuple[str, list[str], list[str]]:
+    """Amendment 3: the current default, both cb3 models, eligibility (a)-(d) for the same-background cb3 model."""
+    default, candidate = cfg.model, THREE_OF.get(cfg.model)
+    header = (
+        "| model | role | eligible | chi2 / ndf | chi2/ndf | p-value | pole [GeV] | sigma1 [GeV] | r (r2) | s | f (f1) "
+        "| g | FWHM/2.355 [GeV] | signal yield | background yield | k | AIC | on a bound |"
+    )
+    rows = [header, "|" + "---|" * 18]
+    fits: dict[str, FitResult | None] = {}
+    for model in (default, "cb3_bw_exp", "cb3_bw_poly2"):
+        role = "current default" if model == default else "candidate" if model == candidate else "information only"
+        try:
+            r = fit(h, cfg, model, cfg.cb_n)
+        except FitError as exc:
+            fits[model] = None
+            rows.append(f"| {model} | {role} | no: {exc} |" + " |" * 15)
+            continue
+        fits[model] = r
+        d = 4 if r.peak_position[0] < 10 else 3
+        par = r.parameters
+        fwhm, fwhm_err = r.fwhm
+        sy, by = r.signal_yield, r.background_yield
+
+        def get(*names: str, par: dict = par) -> str:
+            return next((pm(*par[n], 3) for n in names if n in par), "-")
+
+        rows.append(
+            f"| {model} | {role} | {'yes' if not r.on_bound and r.yields_reliable else 'no'} | {r.chi2:.1f} / {r.ndf} "
+            f"| {r.chi2_ndf:.4f} | {r.p_value:.3g} | {pm(*r.peak_position, d)} | {pm(*par['sigma'], d)} "
+            f"| {get('r2', 'r')} | {get('s')} | {get('f1', 'f')} | {get('g')} "
+            f"| {pm(fwhm / GEV_FWHM, fwhm_err / GEV_FWHM, d)} | {sy[0]:,.0f} +- {sy[1]:,.0f} "
+            f"| {by[0]:,.0f} +- {by[1]:,.0f} | {len(r.values)} | {aic(r):.1f} | {', '.join(r.on_bound) or 'none'} |"
+        )
+    base, cand = fits[default], fits.get(candidate) if candidate else None
+    if candidate is None or base is None:
+        return default, rows, [f"No same-background cb3 model for {default}, or the default failed; unchanged."]
+    if cand is None:
+        return default, rows, [f"(a)/(b) {candidate} raised FitError (not converged, a parameter on a bound or not "
+                               f"constrained): not eligible. Selected: {default} (unchanged)."]
+    checks = [
+        ("(a) converged", True),
+        ("(b) no parameter on a bound, unconstrained-parameter check passed", not cand.on_bound),
+        ("(c) background positive over the fit range", cand.yields_reliable),
+        (f"(d) AIC {aic(cand):.1f} <= {aic(base):.1f} - {AIC_MARGIN:g} = {aic(base) - AIC_MARGIN:.1f}",
+         aic(cand) <= aic(base) - AIC_MARGIN),
+    ]
+    chosen = candidate if all(ok for _, ok in checks) else default
+    why = [f"{candidate}: " + "; ".join(f"{name}: {'yes' if ok else 'NO'}" for name, ok in checks) + "."]
+    why.append(f"Selected: {chosen} ({'changes the default' if chosen != default else 'unchanged'}).")
+    return chosen, rows, why
+
+
+def run_amendment3(single: bool, workers: int) -> int:
+    """Amendment 3 on the 6-file development set (or the single development file, for information)."""
+    files = development_set()[:1] if single else development_set()
+    missing = [p.name for p in files if not p.exists()]
+    if missing:
+        print(f"error: missing development files: {missing}", file=sys.stderr)
+        return 2
+    label = "the original development file (information only)" if single else "the 6-file development set"
+    outcome = {}
+    for name in ("Z_mumu", "Jpsi_mumu"):
+        cfg = CHANNELS[name]
+        h = analyze(files, channel=name, stability=False, verbose=False, n_workers=workers).histogram
+        print(f"### {name} (Amendment 3 on {label}; cb_n = {cfg.cb_n:g}, current default {cfg.model})\n")
+        chosen, table, why = amendment3(h, cfg)
+        print("\n".join(table))
+        print()
+        print("\n".join(why))
+        print()
+        outcome[name] = chosen
+    print(f"### Outcome of Amendment 3 ({label})\n")
+    for name, chosen in outcome.items():
+        change = "unchanged" if chosen == CHANNELS[name].model else f"changes to {chosen}"
+        print(f"- {name}: default {CHANNELS[name].model} {change}.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the rule for every registered channel on the development file and print the results."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=REPO / "data" / DEV_FILENAME, help="the development file")
     parser.add_argument("--grid", choices=sorted(CB_N_GRIDS), default="original", help="cb_n grid (default original)")
     parser.add_argument("--amendment2", action="store_true", help="apply the resolution-mixture rule of Amendment 2")
+    parser.add_argument("--amendment3", action="store_true",
+                        help="apply the three-resolution rule of Amendment 3 on the 6-file development set")
+    parser.add_argument("--single", action="store_true", help="with --amendment3: the development file alone")
+    parser.add_argument("--workers", type=int, default=4, help="with --amendment3: worker processes")
     args = parser.parse_args(argv)
+    if args.amendment3:
+        return run_amendment3(args.single, args.workers)
     path, grid = args.file.resolve(), CB_N_GRIDS[args.grid]
     if path.name != DEV_FILENAME:
         print(f"error: the rule is applied to the development file {DEV_FILENAME} only", file=sys.stderr)

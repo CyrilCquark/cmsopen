@@ -47,6 +47,8 @@ def write_z_file(
     wide_fraction=0.0,
     wide_sigma=None,
     full_branches=False,
+    third_fraction=0.0,
+    third_sigma=None,
 ):
     """A NanoAOD-like file: one Z-like or background opposite-sign pair per event, plus junk muons.
 
@@ -62,6 +64,8 @@ def write_z_file(
     0-34, from a separate random stream); ``medium_id`` writes Muon_mediumId (true for the pair muons).
     ``wide_fraction`` > 0 gives that fraction of signal events a total Gaussian resolution ``wide_sigma`` (GeV)
     instead of TRUE_SIGMA: a two-resolution mixture, like barrel and endcap pairs (separate random stream).
+    ``third_fraction`` > 0 gives that fraction of signal events a total resolution ``third_sigma`` instead (taking
+    precedence over the wide one): a three-resolution mixture (its own random stream; default files unchanged).
     ``full_branches`` also writes every other default muon branch of ``select_muons`` (IDs, PF and global flags,
     impact parameters, pfRelIso03_all), computed from the arrays above without drawing random numbers, and moves
     the hard junk muons inside |eta| < 2.4 (eta x 0.28), so that a loose selection also finds same-sign pairs.
@@ -72,6 +76,7 @@ def write_z_file(
     is_sig = rng.random(n) < 0.8
     m = np.empty(n)
     mix_rng = np.random.default_rng(seed + 3000) if wide_fraction else None
+    third_rng = np.random.default_rng(seed + 4000) if third_fraction else None
     for _ in range(50):  # rejection sampling into 60-120 GeV, vectorized over events
         bad = ~((m >= 60) & (m < 120)) if _ else np.ones(n, bool)
         k = int(bad.sum())
@@ -80,9 +85,14 @@ def write_z_file(
         sig = TRUE_MASS + gamma * rng.standard_cauchy(k) + TRUE_SIGMA * rng.standard_normal(k)
         if fsr:
             sig -= np.where(rng.random(k) < fsr, rng.exponential(4.0, k), 0.0)
+        widen = np.zeros(k)
         if mix_rng is not None:  # widen a fraction of events to wide_sigma (resolutions add in quadrature)
             extra = math.sqrt(wide_sigma**2 - TRUE_SIGMA**2)
-            sig = sig + np.where(mix_rng.random(k) < wide_fraction, mix_rng.normal(0.0, extra, k), 0.0)
+            widen = np.where(mix_rng.random(k) < wide_fraction, mix_rng.normal(0.0, extra, k), 0.0)
+        if third_rng is not None:  # a third resolution, third_sigma, for another fraction
+            extra3 = math.sqrt(third_sigma**2 - TRUE_SIGMA**2)
+            widen = np.where(third_rng.random(k) < third_fraction, third_rng.normal(0.0, extra3, k), widen)
+        sig = sig + widen
         bkg = 60 + rng.exponential(25.0, k)
         m[bad] = np.where(is_sig[bad], sig, bkg)
     a = rng.uniform(-0.8, 0.8, n)

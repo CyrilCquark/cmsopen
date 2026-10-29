@@ -617,6 +617,8 @@ _MODEL_LABELS = {
     "cb_bw_poly2": r"BW$\otimes$CB",
     "cb2_bw_exp": r"BW$\otimes$2CB",
     "cb2_bw_poly2": r"BW$\otimes$2CB",
+    "cb3_bw_exp": r"BW$\otimes$3CB",
+    "cb3_bw_poly2": r"BW$\otimes$3CB",
 }
 
 
@@ -640,7 +642,8 @@ def _fit_annotation(
     level: int = 0,
 ) -> str:
     """The annotation text; ``level`` 1 leaves out the fixed Crystal Ball tail (alpha, n), level 2 also the fixed
-    natural width, level 3 also puts the data label on two lines (split at its last comma).
+    natural width, level 3 also puts the data label on two lines (split at its last comma); for the
+    three-resolution models level 4 also leaves out the weights (f1, g) and level 5 the core widths (sigma1, r2, s).
 
     The left-out lines are reported in summary.txt, summary.json and the
     figure caption; they are dropped only when the full block cannot be
@@ -654,7 +657,18 @@ def _fit_annotation(
     position = r"$M_{\mathrm{pole}}$" if fit.cb_n is not None else r"$m_{\mathrm{peak}}$"  # BW pole for cb_bw_*
     lines.append(rf"{position} = {m} $\pm$ {me} GeV (stat.)")
     s, se = _fmt_pm(*fit.resolution)
-    if "r" in fit.parameters:  # a resolution mixture: report the effective width and the components
+    if "r2" in fit.parameters:  # three resolutions: the effective width and the components, on two lines
+        s1, s1e = _fmt_pm(*fit.parameters["sigma"])
+        lines.append(rf"FWHM/2.355 = {s} $\pm$ {se} GeV")
+        r2, r2e = _fmt_pm(*fit.parameters["r2"])
+        sr, sre = _fmt_pm(*fit.parameters["s"])
+        f1, f1e = _fmt_pm(*fit.parameters["f1"])
+        gg, gge = _fmt_pm(*fit.parameters["g"])
+        if level < 5:
+            lines.append(rf"$\sigma_1$ = {s1} $\pm$ {s1e} GeV, $r_2$ = {r2} $\pm$ {r2e}, $s$ = {sr} $\pm$ {sre}")
+        if level < 4:
+            lines.append(rf"$f_1$ = {f1} $\pm$ {f1e}, $g$ = {gg} $\pm$ {gge}")
+    elif "r" in fit.parameters:  # a resolution mixture: report the effective width and the components
         s1, s1e = _fmt_pm(*fit.parameters["sigma"])
         lines.append(rf"FWHM/2.355 = {s} $\pm$ {se} GeV")
         r, re = _fmt_pm(*fit.parameters["r"])
@@ -791,8 +805,9 @@ def plot_mass_spectrum(
         :data:`cmsopen.datasets.GENERIC_DATA_LABEL`. If the annotation does
         not fit beside the data at 8 pt, the fixed tail parameters (alpha, n)
         and then the fixed natural width are left out of it (they are in the
-        summary and the caption), and then the data label is split over two
-        lines; the font is never made smaller.
+        summary and the caption), then the data label is split over two
+        lines, and for the three-resolution models the weights and then the
+        core widths are left out; the font is never made smaller.
 
     Returns
     -------
@@ -926,7 +941,7 @@ def plot_mass_spectrum(
                 gid=_ANNOTATION_GID,
             )
         ylim = ax.get_ylim()
-        for level in range(1, 4):
+        for level in range(1, 6):
             try:
                 _place_boxes(ax, annotation, logy, {})
                 break

@@ -54,6 +54,22 @@ and 1 - f. r and f describe this particular sample (its mix of barrel and
 endcap pairs and the selection) and not constants of nature or of the
 detector: a different selection or acceptance gives different values.
 
+The resolution does not take two values, though: it varies continuously.
+The curvature error of a track grows with |eta| (shorter lever arm, more
+material, weaker and less uniform field towards the endcaps) and with
+transverse momentum (a stiffer track bends less, so the same position error
+is a larger fraction of its sagitta), and the dimuon mass resolution
+combines the two muons' errors. An inclusive sample is therefore a
+continuous superposition of Gaussian widths. A few Gaussian cores
+approximate such a continuum well, because a smooth distribution of widths
+is described by its first few moments: one core matches the mean width,
+two add its spread, three its asymmetry. The ``cb3_bw_*`` models
+(dev/model_choice.md, Amendment 3) use three Crystal Ball cores of widths
+sigma1, r2 * sigma1 and r2 * s * sigma1, in proportions f1, (1 - f1) g and
+(1 - f1)(1 - g). As for two cores, the widths' ratios and the weights
+describe the sample's mix of pseudorapidities and momenta under its
+selection; they are not constants and change with the acceptance.
+
 Statistics. Each bin count N is a Poisson random number whose standard
 deviation is the square root of its expected value, estimated here by
 sqrt(N). The fit minimises chi2 = sum((N - mu)^2 / sigma^2) over the bins
@@ -88,6 +104,7 @@ __all__ = [
     "MIXTURE_MODELS",
     "MODELS",
     "STABILITY_MODELS",
+    "THREE_RES_MODELS",
     "FitError",
     "FitResult",
     "FitWarning",
@@ -98,6 +115,7 @@ __all__ = [
     "compare_to_pdg",
     "crystal_ball",
     "crystalball2_bw",
+    "crystalball3_bw",
     "crystalball_bw",
     "crystalball_bw_exp",
     "crystalball_bw_poly2",
@@ -114,7 +132,16 @@ __all__ = [
     "voigt_plus_polynomial",
 ]
 
-MODELS: tuple[str, ...] = ("gauss_poly", "voigt_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2")
+MODELS: tuple[str, ...] = (
+    "gauss_poly",
+    "voigt_poly",
+    "cb_bw_exp",
+    "cb_bw_poly2",
+    "cb2_bw_exp",
+    "cb2_bw_poly2",
+    "cb3_bw_exp",
+    "cb3_bw_poly2",
+)
 """Model names accepted by :func:`fit_mass_peak`."""
 
 CB_MODELS: tuple[str, ...] = ("cb_bw_exp", "cb_bw_poly2")
@@ -122,6 +149,9 @@ CB_MODELS: tuple[str, ...] = ("cb_bw_exp", "cb_bw_poly2")
 
 MIXTURE_MODELS: tuple[str, ...] = ("cb2_bw_exp", "cb2_bw_poly2")
 """Breit-Wigner (x) a two-resolution Crystal Ball mixture (dev/model_choice.md, Amendment 2)."""
+
+THREE_RES_MODELS: tuple[str, ...] = ("cb3_bw_exp", "cb3_bw_poly2")
+"""Breit-Wigner (x) a three-resolution Crystal Ball mixture (dev/model_choice.md, Amendment 3)."""
 
 STABILITY_MODELS: tuple[str, ...] = ("gauss_poly", "voigt_poly")
 """Peak models refitted by default in :func:`fit_stability`."""
@@ -135,6 +165,10 @@ _CB_MAX_GRID = 400_000
 _CB_ALPHA_MIN, _CB_ALPHA_MAX = 0.1, 10.0
 _MIX_R_MIN, _MIX_R_MAX = 1.2, 4.0  # Amendment 2
 _MIX_F_MIN, _MIX_F_MAX = 0.05, 0.95
+_MIX3_R2_MIN, _MIX3_R2_MAX = 1.2, 3.0  # Amendment 3
+_MIX3_S_MIN, _MIX3_S_MAX = 1.2, 3.0
+_MIX3_F1_MIN, _MIX3_F1_MAX = 0.05, 0.90
+_MIX3_G_MIN, _MIX3_G_MAX = 0.05, 0.95
 
 _FWHM_PER_SIGMA = 2.0 * math.sqrt(2.0 * math.log(2.0))  # 2.3548...
 
@@ -615,6 +649,44 @@ def crystalball2_bw(
     return f * narrow + (1.0 - f) * wide
 
 
+def crystalball3_bw(
+    x: Any,
+    amplitude: float,
+    mean: float,
+    sigma1: float,
+    alpha: float,
+    r2: float,
+    s: float,
+    f1: float,
+    g: float,
+    *,
+    n: float,
+    gamma: float,
+    norm_edges: Sequence[float] | np.ndarray,
+    convolve: bool | None = None,
+) -> np.ndarray:
+    """Breit-Wigner convolved with a three-resolution Crystal Ball mixture, ``amplitude`` events in ``norm_edges``.
+
+    The signal of the ``cb3_bw_*`` models (dev/model_choice.md, Amendment 3):
+    f1 * [BW (x) CB(sigma1)] + (1 - f1) * {g * [BW (x) CB(r2 * sigma1)] +
+    (1 - g) * [BW (x) CB(r2 * s * sigma1)]}. The three Crystal Balls share the
+    pole mass ``mean``, ``alpha``, ``n`` and the Breit-Wigner half width
+    ``gamma``; each is normalised separately over ``norm_edges``, so ``f1`` is
+    the in-range fraction of the narrowest component and ``g`` the fraction of
+    the rest in the middle one. Whether the Breit-Wigner is convolved is
+    decided once, from ``sigma1``. With ``g = 1`` this is exactly
+    :func:`crystalball2_bw` with ``r = r2`` and ``f = f1``.
+    """
+    if convolve is None:
+        convolve = gamma > 0 and 2.0 * gamma >= CB_BW_THRESHOLD * sigma1
+    common: dict[str, Any] = {"n": n, "gamma": gamma, "norm_edges": norm_edges, "convolve": convolve}
+    out = f1 * crystalball_bw(x, amplitude, mean, sigma1, alpha, **common)
+    out = out + (1.0 - f1) * g * crystalball_bw(x, amplitude, mean, r2 * sigma1, alpha, **common)
+    if g != 1.0:
+        out = out + (1.0 - f1) * (1.0 - g) * crystalball_bw(x, amplitude, mean, r2 * s * sigma1, alpha, **common)
+    return out
+
+
 def crystalball_bw_exp(
     x: Any,
     amplitude: float,
@@ -741,6 +813,8 @@ class FitResult:
     @property
     def n_signal_parameters(self) -> int:
         """Number of signal parameters, which come first: amplitude, mean, sigma (and alpha for ``cb_bw_*``)."""
+        if self.model_name in THREE_RES_MODELS:
+            return 8
         return 6 if self.model_name in MIXTURE_MODELS else 4 if self.model_name in CB_MODELS else 3
 
     @property
@@ -805,9 +879,11 @@ class FitResult:
         the mixtures ``"cb2_bw_*"`` there is no single width: the reported
         resolution is the numerical FWHM of the whole fitted signal divided
         by 2.355 (dev/model_choice.md, Amendment 2), which includes the
-        natural width; sigma1, r and f are in :attr:`parameters`.
+        natural width; sigma1, r and f are in :attr:`parameters`. The same holds
+        for the three-resolution ``"cb3_bw_*"`` models (Amendment 3), with
+        sigma1, r2, s, f1 and g in :attr:`parameters`.
         """
-        if self.model_name in MIXTURE_MODELS:
+        if self.model_name in MIXTURE_MODELS or self.model_name in THREE_RES_MODELS:
             fwhm, err = self._numerical_fwhm()
             return fwhm / _FWHM_PER_SIGMA, err / _FWHM_PER_SIGMA
         return self.parameters["sigma"]
@@ -821,7 +897,7 @@ class FitResult:
         f_G^2) with f_L = 2 gamma and f_G = 2.3548 sigma (accurate to about
         0.02 %); its error comes from sigma only, since gamma is fixed.
         """
-        if self.model_name in CB_MODELS or self.model_name in MIXTURE_MODELS:
+        if self.model_name in (*CB_MODELS, *MIXTURE_MODELS, *THREE_RES_MODELS):
             return self._numerical_fwhm()
         sigma, err = self.resolution
         fg = _FWHM_PER_SIGMA * sigma
@@ -858,6 +934,14 @@ class FitResult:
     # -- component densities -----------------------------------------------------------
 
     def _signal_density(self, x: Any, p: np.ndarray) -> np.ndarray:
+        if self.model_name in THREE_RES_MODELS:
+            return crystalball3_bw(
+                x,
+                *p[:8],
+                n=cast(float, self.cb_n),
+                gamma=cast(float, self.gamma),
+                norm_edges=self._fit_edges(),
+            )
         if self.model_name in MIXTURE_MODELS:
             return crystalball2_bw(
                 x,
@@ -1067,7 +1151,11 @@ def fit_mass_peak(
     hist_or_values : MassHistogram or array-like
         A histogram, or masses (GeV; jagged awkward arrays are flattened),
         which are histogrammed with ``bins`` and ``hist_range``.
-    model : {"gauss_poly", "voigt_poly", "cb_bw_exp", "cb_bw_poly2"}
+    model : one of :data:`MODELS`
+        ``"gauss_poly"``, ``"voigt_poly"``, the Crystal Ball models
+        ``"cb_bw_exp"``/``"cb_bw_poly2"``, the two-resolution mixtures
+        ``"cb2_bw_*"`` (parameters ``r``, ``f``) and the three-resolution
+        mixtures ``"cb3_bw_*"`` (parameters ``r2``, ``s``, ``f1``, ``g``).
     fit_range : (float, float)
         Mass window in GeV.
     poly_degree : int
@@ -1109,11 +1197,13 @@ def fit_mass_peak(
         raise ValueError(f"model must be one of {MODELS}, got {model!r}")
     if not isinstance(poly_degree, (int, np.integer)) or not 0 <= poly_degree <= 5:
         raise ValueError(f"poly_degree must be an integer from 0 to 5, got {poly_degree!r}")
+    is_mix3 = model in THREE_RES_MODELS
     is_mix = model in MIXTURE_MODELS
-    is_cb = model in CB_MODELS or is_mix
+    is_cb = model in CB_MODELS or is_mix or is_mix3
     if is_cb and not (cb_n is not None and np.isfinite(cb_n) and cb_n > 0):
         raise ValueError(f"model {model!r} needs the fixed Crystal Ball exponent cb_n > 0, got {cb_n!r}")
-    exp_models, quadratic_models = ("cb_bw_exp", "cb2_bw_exp"), ("cb_bw_poly2", "cb2_bw_poly2")
+    exp_models = ("cb_bw_exp", "cb2_bw_exp", "cb3_bw_exp")
+    quadratic_models = ("cb_bw_poly2", "cb2_bw_poly2", "cb3_bw_poly2")
     degree: int | None = None if model in exp_models else 2 if model in quadratic_models else int(poly_degree)
     h = (
         hist_or_values
@@ -1144,7 +1234,9 @@ def fit_mass_peak(
             raise ValueError(f"natural_width must be a positive number of GeV, got {width!r}")
         gamma = 0.5 * float(width)
     signal_names: tuple[str, ...] = ("amplitude", "mean", "sigma")
-    signal_names += ("alpha", "r", "f") if is_mix else ("alpha",) if is_cb else ()
+    signal_names += (
+        ("alpha", "r2", "s", "f1", "g") if is_mix3 else ("alpha", "r", "f") if is_mix else ("alpha",) if is_cb else ()
+    )
     k0 = len(signal_names)
     background_names = ("c0", "slope") if degree is None else tuple(f"c{k}" for k in range(degree + 1))
     names = (*signal_names, *background_names)
@@ -1173,10 +1265,19 @@ def fit_mass_peak(
         if is_cb:
             # Signal normalised over the fit bins (amplitude = signal events in the fit range), then the background.
             n_, g_ = cast(float, cb_n), cast(float, gamma)
-            if is_mix:  # each core normalised separately; the BW branch is decided from sigma1 for both
+            if is_mix or is_mix3:  # each core normalised separately; the BW branch is decided from sigma1 for all
                 conv = g_ > 0 and 2.0 * g_ >= CB_BW_THRESHOLD * p[2]
                 sig = np.zeros(len(widths))
-                for frac, width in ((p[5], p[2]), (1.0 - p[5], p[4] * p[2])):
+                cores = (
+                    (
+                        (p[6], p[2]),
+                        ((1.0 - p[6]) * p[7], p[4] * p[2]),
+                        ((1.0 - p[6]) * (1.0 - p[7]), p[4] * p[5] * p[2]),
+                    )
+                    if is_mix3
+                    else ((p[5], p[2]), (1.0 - p[5], p[4] * p[2]))
+                )
+                for frac, width in cores:
                     shape = _cb_bw_shape(points.ravel(), p[1], width, p[3], n_, g_, (lo, hi), conv)
                     part = 0.5 * widths * (shape.reshape(points.shape) @ weights)
                     sig = sig + frac * part / part.sum()
@@ -1212,9 +1313,11 @@ def fit_mass_peak(
             np.clip(math.sqrt(max(sigma0**2 - gamma**2, 0.0)) or 0.5 * sigma0, 2 * sigma_lo, 0.25 * (hi - lo))
         )
     amp0 = float(max((excess[excess > 0] * widths[excess > 0]).sum(), 1.0))
-    # A mixture starts with a narrower core (sigma1) and a wider one at about twice its width.
-    extra0 = [1.5, 2.0, 0.6] if is_mix else [1.5] if is_cb else []
-    p0 = np.array([amp0, float(centers[peak]), 0.75 * sigma0 if is_mix else sigma0, *extra0, *coeffs0])
+    # A mixture starts with a narrower core (sigma1) and a wider one at about twice its width; the three-core
+    # mixture with cores at about 1, 1.6 and 2.9 times sigma1, with weights 0.45, 0.39 and 0.17.
+    extra0 = [1.5, 1.6, 1.8, 0.45, 0.7] if is_mix3 else [1.5, 2.0, 0.6] if is_mix else [1.5] if is_cb else []
+    start_sigma = 0.65 * sigma0 if is_mix3 else 0.75 * sigma0 if is_mix else sigma0
+    p0 = np.array([amp0, float(centers[peak]), start_sigma, *extra0, *coeffs0])
     for name, value in (initial or {}).items():
         if name not in names:
             raise ValueError(f"unknown parameter {name!r} in initial; parameters are {names}")
@@ -1222,7 +1325,12 @@ def fit_mass_peak(
 
     # alpha (cb_bw_*) between 0.1 and 10 sigma; the exponential's c0 >= 0 keeps the background positive.
     alpha_bounds = (
-        ([_CB_ALPHA_MIN, _MIX_R_MIN, _MIX_F_MIN], [_CB_ALPHA_MAX, _MIX_R_MAX, _MIX_F_MAX])
+        (
+            [_CB_ALPHA_MIN, _MIX3_R2_MIN, _MIX3_S_MIN, _MIX3_F1_MIN, _MIX3_G_MIN],
+            [_CB_ALPHA_MAX, _MIX3_R2_MAX, _MIX3_S_MAX, _MIX3_F1_MAX, _MIX3_G_MAX],
+        )
+        if is_mix3
+        else ([_CB_ALPHA_MIN, _MIX_R_MIN, _MIX_F_MIN], [_CB_ALPHA_MAX, _MIX_R_MAX, _MIX_F_MAX])
         if is_mix
         else ([_CB_ALPHA_MIN], [_CB_ALPHA_MAX])
         if is_cb
@@ -1549,9 +1657,9 @@ def fit_stability(
     for model in models:
         degrees: Sequence[int | None] = (
             (None,)
-            if model in ("cb_bw_exp", "cb2_bw_exp")
+            if model in ("cb_bw_exp", "cb2_bw_exp", "cb3_bw_exp")
             else (2,)
-            if model in ("cb_bw_poly2", "cb2_bw_poly2")
+            if model in ("cb_bw_poly2", "cb2_bw_poly2", "cb3_bw_poly2")
             else poly_degrees
         )
         for fit_range in fit_ranges:

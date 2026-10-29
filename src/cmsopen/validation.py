@@ -61,6 +61,7 @@ import numpy as np
 from cmsopen.fitting import (
     CB_MODELS,
     MIXTURE_MODELS,
+    THREE_RES_MODELS,
     FitError,
     FitResult,
     fit_mass_peak,
@@ -113,7 +114,15 @@ WORKING_POINTS: tuple[tuple[str, float], ...] = tuple(
     (qid, iso) for qid in ("medium", "tight") for iso in (0.08, 0.12, 0.20)
 )
 """(quality_id, max_rel_iso) samples; overlapping, not a partition."""
-COMPARED_MODELS: tuple[str, ...] = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2")
+COMPARED_MODELS: tuple[str, ...] = (
+    "voigt_poly",
+    "cb_bw_exp",
+    "cb_bw_poly2",
+    "cb2_bw_exp",
+    "cb2_bw_poly2",
+    "cb3_bw_exp",
+    "cb3_bw_poly2",
+)
 PAIR_FIELDS: tuple[str, ...] = ("mass", "eta_plus", "eta_minus", "phi_plus", "phi_minus", "pt_sublead", "npv")
 
 
@@ -492,8 +501,8 @@ def systematics_summary(
     stab_positions = [r["mass"] for r in stab.rows]
 
     other = {"cb_bw_exp": "cb_bw_poly2", "cb_bw_poly2": "cb_bw_exp", "cb2_bw_exp": "cb2_bw_poly2",
-             "cb2_bw_poly2": "cb2_bw_exp"}.get(model, model)
-    fixed_background = model in CB_MODELS or model in MIXTURE_MODELS
+             "cb2_bw_poly2": "cb2_bw_exp", "cb3_bw_exp": "cb3_bw_poly2", "cb3_bw_poly2": "cb3_bw_exp"}.get(model, model)
+    fixed_background = model in (*CB_MODELS, *MIXTURE_MODELS, *THREE_RES_MODELS)
     degree = config.poly_degree if fixed_background else config.poly_degree + 1
     variation: dict[str, Any] = {"model": other if fixed_background else f"{model}, degree {degree}"}
     try:
