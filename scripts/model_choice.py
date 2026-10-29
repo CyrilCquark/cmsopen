@@ -14,6 +14,9 @@ Usage:
     python scripts/model_choice.py [--file PATH] [--grid original|amended]
 
 ``--grid amended`` uses the cb_n grid of Amendment 1 in dev/model_choice.md.
+``--amendment2`` instead applies the resolution-mixture rule of Amendment 2
+(the channel's current default against the mixture with the same background,
+at the channel's current cb_n).
 """
 
 from __future__ import annotations
@@ -122,11 +125,64 @@ def compare(h: MassHistogram, cfg: ChannelConfig, cb_n: float) -> tuple[str | No
     return chosen, rows, why
 
 
+MIXTURE_OF = {"cb_bw_exp": "cb2_bw_exp", "cb_bw_poly2": "cb2_bw_poly2"}  # Amendment 2: same background
+AIC_MARGIN = 10.0
+
+
+def amendment2(h: MassHistogram, cfg: ChannelConfig) -> tuple[str, list[str], list[str]]:
+    """Amendment 2: the current default, both mixtures, eligibility (a)-(d) for the same-background mixture."""
+    default, candidate = cfg.model, MIXTURE_OF.get(cfg.model)
+    header = (
+        "| model | role | eligible | converged | on bound | background > 0 | chi2 / ndf | chi2/ndf | p-value | "
+        "pole [GeV] | sigma1 [GeV] | r | f | FWHM/2.355 [GeV] | signal yield | background yield | k | AIC |"
+    )
+    rows = [header, "|" + "---|" * 18]
+    fits: dict[str, FitResult | None] = {}
+    for model in (default, "cb2_bw_exp", "cb2_bw_poly2"):
+        role = "current default" if model == default else "candidate" if model == candidate else "information only"
+        try:
+            r = fit(h, cfg, model, cfg.cb_n)
+        except FitError as exc:
+            fits[model] = None
+            rows.append(f"| {model} | {role} | no | no ({exc}) |" + " |" * 14)
+            continue
+        fits[model] = r
+        d = 4 if r.peak_position[0] < 10 else 3
+        mix = "r" in r.parameters
+        fwhm, fwhm_err = r.fwhm
+        sy, by = r.signal_yield, r.background_yield
+        rows.append(
+            f"| {model} | {role} | {'yes' if not r.on_bound and r.yields_reliable else 'no'} | yes "
+            f"| {', '.join(r.on_bound) or 'none'} | {'yes' if r.yields_reliable else 'no'} | {r.chi2:.1f} / {r.ndf} "
+            f"| {r.chi2_ndf:.4f} | {r.p_value:.3g} | {pm(*r.peak_position, d)} | {pm(*r.parameters['sigma'], d)} "
+            f"| {pm(*r.parameters['r'], 3) if mix else '-'} | {pm(*r.parameters['f'], 3) if mix else '-'} "
+            f"| {pm(fwhm / 2.3548200450309493, fwhm_err / 2.3548200450309493, d)} "
+            f"| {sy[0]:,.0f} +- {sy[1]:,.0f} | {by[0]:,.0f} +- {by[1]:,.0f} | {len(r.values)} | {aic(r):.1f} |"
+        )
+    base, cand = fits[default], fits.get(candidate) if candidate else None
+    if candidate is None or base is None:
+        return default, rows, [f"No same-background mixture for {default}, or the default failed; unchanged."]
+    if cand is None:
+        return default, rows, [f"(a) {candidate} did not converge: not eligible. Selected: {default} (unchanged)."]
+    checks = [
+        ("(a) converged", True),
+        ("(b) no parameter on a bound", not cand.on_bound),
+        ("(c) background positive over the fit range", cand.yields_reliable),
+        (f"(d) AIC {aic(cand):.1f} <= {aic(base):.1f} - {AIC_MARGIN:g} = {aic(base) - AIC_MARGIN:.1f}",
+         aic(cand) <= aic(base) - AIC_MARGIN),
+    ]
+    chosen = candidate if all(ok for _, ok in checks) else default
+    why = [f"{candidate}: " + "; ".join(f"{name}: {'yes' if ok else 'NO'}" for name, ok in checks) + "."]
+    why.append(f"Selected: {chosen} ({'changes the default' if chosen != default else 'unchanged'}).")
+    return chosen, rows, why
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the rule for every registered channel on the development file and print the results."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=REPO / "data" / DEV_FILENAME, help="the development file")
     parser.add_argument("--grid", choices=sorted(CB_N_GRIDS), default="original", help="cb_n grid (default original)")
+    parser.add_argument("--amendment2", action="store_true", help="apply the resolution-mixture rule of Amendment 2")
     args = parser.parse_args(argv)
     path, grid = args.file.resolve(), CB_N_GRIDS[args.grid]
     if path.name != DEV_FILENAME:
@@ -136,6 +192,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: file not found: {path}", file=sys.stderr)
         return 2
     outcome: dict[str, Any] = {}
+    if args.amendment2:
+        for name in ("Z_mumu", "Jpsi_mumu"):
+            cfg = CHANNELS[name]
+            h = analyze(path, channel=name, stability=False, verbose=False).histogram
+            print(f"### {name} (Amendment 2; cb_n = {cfg.cb_n:g}, current default {cfg.model})\n")
+            chosen, table, why = amendment2(h, cfg)
+            print("\n".join(table))
+            print()
+            print("\n".join(why))
+            print()
+            outcome[name] = chosen
+        print("### Outcome of Amendment 2\n")
+        for name, chosen in outcome.items():
+            change = "unchanged" if chosen == CHANNELS[name].model else f"changes to {chosen}"
+            print(f"- {name}: default {CHANNELS[name].model} {change}.")
+        return 0
     for name in ("Z_mumu", "Jpsi_mumu"):
         cfg = CHANNELS[name]
         h = analyze(path, channel=name, stability=False, verbose=False).histogram  # the channel's own histogram
