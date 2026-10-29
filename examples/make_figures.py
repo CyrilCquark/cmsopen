@@ -1,8 +1,10 @@
 """Make the final figures of the Z -> mu+ mu- analysis from real CMS files.
 
-Runs the whole chain on every event of one or more files (one file at a
-time, in the order given, so memory holds one file's arrays; the masses and
-muon values are concatenated in that order and the cutflows added): the Z -> mu mu selection
+Runs the whole chain on every event of one or more files, in the order
+given, each read in chunks of CHUNK_SIZE events: per chunk only the pair
+masses are kept and the muon pT and eta are histogrammed at once
+(cmsopen.plotting.BinnedValues), so memory does not grow with the number of
+files; the cutflows of the chunks are added exactly: the Z -> mu mu selection
 (dimuon trigger, then cmsopen.ZMUMU_MUON_CUTS, then at least two muons),
 opposite-sign pairs, one per event with best_pair "highest_pt_sum", and
 two fits over the Z_mumu channel's fit range: its default model (the same
@@ -60,6 +62,9 @@ from cmsopen.fitting import MODELS, compare_to_pdg, pdg_mass_width
 from cmsopen.ingestion import DIMUON_TRIGGERS_2012
 from cmsopen.pipeline import _ALTERNATE_MODEL, CHANNELS, resonance_label
 from cmsopen.plotting import (
+    ETA_EDGES_DEFAULT,
+    PT_EDGES_DEFAULT,
+    BinnedValues,
     plot_cutflow,
     plot_eta_distribution,
     plot_mass_spectrum,
@@ -73,6 +78,7 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUTDIR = REPO / "build" / "figures"
 PRODUCTION_OUTDIR = REPO / "docs" / "figures"
 BOLD, RESET = "\033[1m", "\033[0m"
+CHUNK_SIZE = 100_000  # events per read; the figures do not depend on it
 CHANNEL = CHANNELS["Z_mumu"]
 MAIN_MODEL = CHANNEL.model  # the channel default, as in cmsopen.analyze
 OTHER_MODEL = _ALTERNATE_MODEL[MAIN_MODEL]
@@ -108,10 +114,10 @@ class _FileValues:
     mass: np.ndarray
     os_mass: np.ndarray
     ss_mass: np.ndarray
-    pt: np.ndarray
-    eta: np.ndarray
-    pt_all: np.ndarray
-    eta_all: np.ndarray
+    pt: BinnedValues
+    eta: BinnedValues
+    pt_all: BinnedValues
+    eta_all: BinnedValues
     cutflow: CutFlow
 
 
@@ -119,24 +125,54 @@ def _flat(array: Any) -> np.ndarray:
     return np.asarray(ak.to_numpy(ak.flatten(array, axis=None)), dtype=np.float64)
 
 
-def _file_values(path: Path) -> _FileValues:
-    """Run the selection on one file and keep only the flat values the figures need."""
-    with open_events(path) as events:
-        everything = select_muons(events)
-        triggered = everything.require_trigger(*DIMUON_TRIGGERS_2012)
-        loose = events.muons(min_pt=20.0, max_eta=2.4).require_trigger(*DIMUON_TRIGGERS_2012).require(2)
+def _chunk_values(events: Any, start: int, stop: int) -> _FileValues:
+    """Run the selection on one event range and keep only what the figures need (masses, binned pT and eta)."""
+    everything = select_muons(events, entry_start=start, entry_stop=stop)
+    triggered = everything.require_trigger(*DIMUON_TRIGGERS_2012)
+    loose = (events.muons(min_pt=20.0, max_eta=2.4, entry_start=start, entry_stop=stop)
+             .require_trigger(*DIMUON_TRIGGERS_2012).require(2))
     final = triggered.apply(**ZMUMU_MUON_CUTS).require(2)
     best = best_pair(opposite_sign_pairs(final), "highest_pt_sum")
     return _FileValues(
         mass=_flat(best.mass),
         os_mass=_flat(opposite_sign_pairs(loose).mass),
         ss_mass=_flat(same_sign_pairs(loose).mass),
-        pt=_flat(final.particles.p4.pt),
-        eta=_flat(final.particles.p4.eta),
-        pt_all=_flat(everything.particles.p4.pt),
-        eta_all=_flat(everything.particles.p4.eta),
+        pt=BinnedValues.from_values(_flat(final.particles.p4.pt), PT_EDGES_DEFAULT),
+        eta=BinnedValues.from_values(_flat(final.particles.p4.eta), ETA_EDGES_DEFAULT),
+        pt_all=BinnedValues.from_values(_flat(everything.particles.p4.pt), PT_EDGES_DEFAULT),
+        eta_all=BinnedValues.from_values(_flat(everything.particles.p4.eta), ETA_EDGES_DEFAULT),
         cutflow=final.cutflow(),
     )
+
+
+def _merge(parts: list[_FileValues]) -> _FileValues:
+    """The values of consecutive pieces of a sample, in order: masses concatenated, histograms and cutflows added."""
+    return _FileValues(
+        mass=np.concatenate([p.mass for p in parts]),
+        os_mass=np.concatenate([p.os_mass for p in parts]),
+        ss_mass=np.concatenate([p.ss_mass for p in parts]),
+        pt=_sum([p.pt for p in parts]),
+        eta=_sum([p.eta for p in parts]),
+        pt_all=_sum([p.pt_all for p in parts]),
+        eta_all=_sum([p.eta_all for p in parts]),
+        cutflow=CutFlow.combine([p.cutflow for p in parts]),
+    )
+
+
+def _sum(binned: list[BinnedValues]) -> BinnedValues:
+    total = binned[0]
+    for b in binned[1:]:
+        total = total + b
+    return total
+
+
+def _file_values(path: Path, chunk_size: int | None = None) -> _FileValues:
+    """One file, read in chunks of ``chunk_size`` events (default CHUNK_SIZE), merged in event order."""
+    size = CHUNK_SIZE if chunk_size is None else chunk_size
+    with open_events(path) as events:
+        n = events.n_events
+        parts = [_chunk_values(events, start, min(start + size, n)) for start in range(0, max(n, 1), size)]
+    return _merge(parts)
 
 
 def default_file() -> Path:
@@ -147,7 +183,7 @@ def default_file() -> Path:
     return files[0]
 
 
-def build(paths: Path | list[Path], model: str | None = None) -> Figures:
+def build(paths: Path | list[Path], model: str | None = None, chunk_size: int | None = None) -> Figures:
     """Run the analysis on ``paths`` (one file or several, in order) and build every figure (nothing is written).
 
     Each file is processed on its own; the per-file values are concatenated in
@@ -162,13 +198,13 @@ def build(paths: Path | list[Path], model: str | None = None) -> Figures:
     files = [paths] if isinstance(paths, Path) else list(paths)
     if not files:
         raise ValueError("build() needs at least one file")
-    parts = [_file_values(p) for p in files]
+    values = _merge([_file_values(p, chunk_size) for p in files])
 
-    def cat(name: str) -> np.ndarray:
-        return np.concatenate([getattr(v, name) for v in parts])
+    def cat(name: str) -> Any:
+        return getattr(values, name)
 
     out = Figures(data_files=files, main_model=main, other_model=_ALTERNATE_MODEL[main], data_label=run_label(files))
-    out.cutflow = CutFlow.combine([v.cutflow for v in parts])
+    out.cutflow = values.cutflow
     cfg = CHANNEL
     h = make_histogram(cat("mass"), bins=cfg.bins, range=cfg.mass_range)
     out.histograms["z_peak"] = h

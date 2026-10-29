@@ -60,6 +60,7 @@ import contextlib
 import math
 import textwrap
 from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -76,7 +77,10 @@ if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
 
 __all__ = [
+    "ETA_EDGES_DEFAULT",
     "FOOTNOTE",
+    "PT_EDGES_DEFAULT",
+    "BinnedValues",
     "OKABE_ITO",
     "apply_paper_style",
     "layout_overlaps",
@@ -961,6 +965,55 @@ def plot_mass_spectrum(
 # -- other figures -------------------------------------------------------------------------------------
 
 
+PT_EDGES_DEFAULT = np.arange(0.0, 202.0, 2.0)
+"""Default muon pT bin edges of :func:`plot_pt_distribution` (GeV)."""
+ETA_EDGES_DEFAULT = np.linspace(-12.0, 12.0, 97)
+"""Default muon pseudorapidity bin edges of :func:`plot_eta_distribution`."""
+
+
+@dataclass(frozen=True)
+class BinnedValues:
+    """Values already histogrammed: what :func:`plot_pt_distribution` and :func:`plot_eta_distribution` need.
+
+    A distribution figure shows bin counts, the number of values and how many
+    lie outside the axis. Those three add exactly over disjoint pieces of a
+    sample (chunks of a file, or several files), so a large sample can be
+    histogrammed piece by piece without keeping every value in memory, and
+    the figure is identical to the one made from all values at once.
+    """
+
+    edges: np.ndarray
+    counts: np.ndarray
+    n_total: int
+    n_outside: int
+
+    @classmethod
+    def from_values(cls, values: Any, edges: Any) -> BinnedValues:
+        """Histogram ``values`` (any array-like, jagged arrays flattened) over ``edges``."""
+        data = np.asarray(ak.to_numpy(ak.flatten(values, axis=None)) if isinstance(values, ak.Array) else values,
+                          dtype=np.float64).ravel()
+        e = np.asarray(edges, dtype=float)
+        counts, _ = np.histogram(data, bins=e)
+        return cls(e, counts, int(data.size), int(np.sum((data < e[0]) | (data >= e[-1]))))
+
+    def __add__(self, other: BinnedValues) -> BinnedValues:
+        if not np.array_equal(self.edges, other.edges):
+            raise ValueError("BinnedValues with different bin edges cannot be added")
+        return BinnedValues(self.edges, self.counts + other.counts, self.n_total + other.n_total,
+                            self.n_outside + other.n_outside)
+
+
+def _binned(values: Any, attr: str, bins: np.ndarray) -> tuple[np.ndarray, int, int]:
+    """(counts, number of values, number outside the axis) of values, a Selection/Muon, or :class:`BinnedValues`."""
+    if isinstance(values, BinnedValues):
+        if not np.array_equal(values.edges, bins):
+            raise ValueError("the BinnedValues' edges differ from the figure's bins")
+        return values.counts, values.n_total, values.n_outside
+    raw = _flat(values, attr)
+    counts, _ = np.histogram(raw, bins=bins)
+    return counts, int(raw.size), int(np.sum((raw < bins[0]) | (raw >= bins[-1])))
+
+
 def _distribution(
     values: Any,
     before: Any,
@@ -974,16 +1027,13 @@ def _distribution(
     acceptance: float | None,
     outside_text: Any,
 ) -> tuple[Figure, Axes]:
-    after = _flat(values, attr)
     with paper_style():
         fig = _prepare_figure(fig, (WIDTH, 3.8))
         ax = fig.subplots()
         lo, hi = bins[0], bins[-1]
         peak = 0.0
         if before is not None:
-            raw = _flat(before, attr)
-            counts, _ = np.histogram(raw, bins=bins)
-            outside = int(np.sum((raw < lo) | (raw >= hi)))
+            counts, n_raw, outside = _binned(before, attr, bins)
             ax.stairs(
                 counts,
                 bins,
@@ -992,11 +1042,10 @@ def _distribution(
                 linewidth=1.2,
                 baseline=None if logy else 0.0,
                 gid="before",
-                label=f"All muons ({raw.size:,}" + (f"; {outside:,} {outside_text})" if outside else ")"),
+                label=f"All muons ({n_raw:,}" + (f"; {outside:,} {outside_text})" if outside else ")"),
             )
             peak = max(peak, float(counts.max(initial=0)))
-        counts, _ = np.histogram(after, bins=bins)
-        outside = int(np.sum((after < lo) | (after >= hi)))
+        counts, n_after, outside = _binned(values, attr, bins)
         ax.stairs(
             counts,
             bins,
@@ -1005,7 +1054,7 @@ def _distribution(
             linewidth=1.4,
             baseline=None if logy else 0.0,
             gid="after",
-            label=f"Selected muons ({after.size:,}" + (f"; {outside:,} {outside_text})" if outside else ")"),
+            label=f"Selected muons ({n_after:,}" + (f"; {outside:,} {outside_text})" if outside else ")"),
         )
         peak = max(peak, float(counts.max(initial=0)), 1.0)
         if acceptance is not None:
@@ -1059,7 +1108,7 @@ def plot_pt_distribution(
     bins : sequence of float, optional
         Bin edges in GeV; default 0-200 GeV in 2 GeV bins.
     """
-    edges = np.asarray(bins if bins is not None else np.arange(0.0, 202.0, 2.0), dtype=float)
+    edges = np.asarray(bins if bins is not None else PT_EDGES_DEFAULT, dtype=float)
     width = np.diff(edges)
     ylabel = f"Muons / {width[0]:g} GeV" if np.allclose(width, width[0]) else "Muons / bin"
     return _distribution(
@@ -1094,7 +1143,7 @@ def plot_eta_distribution(
     dashed lines. The default axis, -12 to 12 in bins of 0.25, makes that
     junk visible.
     """
-    edges = np.asarray(bins if bins is not None else np.linspace(-12.0, 12.0, 97), dtype=float)
+    edges = np.asarray(bins if bins is not None else ETA_EDGES_DEFAULT, dtype=float)
     width = np.diff(edges)
     ylabel = f"Muons / {width[0]:g}" if np.allclose(width, width[0]) else "Muons / bin"
     return _distribution(

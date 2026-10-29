@@ -90,3 +90,55 @@ def test_the_default_model_is_the_channel_default():
 def test_build_needs_a_file():
     with pytest.raises(ValueError, match="at least one file"):
         make_figures.build([])
+
+
+@pytest.mark.slow
+def test_chunked_reading_gives_identical_figures_and_tables(two_files, tmp_path):
+    """Reading in small chunks (histogramming pT and eta per chunk) changes no number and no byte of any figure."""
+    a, b = two_files
+    small = make_figures.build([a, b], "voigt_poly", chunk_size=1_000)
+    whole = make_figures.build([a, b], "voigt_poly", chunk_size=10**9)  # one chunk per file
+    for name in ("z_peak", "os", "ss"):
+        assert np.array_equal(small.histograms[name].counts, whole.histograms[name].counts), name
+    assert np.array_equal(small.fits["voigt_poly"].values, whole.fits["voigt_poly"].values)
+    assert small.cutflow.to_records() == whole.cutflow.to_records()
+    make_figures.write(small, tmp_path / "small")
+    make_figures.write(whole, tmp_path / "whole")
+    files = sorted(p.name for p in (tmp_path / "whole").iterdir())
+    assert files == sorted(p.name for p in (tmp_path / "small").iterdir())
+    for name in files:
+        assert (tmp_path / "small" / name).read_bytes() == (tmp_path / "whole" / name).read_bytes(), name
+
+
+def test_binned_values_give_the_same_figure_as_raw_values(tmp_path):
+    from cmsopen.plotting import (
+        ETA_EDGES_DEFAULT,
+        PT_EDGES_DEFAULT,
+        BinnedValues,
+        plot_eta_distribution,
+        plot_pt_distribution,
+        save_figure,
+    )
+
+    rng = np.random.default_rng(3)
+    pt_sel, pt_all = rng.exponential(30.0, 5000) + 20.0, rng.exponential(8.0, 40000)
+    eta_sel, eta_all = rng.uniform(-2.4, 2.4, 5000), rng.normal(0.0, 4.0, 40000)
+    halves = [slice(0, 17000), slice(17000, None)]
+    binned_all = BinnedValues.from_values(pt_all[halves[0]], PT_EDGES_DEFAULT) + BinnedValues.from_values(
+        pt_all[halves[1]], PT_EDGES_DEFAULT)
+    pairs = [
+        (plot_pt_distribution(pt_sel, before=pt_all)[0],
+         plot_pt_distribution(BinnedValues.from_values(pt_sel, PT_EDGES_DEFAULT), before=binned_all)[0]),
+        (plot_eta_distribution(eta_sel, before=eta_all)[0],
+         plot_eta_distribution(BinnedValues.from_values(eta_sel, ETA_EDGES_DEFAULT),
+                               before=BinnedValues.from_values(eta_all, ETA_EDGES_DEFAULT))[0]),
+    ]
+    for i, (raw, binned) in enumerate(pairs):
+        (p1,) = save_figure(raw, tmp_path / f"raw{i}", formats=("png",))
+        (p2,) = save_figure(binned, tmp_path / f"binned{i}", formats=("png",))
+        assert p1.read_bytes() == p2.read_bytes()
+    assert binned_all.n_total == 40000 and binned_all.n_outside == int(np.sum(pt_all >= 200.0))
+    with pytest.raises(ValueError, match="different bin edges"):
+        binned_all + BinnedValues.from_values(pt_sel, np.linspace(0, 100, 11))
+    with pytest.raises(ValueError, match="edges differ"):
+        plot_pt_distribution(BinnedValues.from_values(pt_sel, np.linspace(0, 100, 11)))

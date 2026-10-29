@@ -558,3 +558,23 @@ mu+ - mu- eta [0.8, 2.4]: -0.00012 +- 0.00050 raw (-0.24 sigma), +- 0.00073 scal
 weighted mean -0.00001 +- 0.00013 raw; -0.00002 +- 0.00029 scaled
 model list: voigt_poly eligible, cb_bw_exp eligible, cb_bw_poly2 eligible, cb2_bw_exp eligible, cb2_bw_poly2 eligible, cb3_bw_exp not eligible, cb3_bw_poly2 not eligible
 ```
+
+## make_figures memory (2026-10-29, prompt 10)
+
+Peak resident set size of `python examples/make_figures.py --file ...` on the
+development set (macOS `/usr/bin/time -l`), before and after reading in
+chunks of 100,000 events with muon pT/eta histogrammed per chunk
+(plotting.BinnedValues). All figures, captions and READMEs are byte-identical
+before and after (apart from the README's commit line). Peaks vary by tens
+of MB between runs (allocator and garbage-collection timing).
+
+| inputs | before | after | time after |
+|---|---|---|---|
+| 1 file | 729 MB | 465 MB | 12.0 s |
+| 2 files | 1,015 MB | 507 MB | 15.7 s |
+| 4 files | 1,269 MB | 539 MB | 22.3 s |
+| 6 files | 1,094 MB (1.38 GB in prompt 8) | 628 MB | 27.8 s |
+| 18 inputs (the 6 files three times) | - | 751 MB | 61.4 s |
+
+Projected peak at 20 files: below 0.8 GB (the 18-input measurement), far
+below the 2 GB target.
