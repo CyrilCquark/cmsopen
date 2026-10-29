@@ -117,3 +117,47 @@ correction) is a separate, later decision.
 
 (Counts only, no fits; added in a separate commit after this plan was
 committed. They do not change anything above.)
+
+Counted on the development file after the plan above was committed (commit
+077d1b3), with an independent scratch script (selection, pairing, and
+classification only; no fit). Pairs in the fit range; entries below 5,000 are
+marked INSUFFICIENT (they will be reported, not fitted).
+
+| entry | Z_mumu | Jpsi_mumu |
+|---|---|---|
+| inclusive | 26,195 | 19,496 |
+| BB | 9,721 | 14,316 |
+| BE | 11,492 | 1,224 INSUFFICIENT |
+| EE | 4,982 INSUFFICIENT | 3,956 INSUFFICIENT |
+| phi(mu+) [-pi, -pi/2) | 6,498 | 4,987 INSUFFICIENT |
+| phi(mu+) [-pi/2, 0) | 6,664 | 4,821 INSUFFICIENT |
+| phi(mu+) [0, pi/2) | 6,378 | 4,614 INSUFFICIENT |
+| phi(mu+) [pi/2, pi] | 6,655 | 5,074 |
+| phi(mu-) [-pi, -pi/2) | 6,413 | 4,936 INSUFFICIENT |
+| phi(mu-) [-pi/2, 0) | 6,607 | 4,871 INSUFFICIENT |
+| phi(mu-) [0, pi/2) | 6,581 | 4,593 INSUFFICIENT |
+| phi(mu-) [pi/2, pi] | 6,594 | 5,096 |
+| eta(mu+) [-2.4, -0.8) | 7,658 | 4,213 INSUFFICIENT |
+| eta(mu+) [-0.8, 0.8) | 10,716 | 11,004 |
+| eta(mu+) [0.8, 2.4] | 7,821 | 4,279 INSUFFICIENT |
+| eta(mu-) [-2.4, -0.8) | 7,683 | 4,210 INSUFFICIENT |
+| eta(mu-) [-0.8, 0.8) | 10,652 | 11,038 |
+| eta(mu-) [0.8, 2.4] | 7,860 | 4,248 INSUFFICIENT |
+| sub-leading pT bin 1 (Z [20, 30), J/psi [3, 4)) | 5,274 | 39 INSUFFICIENT |
+| sub-leading pT bin 2 (Z [30, 40), J/psi [4, 6)) | 11,987 | 1,011 INSUFFICIENT |
+| sub-leading pT bin 3 (Z [40, 50), J/psi [6, 10)) | 8,575 | 8,521 |
+| sub-leading pT bin 4 (Z [50, inf), J/psi [10, inf)) | 359 INSUFFICIENT | 9,925 |
+| PV_npvsGood [0, 15) | 15,795 | 11,178 |
+| PV_npvsGood [15, 23) | 9,363 | 7,287 |
+| PV_npvsGood [23, inf) | 1,037 INSUFFICIENT | 1,031 INSUFFICIENT |
+| WP medium, iso < 0.08 | 19,135 | 569 INSUFFICIENT |
+| WP medium, iso < 0.12 | 24,745 | 931 INSUFFICIENT |
+| WP medium, iso < 0.20 | 29,361 | 1,708 INSUFFICIENT |
+| WP tight, iso < 0.08 | 20,168 | 527 INSUFFICIENT |
+| WP tight, iso < 0.12 | 26,195 | 848 INSUFFICIENT |
+| WP tight, iso < 0.20 | 31,150 | 1,550 INSUFFICIENT |
+
+Consequences on the development file: for Jpsi_mumu, most charge-study bins
+are just below the threshold, so the mu+ minus mu- comparison has only the
+phi [pi/2, pi] and central-eta bins, and no working point can be fitted.
+Z_mumu EE (4,982) misses the threshold by 18 pairs; it is still not fitted.
