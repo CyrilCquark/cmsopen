@@ -227,7 +227,11 @@ not `pytest -m "not slow"`) and show that it passes in the same step. The
 fast suite is only for iteration. Commits are gated on pytest's OWN exit
 status: use `set -o pipefail`, or `pytest ...; rc=$?; [ $rc -eq 0 ] && git
 commit ...`. Never pipe pytest into tail, head or tee when its exit status
-gates something.
+gates something. Before EVERY commit that touches code, notebooks or
+examples, also run ruff on all files (`ruff check src tests scripts
+examples`, which includes the notebooks) and `mypy`, in addition to the
+tests; the full `python scripts/check_quality.py` runs before the last
+commit of each phase.
 
 Never claim success without showing real command output. If a check
 fails, report the failure. Do not weaken or edit a check to make it pass.
