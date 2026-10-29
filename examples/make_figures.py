@@ -211,6 +211,12 @@ _MODEL_TEXT = {
     "cb2_bw_poly2": "a Breit-Wigner of the Z natural width (fixed) convolved with the sum of two Crystal Balls of "
                     "widths sigma1 and r * sigma1 (a fraction f in the narrow one; shared alpha and fixed n) plus a "
                     "quadratic background",
+    "cb3_bw_exp": "a Breit-Wigner of the Z natural width (fixed) convolved with the sum of three Crystal Balls of "
+                  "widths sigma1, r2 * sigma1 and r2 * s * sigma1 (fractions f1, (1 - f1) g and (1 - f1)(1 - g); "
+                  "shared alpha and fixed n) plus an exponential background",
+    "cb3_bw_poly2": "a Breit-Wigner of the Z natural width (fixed) convolved with the sum of three Crystal Balls of "
+                    "widths sigma1, r2 * sigma1 and r2 * s * sigma1 (fractions f1, (1 - f1) g and (1 - f1)(1 - g); "
+                    "shared alpha and fixed n) plus a quadratic background",
 }
 
 
@@ -225,8 +231,12 @@ def _fit_line(fit: Any) -> str:
     s, se = fit.resolution
     c = compare_to_pdg(fit)
     position = "pole mass" if fit.cb_n is not None else "peak position"
-    width = "resolution (FWHM/2.355 of the signal)" if "r" in fit.parameters else "sigma"
+    mixture = "r" in fit.parameters or "r2" in fit.parameters
+    width = "resolution (FWHM/2.355 of the signal)" if mixture else "sigma"
     extra = []
+    if "r2" in fit.parameters:
+        extra.append(f"sigma1 {_pm(fit, 'sigma')} GeV, r2 {_pm(fit, 'r2')}, s {_pm(fit, 's')}, f1 {_pm(fit, 'f1')}, "
+                     f"g {_pm(fit, 'g')}")
     if "r" in fit.parameters:
         extra.append(f"sigma1 {_pm(fit, 'sigma')} GeV, r {_pm(fit, 'r')}, f {_pm(fit, 'f')}")
     if fit.cb_n is not None:

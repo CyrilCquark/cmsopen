@@ -206,3 +206,29 @@ resolutions; a single-resolution line shape describes each sub-sample.
 7. Expected consequence, stated in advance: the scan tables reproduce the
    prompt 6 tables (which used these same single-resolution models as the
    channel defaults) to numerical tolerance. If they do not, work stops.
+
+## Addendum (2026-10-29, at the user's instruction in prompt 10): scaled statistical errors
+
+Written and committed before the code change.
+
+Reason: on the 6-file development set several validation entries have
+chi2/ndf well above 1 (development observations, dev/benchmarks.md, prompt
+9). There the line shape does not describe the sub-sample perfectly, and the
+statistical error from the chi2 curvature understates the uncertainty of the
+fitted position. The standard remedy (the PDG's scale factor) inflates the
+error by sqrt(chi2/ndf) when chi2/ndf exceeds 1.
+
+1. Every fitted entry and the inclusive reference also report a scaled
+   statistical error: error_scaled = error * S with S = max(1, sqrt(chi2/ndf))
+   of that entry's own fit. S is never below 1.
+2. The difference in units of sigma uses the scaled errors:
+   delta / sqrt(error_scaled^2 + error_scaled_inclusive^2). The raw error,
+   the raw delta/sigma and the scale factor stay in the tables beside it.
+3. The headline offset in the systematics summary reports both the raw and
+   the scaled statistical error (scaled with the headline fit's own
+   chi2/ndf).
+4. The mu+ minus mu- differences and every other summary quantity keep their
+   definitions; their errors are reported raw and, where they combine fitted
+   positions, also scaled.
+5. Nothing else changes: no cut, model, threshold or bin. Outputs with
+   validation off are byte-identical.
