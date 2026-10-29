@@ -30,8 +30,10 @@ PARTITIONS = ("region", "phi(mu+)", "phi(mu-)", "eta(mu+)", "eta(mu-)", "pT(subl
 
 
 def run(path, **kw):
-    # Synthetic peaks are Voigt-shaped with no radiative tail: the Voigt model describes them.
-    return analyze(path, model="voigt_poly", validation=True, verbose=False, stability=False, **kw)
+    # Synthetic peaks are Voigt-shaped with no radiative tail: the Voigt model describes them, so it is both the
+    # primary model and the validation model here (the registered channel's validation model is cb_bw_exp).
+    return analyze(path, model="voigt_poly", validation_model="voigt_poly", validation=True, verbose=False,
+                   stability=False, **kw)
 
 
 @pytest.fixture(scope="module")
@@ -197,7 +199,7 @@ def test_validation_off_is_the_old_behaviour(charge_file, charge_result, tmp_pat
 @pytest.mark.slow
 def test_cli_validation_flag(charge_file, tmp_path):
     assert main(["analyze", str(charge_file), "--model", "voigt_poly", "--no-stability", "--quiet", "--validation",
-                 "--outdir", str(tmp_path)]) == 0
+                 "--validation-model", "voigt_poly", "--outdir", str(tmp_path)]) == 0
     assert "Systematics summary" in (tmp_path / "summary.txt").read_text()
     assert "validation" in json.loads((tmp_path / "summary.json").read_text())
 

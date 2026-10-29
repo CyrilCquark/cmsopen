@@ -1,7 +1,8 @@
 """Run the pre-registered validation (dev/validation_plan.md) and save its tables and figures under build/.
 
 For each channel: ``cmsopen.analyze(file, channel=..., validation=True)`` with
-the channel's default model, then writes into ``build/validation/<channel>/``
+the channel's default model as the headline and its validation model for the
+scans (dev/validation_plan.md, prompt 8 addendum), then writes into ``build/validation/<channel>/``
 the analysis outputs (figures, summary.txt, summary.json), ``validation.txt``
 (the per-entry table and the systematics summary) and ``validation_entries``
 (png and pdf): every fitted entry's position with its statistical error,

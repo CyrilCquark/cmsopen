@@ -44,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also run the pre-registered validation (categories, charge, pT, pileup, working points)",
     )
+    a.add_argument(
+        "--validation-model",
+        default=None,
+        choices=MODELS,
+        help="model of the validation scans and their inclusive reference (default: the channel's validation model)",
+    )
     a.add_argument("--quiet", action="store_true", help="do not print the summary")
     f = sub.add_parser("fetch", help="download the development data file (resumable, size and adler32 verified)")
     f.add_argument("--dest", type=Path, default=Path("data"), help="directory to download into (default: data)")
@@ -85,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
             stability=not args.no_stability,
             n_workers=args.workers,
             validation=args.validation,
+            validation_model=args.validation_model,
         )
     except (AnalysisError, ValueError, TypeError, OSError, KeyError) as exc:
         message = exc.args[0] if isinstance(exc, KeyError) and exc.args else exc

@@ -158,6 +158,15 @@ class ChannelConfig:
         The fit-choice grid of :func:`cmsopen.fitting.fit_stability`.
     min_pairs : int
         Fewest candidate pairs in the fit range for which a fit is attempted.
+    validation_model : str, optional
+        The model of the validation scans and of their inclusive reference
+        (:func:`cmsopen.validation.run_validation`); None: the primary model.
+        The registered channels use the single-resolution counterpart of
+        their mixture default, because a sub-sample of nearly one
+        resolution cannot determine a second core (dev/validation_plan.md,
+        prompt 8 addendum). It is recorded in the validation part of the
+        outputs and left out of :meth:`to_dict`, so outputs without
+        validation do not depend on it.
     """
 
     name: str
@@ -176,6 +185,7 @@ class ChannelConfig:
     resonance_label: str | None = None
     cb_n: float = 3.0
     model: str = "voigt_poly"
+    validation_model: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "muon_cuts", MappingProxyType(dict(self.muon_cuts)))
@@ -193,12 +203,14 @@ class ChannelConfig:
             raise ValueError("bins must be >= 1 and poly_degree >= 0")
         if self.model not in MODELS:
             raise ValueError(f"model must be one of {MODELS}, got {self.model!r}")
+        if self.validation_model is not None and self.validation_model not in MODELS:
+            raise ValueError(f"validation_model must be one of {MODELS} or None, got {self.validation_model!r}")
         if not (math.isfinite(self.cb_n) and self.cb_n > 0):
             raise ValueError(f"cb_n must be a positive number, got {self.cb_n!r}")
 
     def to_dict(self) -> dict[str, Any]:
         """The configuration as plain JSON types."""
-        d = {f.name: getattr(self, f.name) for f in fields(self)}
+        d = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "validation_model"}
         d["muon_cuts"] = dict(self.muon_cuts)
         return _jsonable(d)
 
@@ -234,6 +246,7 @@ register_channel(
         resonance_label="Z",
         cb_n=2.0,  # dev/model_choice.md, step 1
         model="cb2_bw_exp",  # dev/model_choice.md, Amendment 2 (previously cb_bw_exp)
+        validation_model="cb_bw_exp",  # dev/validation_plan.md, prompt 8 addendum
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((70.0, 110.0), (75.0, 105.0), (80.0, 100.0)),
         stability_bin_widths=(0.5, 1.0, 2.0),
@@ -254,6 +267,7 @@ register_channel(
         resonance_label=r"J/\psi",
         cb_n=100.0,  # dev/model_choice.md, Amendment 1 (step 1 on the amended grid)
         model="cb2_bw_poly2",  # dev/model_choice.md, Amendment 2 (previously cb_bw_poly2)
+        validation_model="cb_bw_poly2",  # dev/validation_plan.md, prompt 8 addendum
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((2.8, 3.4), (2.85, 3.35), (2.9, 3.3)),
         stability_bin_widths=(0.01, 0.02, 0.04),
@@ -848,6 +862,7 @@ def _validate(
     files: list[str],
     cfg: ChannelConfig,
     model: str,
+    validation_model: str,
     n_events: int | None,
     chunk_size: int,
     n_workers: int | None,
@@ -863,7 +878,7 @@ def _validate(
         fields = _muon_fields(wp_cfg.muon_cuts)
         units, _ = _plan(files, wp_cfg, n_events, chunk_size, fields)
         wp_masses[(qid, iso)] = np.concatenate([c.masses for c in _execute(units, wp_cfg, fields, n_workers)])
-    return run_validation(cfg, model, pairs, wp_masses)
+    return run_validation(cfg, model, pairs, wp_masses, validation_model=validation_model)
 
 
 def _figures(
@@ -904,6 +919,7 @@ def analyze(
     config: ChannelConfig | None = None,
     n_workers: int | None = None,
     validation: bool = False,
+    validation_model: str | None = None,
 ) -> AnalysisResult:
     """Run the full dimuon resonance analysis on one or more NanoAOD files.
 
@@ -964,13 +980,18 @@ def analyze(
         ``cmsopen`` command need nothing extra.
     validation : bool
         Also run the pre-registered validation (dev/validation_plan.md,
-        :func:`cmsopen.validation.run_validation`): the primary model fitted
+        :func:`cmsopen.validation.run_validation`): the validation model fitted
         in barrel/endcap categories, mu+ and mu- azimuth and pseudorapidity
         bins, sub-leading muon pT bins, pileup bins and six muon ID and
         isolation working points (each a further pass over the files), and
         the systematics summary. Needs the PV_npvsGood branch. Off by
         default; with it off the result and every output are exactly as
         without this option.
+    validation_model : str, optional
+        The model of the validation scans and their inclusive reference
+        (default: the channel's ``validation_model``, or the primary model
+        if the channel has none). Overriding ``model`` does not change it.
+        The systematics summary's headline offset uses the primary model.
 
     Raises
     ------
@@ -988,6 +1009,9 @@ def analyze(
     model = cfg.model if model is None else model
     if model not in MODELS:
         raise ValueError(f"model must be one of {MODELS}, got {model!r}")
+    scan_model = validation_model or cfg.validation_model or model
+    if scan_model not in MODELS:
+        raise ValueError(f"validation_model must be one of {MODELS}, got {scan_model!r}")
     if not isinstance(chunk_size, (int, np.integer)) or chunk_size < 1:
         raise ValueError(f"chunk_size must be a positive integer, got {chunk_size!r}")
     if n_workers is not None and (
@@ -1076,7 +1100,9 @@ def analyze(
         figures=figures,
         warnings=warnings,
         versions=_versions(),
-        validation=_validate(files, cfg, model, n_events, chunk_size, n_workers, chunks) if validation else None,
+        validation=(
+            _validate(files, cfg, model, scan_model, n_events, chunk_size, n_workers, chunks) if validation else None
+        ),
     )
     if verbose:
         print(result.summary())

@@ -292,8 +292,12 @@ class SystematicsSummary:
 
     Attributes
     ----------
+    model, validation_model : str
+        The headline model (the channel default) and the validation model
+        that fitted the scans (dev/validation_plan.md, prompt 8 addendum).
     pdg_offset, pdg_offset_error : float
-        Inclusive position - PDG mass (GeV) and the statistical error.
+        Headline inclusive position - PDG mass (GeV) and the statistical
+        error; the headline fit uses the channel default ``model``.
     models : tuple of dict
         voigt_poly, cb_bw_exp, cb_bw_poly2, cb2_bw_exp and cb2_bw_poly2 on the inclusive sample:
         position, error, chi2/ndf, and ``eligible`` by the model-choice
@@ -301,13 +305,14 @@ class SystematicsSummary:
     model_spread : float or None
         max - min of the eligible models' positions (None if fewer than two).
     fit_choice_rows, fit_choice_failed : tuples
-        The default model over the channel's fit-range x bin-width grid.
+        The headline model over the channel's fit-range x bin-width grid.
     fit_choice_spread, fit_choice_std : float or None
     background_variation : dict
-        The default model's signal with the other background, and its
-        difference to the nominal position.
+        The headline model's signal with the other background, and its
+        difference to the headline position.
     category_spread, category_max_delta_sigma : float or None
-        max - min of the fitted BB/BE/EE positions, and the largest
+        From here on, quantities of the scans (fitted with the validation
+        model). max - min of the fitted BB/BE/EE positions, and the largest
         |delta_sigma| among them.
     charge_differences : tuple of dict
         Per phi or eta bin where both charges are fitted: m(mu+) - m(mu-)
@@ -339,6 +344,7 @@ class SystematicsSummary:
     working_point_spread: float | None
     n_insufficient: int = 0
     n_failed: int = 0
+    validation_model: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """The summary as plain JSON types."""
@@ -352,7 +358,11 @@ class SystematicsSummary:
         def gev(x: float | None, digits: int = 4) -> str:
             return "n/a" if x is None else f"{x:+.{digits}f} GeV"
 
-        lines = [f"Systematics summary ({self.channel}, default model {self.model}); all values measured, no targets"]
+        scans = self.validation_model or self.model
+        lines = [
+            f"Systematics summary ({self.channel}, headline model {self.model}, validation scans {scans}); "
+            "all values measured, no targets"
+        ]
         if self.pdg_offset is not None:
             lines.append(
                 f"  offset from PDG {self.pdg_particle} mass ({self.pdg_mass:.4f} GeV): {gev(self.pdg_offset)} "
@@ -376,9 +386,10 @@ class SystematicsSummary:
         )
         bv = self.background_variation
         if bv.get("status") == "fitted":
-            lines.append(f"  background variation ({bv['model']}): {gev(bv['difference'])} relative to nominal")
+            lines.append(f"  background variation ({bv['model']}): {gev(bv['difference'])} relative to the headline")
         else:
             lines.append(f"  background variation ({bv.get('model')}): {bv.get('reason', 'not available')}")
+        lines.append(f"  from the validation scans ({scans}):")
         lines.append(
             f"  categories BB/BE/EE: max - min {gev(self.category_spread)}, largest |delta|/sigma "
             f"{'n/a' if self.category_max_delta_sigma is None else f'{self.category_max_delta_sigma:.2f}'}"
@@ -418,12 +429,17 @@ def systematics_summary(
     masses: Any,
     inclusive: ValidationEntry,
     entries: Sequence[ValidationEntry],
+    headline: ValidationEntry | None = None,
 ) -> SystematicsSummary:
     """Collect the measured offsets and spreads of dev/validation_plan.md for one channel.
 
-    ``masses`` are all chosen-pair masses (the inclusive sample), ``inclusive``
-    its fit with ``model``, ``entries`` the category, bin and working-point
-    entries from :func:`run_validation`. The fit-choice part refits the
+    ``masses`` are all chosen-pair masses (the inclusive sample), ``model``
+    the headline model (the channel default) and ``headline`` the inclusive
+    fit with it, ``inclusive`` the inclusive reference fitted with the
+    validation model and ``entries`` the category, bin and working-point
+    entries from :func:`run_validation`, fitted with that same validation
+    model (``headline`` defaults to ``inclusive``: one model for both).
+    The offset from the PDG mass is the headline's. The fit-choice part refits the
     inclusive masses: the models of the model-choice rule and its Amendment 2
     mixtures (eligibility as there), the channel's fit-range x bin-width grid with ``model``, and
     ``model`` with the other background (cb_bw_exp <-> cb_bw_poly2; one
@@ -434,10 +450,11 @@ def systematics_summary(
     hist = make_histogram(m, bins=config.bins, range=config.mass_range)
     common: dict[str, Any] = {"fit_range": config.fit_range, "poly_degree": config.poly_degree, "natural_width": width}
 
+    head = inclusive if headline is None else headline
     pdg_mass = pdg_mass_width(config.resonance)[0]
     offset = offset_err = None
-    if inclusive.fitted:
-        offset, offset_err = _num(inclusive.position) - pdg_mass, inclusive.error
+    if head.fitted:
+        offset, offset_err = _num(head.position) - pdg_mass, head.error
 
     models: list[dict[str, Any]] = []
     for name in COMPARED_MODELS:
@@ -482,8 +499,8 @@ def systematics_summary(
     try:
         alt = fit_mass_peak(hist, model=other, cb_n=config.cb_n, **{**common, "poly_degree": degree})
         variation.update(status="fitted", position=alt.peak_position[0])
-        if inclusive.fitted:
-            variation["difference"] = alt.peak_position[0] - _num(inclusive.position)
+        if head.fitted:
+            variation["difference"] = alt.peak_position[0] - _num(head.position)
     except FitError as exc:
         variation.update(status="failed", reason=f"fit failed: {exc}")
 
@@ -534,6 +551,7 @@ def systematics_summary(
         working_point_spread=_spread(wps),
         n_insufficient=sum(e.status == "insufficient" for e in entries),
         n_failed=sum(e.status == "failed" for e in entries),
+        validation_model=inclusive.model,
     )
 
 
@@ -542,13 +560,19 @@ def systematics_summary(
 
 @dataclass(frozen=True)
 class ValidationResult:
-    """Every validation entry of one channel and its :class:`SystematicsSummary`."""
+    """Every validation entry of one channel and its :class:`SystematicsSummary`.
+
+    ``model`` is the validation model that fitted the inclusive reference and
+    every entry; ``headline_model`` the channel default whose inclusive fit
+    gives the headline offset in the summary.
+    """
 
     channel: str
     model: str
     inclusive: ValidationEntry
     entries: tuple[ValidationEntry, ...]
     summary: SystematicsSummary = field(repr=False)
+    headline_model: str | None = None
 
     def study(self, name: str) -> list[ValidationEntry]:
         """The entries of one study (``"region"``, ``"phi(mu+)"``, ..., ``"working point"``)."""
@@ -560,6 +584,7 @@ class ValidationResult:
             "schema": "cmsopen.ValidationResult/1",
             "channel": self.channel,
             "model": self.model,
+            "headline_model": self.headline_model or self.model,
             "min_pairs": MIN_PAIRS,
             "inclusive": self.inclusive.to_dict(),
             "entries": [e.to_dict() for e in self.entries],
@@ -572,7 +597,11 @@ class ValidationResult:
             f"{'study':<15}{'entry':<22}{'pairs':>8}  {'position [GeV]':>22}{'resolution [GeV]':>22}"
             f"{'chi2/ndf':>10}{'signal':>10}{'delta/sigma':>13}  status"
         )
-        lines = [f"Validation ({self.channel}, model {self.model}; at least {MIN_PAIRS:,} pairs per entry)", head]
+        title = (
+            f"Validation ({self.channel}; scans and inclusive reference fitted with the validation model "
+            f"{self.model}, headline model {self.headline_model or self.model}; at least {MIN_PAIRS:,} pairs per entry)"
+        )
+        lines = [title, head]
         d = 4 if self.inclusive.position is None or self.inclusive.position < 10 else 3
         for e in (self.inclusive, *self.entries):
             if e.fitted:
@@ -601,8 +630,18 @@ def run_validation(
     pairs: Mapping[str, np.ndarray],
     working_points: Mapping[tuple[str, float], np.ndarray],
     pt_edges: Sequence[float] | None = None,
+    validation_model: str | None = None,
 ) -> ValidationResult:
     """Fit every pre-registered category, bin and working point of one channel and summarise the systematics.
+
+    ``model`` is the headline model (the channel default). The scans and the
+    inclusive reference their differences are taken to are fitted with
+    ``validation_model`` (default: ``model``). The registered channels'
+    defaults are resolution mixtures, whose second core cannot be
+    identified in a sub-sample of nearly one resolution (a barrel-only or a
+    narrow pT bin); the validation model is the single-resolution line shape
+    with the same background, so that each sub-sample is described by a
+    model it can determine (dev/validation_plan.md, prompt 8 addendum).
 
     ``pairs`` holds, per chosen pair, ``mass``, ``eta_plus``, ``eta_minus``,
     ``phi_plus``, ``phi_minus``, ``pt_sublead`` and ``npv`` (PV_npvsGood);
@@ -614,11 +653,13 @@ def run_validation(
     if missing:
         raise ValueError(f"pairs lacks {missing}")
     mass = np.asarray(pairs["mass"], dtype=np.float64)
-    inclusive = fit_entry(mass, config, model, "inclusive", "all pairs")
+    scan_model = model if validation_model is None else validation_model
+    inclusive = fit_entry(mass, config, scan_model, "inclusive", "all pairs")
+    headline = inclusive if scan_model == model else fit_entry(mass, config, model, "headline", "all pairs")
 
     def add(study: str, labels: Sequence[str], index: np.ndarray) -> None:
         for k, label in enumerate(labels):
-            entries.append(fit_entry(mass[index == k], config, model, study, label, inclusive))
+            entries.append(fit_entry(mass[index == k], config, scan_model, study, label, inclusive))
 
     entries: list[ValidationEntry] = []
     regions = classify_regions(pairs["eta_plus"], pairs["eta_minus"])
@@ -634,6 +675,8 @@ def run_validation(
         add("pT(sublead)", _labels(edges, " GeV"), bin_index(pairs["pt_sublead"], edges))
     add("PV_npvsGood", _labels(PILEUP_EDGES), bin_index(pairs["npv"], PILEUP_EDGES))
     for (qid, iso), wp_masses in working_points.items():
-        entries.append(fit_entry(wp_masses, config, model, "working point", f"{qid}, iso < {iso:g}", inclusive))
-    summary = systematics_summary(config, model, mass, inclusive, entries)
-    return ValidationResult(config.name, model, inclusive, tuple(entries), summary)
+        entries.append(
+            fit_entry(wp_masses, config, scan_model, "working point", f"{qid}, iso < {iso:g}", inclusive)
+        )
+    summary = systematics_summary(config, model, mass, inclusive, entries, headline)
+    return ValidationResult(config.name, scan_model, inclusive, tuple(entries), summary, model)
