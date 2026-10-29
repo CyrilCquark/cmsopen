@@ -67,3 +67,16 @@ Development observations, labelled as such; full tables in
 
 chi2/ndf benchmark: <= 2.0 (T2, production sample). Observed here (development
 file, selected model): Z_mumu 1.6438, Jpsi_mumu 2.9740.
+
+## Model choice, Amendment 1 grid (2026-10-28)
+
+Development observations; full tables in `dev/model_choice.md`
+("Amendment 1 results"). cb_n grid {1, 2, 3, 5, 10, 20, 30, 50, 100}.
+
+| channel | selected cb_n | model | chi2/ndf | p-value | peak or pole [GeV] | resolution [GeV] |
+|---|---|---|---|---|---|---|
+| Z_mumu | 2 | cb_bw_exp | 1.6438 | 0.0104 | 90.875 +- 0.022 | 1.338 +- 0.029 |
+| Jpsi_mumu | 100 (grid edge) | cb_bw_poly2 | 2.8473 | 5.92e-06 | 3.0934 +- 0.0003 | 0.0306 +- 0.0003 |
+
+chi2/ndf benchmark: <= 2.0 (T2, production sample). Observed here (development
+file): Z_mumu 1.6438, Jpsi_mumu 2.8473.
