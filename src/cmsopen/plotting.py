@@ -635,7 +635,8 @@ def _fit_annotation(fit: FitResult, resonance_label: str | None = None, natural_
         f"{fit.fit_range[0]:g}$-${fit.fit_range[1]:g} GeV"
     ]
     m, me = _fmt_pm(*fit.peak_position)
-    lines.append(rf"$m_{{\mathrm{{peak}}}}$ = {m} $\pm$ {me} GeV (stat.)")
+    position = r"$M_{\mathrm{pole}}$" if fit.cb_n is not None else r"$m_{\mathrm{peak}}$"  # BW pole for cb_bw_*
+    lines.append(rf"{position} = {m} $\pm$ {me} GeV (stat.)")
     s, se = _fmt_pm(*fit.resolution)
     if fit.gamma is None:
         lines.append(rf"$\sigma$ = {s} $\pm$ {se} GeV (effective)")
