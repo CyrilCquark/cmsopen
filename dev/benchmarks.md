@@ -171,3 +171,31 @@ Jpsi_mumu:
 - Systematics summary: offset from PDG -0.0038 +- 0.0003 GeV (stat.); all five
   models eligible, spread 0.0013 GeV; range x bin width spread 0.0002 GeV
   (6 fits, 3 failed); background variation +0.0001 GeV.
+
+## Validation with the validation model (2026-10-29, prompt 8, development file)
+
+dev/validation_plan.md, prompt 8 addendum: scans and their inclusive
+reference use ChannelConfig.validation_model (Z_mumu cb_bw_exp, Jpsi_mumu
+cb_bw_poly2); the headline remains the Amendment 2 default.
+
+- Regression check (scripts/compare_validation.py, build/regression_prompt8.txt):
+  every entry of both channels (pairs, position, resolution, chi2/ndf,
+  signal, status) reproduces the prompt 6 tables exactly (largest relative
+  difference 0). Z_mumu: 1 entry failed (pT [40, 50)), 3 insufficient (EE,
+  pT [50, inf), PV [23, inf)), as in prompt 6.
+- Everything outside the validation part (summary.json, summary.txt before
+  the validation tables, figures) is identical to the prompt 7 run.
+- The headline offsets are unchanged: Z_mumu -0.3364 +- 0.0232 GeV,
+  Jpsi_mumu -0.0038 +- 0.0003 GeV (channel default models).
+
+## Slow-test timeout (2026-10-29, prompt 8)
+
+- pytest-timeout, signal method, set in tests/conftest.py: 300 s per slow
+  test, 120 s per other test.
+- Slowest normal tests (full suite, 407 tests, 471 s, with a download
+  running alongside): Z cb2 pull test 96.6 s, two-file parallel test 48.2 s.
+  The slowest fast test takes under 5 s. 300 s is about 3x the slowest.
+- With the prompt 7 breakage "sigma1 used for both cores", the full suite
+  ended in 21 min 44 s (11 failed, 3 errors from an unrelated new test, 1 of
+  the failures a timeout at 300 s). Before the timeout, the same breakage
+  ran for more than 67 minutes and was killed.
