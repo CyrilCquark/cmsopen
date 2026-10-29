@@ -169,3 +169,40 @@ resolution mixtures cb2_bw_exp and cb2_bw_poly2 (dev/model_choice.md), each
 labelled eligible or not by the same criteria, so the model part of the
 fit-choice spread includes them. Nothing else in this plan changes; the
 validation is rerun as pre-registered with the new default models.
+
+## Addendum (2026-10-29, at the user's instruction in prompt 8): the validation model
+
+Written and committed before any validation rerun under it.
+
+Reason: the sub-samples of the scans are resolution-homogeneous, so the
+second core of the Amendment 2 resolution mixture is not identifiable in
+them (prompt 7: 9 Z_mumu entries failed with r or f on a bound or not
+constrained). The mixture describes the inclusive sample, which mixes
+resolutions; a single-resolution line shape describes each sub-sample.
+
+1. Each channel has a validation model, `ChannelConfig.validation_model`:
+   the single-resolution model with the same background as the
+   pre-Layer-6c default. Z_mumu: cb_bw_exp. Jpsi_mumu: cb_bw_poly2. cb_n is
+   unchanged (Z 2.0, J/psi 100.0).
+2. The validation scans (categories, mu+ and mu- phi and eta bins, sub-leading
+   pT bins, pileup bins and working points) are fitted with the validation
+   model.
+3. The inclusive reference used for delta and delta/sigma is fitted with
+   the same validation model, so each difference compares like with like.
+4. chi2/ndf of a sub-sample fit is a diagnostic. The T2 adequacy criterion
+   (dev/targets.md) applies to the headline inclusive fit only, which
+   remains the channel default (the Amendment 2 mixture). dev/targets.md is
+   not edited.
+5. In the systematics summary the headline offset from the PDG mass still
+   uses the channel default's inclusive fit, and the model list still
+   contains every model (the model-choice models and the Amendment 2
+   mixtures). The fit-range x bin-width grid and the background variation
+   are fit-choice variations of the headline and also use the channel
+   default; the background variation is quoted relative to the headline
+   position. The category spread, the mu+ minus mu- differences and the
+   working-point spread come from the scans, so from the validation model.
+6. Every output names the model used: each entry carries its model, and the
+   tables and JSON name both the validation model and the headline model.
+7. Expected consequence, stated in advance: the scan tables reproduce the
+   prompt 6 tables (which used these same single-resolution models as the
+   channel defaults) to numerical tolerance. If they do not, work stops.
