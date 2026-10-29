@@ -190,6 +190,14 @@ class ValidationEntry:
     correlated, so this combined error overstates the uncertainty of the
     difference: delta_sigma is a conservative consistency measure, not a
     significance.
+
+    ``scale_factor`` is S = max(1, sqrt(chi2/ndf)) of the entry's own fit and
+    ``error_scaled`` = error * S (dev/validation_plan.md, prompt 10 addendum).
+    When chi2/ndf exceeds 1 the line shape does not describe the sub-sample
+    perfectly and the curvature error understates the uncertainty of the
+    position; scaling by sqrt(chi2/ndf) (the PDG's scale factor) widens it
+    accordingly, and never narrows it. ``delta_sigma_scaled`` is delta over the
+    combined scaled errors; the raw ``error`` and ``delta_sigma`` are kept.
     """
 
     study: str
@@ -207,6 +215,9 @@ class ValidationEntry:
     delta: float | None = None
     delta_sigma: float | None = None
     reason: str = ""
+    scale_factor: float | None = None
+    error_scaled: float | None = None
+    delta_sigma_scaled: float | None = None
 
     @property
     def fitted(self) -> bool:
@@ -265,15 +276,22 @@ def fit_entry(
     return _entry_from_fit(fit, study, label, n_pairs, inclusive)
 
 
+def scale_factor(chi2_ndf: float) -> float:
+    """The error scale factor S = max(1, sqrt(chi2/ndf)): never below 1 (dev/validation_plan.md, prompt 10)."""
+    return max(1.0, math.sqrt(chi2_ndf)) if math.isfinite(chi2_ndf) and chi2_ndf > 0 else 1.0
+
+
 def _entry_from_fit(
     fit: FitResult, study: str, label: str, n_pairs: int, inclusive: ValidationEntry | None
 ) -> ValidationEntry:
     pos, err = fit.peak_position
     res, res_err = fit.resolution
-    delta = delta_sigma = None
+    scale = scale_factor(fit.chi2_ndf)
+    delta = delta_sigma = delta_sigma_scaled = None
     if inclusive is not None and inclusive.fitted:
         delta = pos - _num(inclusive.position)
         delta_sigma = delta / math.hypot(err, _num(inclusive.error))
+        delta_sigma_scaled = delta / math.hypot(err * scale, _num(inclusive.error_scaled))
     return ValidationEntry(
         study,
         label,
@@ -289,6 +307,9 @@ def _entry_from_fit(
         yields_reliable=fit.yields_reliable,
         delta=delta,
         delta_sigma=delta_sigma,
+        scale_factor=scale,
+        error_scaled=err * scale,
+        delta_sigma_scaled=delta_sigma_scaled,
     )
 
 
@@ -307,6 +328,8 @@ class SystematicsSummary:
     pdg_offset, pdg_offset_error : float
         Headline inclusive position - PDG mass (GeV) and the statistical
         error; the headline fit uses the channel default ``model``.
+    pdg_offset_error_scaled : float or None
+        The same error times max(1, sqrt(chi2/ndf)) of the headline fit.
     models : tuple of dict
         voigt_poly, cb_bw_exp, cb_bw_poly2, cb2_bw_exp and cb2_bw_poly2 on the inclusive sample:
         position, error, chi2/ndf, and ``eligible`` by the model-choice
@@ -327,6 +350,9 @@ class SystematicsSummary:
         Per phi or eta bin where both charges are fitted: m(mu+) - m(mu-)
         and its combined error.
     charge_max_difference, charge_weighted_mean, charge_weighted_mean_error : float or None
+    category_max_delta_sigma_scaled, charge_weighted_mean_scaled, charge_weighted_mean_error_scaled : float or None
+        The same with the scaled errors (each charge difference also carries
+        ``error_scaled``).
     working_point_spread : float or None
         max - min of the fitted working-point positions.
     """
@@ -354,6 +380,10 @@ class SystematicsSummary:
     n_insufficient: int = 0
     n_failed: int = 0
     validation_model: str | None = None
+    pdg_offset_error_scaled: float | None = None
+    category_max_delta_sigma_scaled: float | None = None
+    charge_weighted_mean_scaled: float | None = None
+    charge_weighted_mean_error_scaled: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """The summary as plain JSON types."""
@@ -376,6 +406,11 @@ class SystematicsSummary:
             lines.append(
                 f"  offset from PDG {self.pdg_particle} mass ({self.pdg_mass:.4f} GeV): {gev(self.pdg_offset)} "
                 f"+- {self.pdg_offset_error:.4f} (stat.)"
+                + (
+                    ""
+                    if self.pdg_offset_error_scaled is None
+                    else f", scaled +- {self.pdg_offset_error_scaled:.4f} (stat. x max(1, sqrt(chi2/ndf)))"
+                )
             )
         lines.append("  fit choices, model (inclusive sample):")
         for row in self.models:
@@ -402,10 +437,18 @@ class SystematicsSummary:
         lines.append(
             f"  categories BB/BE/EE: max - min {gev(self.category_spread)}, largest |delta|/sigma "
             f"{'n/a' if self.category_max_delta_sigma is None else f'{self.category_max_delta_sigma:.2f}'}"
+            + (
+                ""
+                if self.category_max_delta_sigma_scaled is None
+                else f" (scaled errors: {self.category_max_delta_sigma_scaled:.2f})"
+            )
         )
         lines.append("  mu+ minus mu- (bins where both charges are fitted):")
         for d in self.charge_differences:
-            lines.append(f"    {d['binning']} {d['bin']}: {gev(d['difference'])} +- {d['error']:.4f}")
+            lines.append(
+                f"    {d['binning']} {d['bin']}: {gev(d['difference'])} +- {d['error']:.4f}"
+                + (f" (scaled +- {d['error_scaled']:.4f})" if d.get("error_scaled") is not None else "")
+            )
         if not self.charge_differences:
             lines.append("    none (no bin has both charges fitted)")
         lines.append(
@@ -414,6 +457,12 @@ class SystematicsSummary:
                 "n/a"
                 if self.charge_weighted_mean is None
                 else f"{gev(self.charge_weighted_mean)} +- {self.charge_weighted_mean_error:.4f}"
+            )
+            + (
+                ""
+                if self.charge_weighted_mean_scaled is None
+                else f"; with scaled errors {gev(self.charge_weighted_mean_scaled)} "
+                f"+- {self.charge_weighted_mean_error_scaled:.4f}"
             )
         )
         lines.append(f"  working points: max - min {gev(self.working_point_spread)}")
@@ -526,13 +575,19 @@ def systematics_summary(
                         "bin": label,
                         "difference": _num(plus.position) - _num(minus.position),
                         "error": math.hypot(_num(plus.error), _num(minus.error)),
+                        "error_scaled": math.hypot(_num(plus.error_scaled), _num(minus.error_scaled)),
                     }
                 )
-    mean = mean_err = None
-    if differences:
-        w = np.array([1.0 / d["error"] ** 2 for d in differences])
-        mean = float(np.sum(w * np.array([d["difference"] for d in differences])) / w.sum())
-        mean_err = float(1.0 / math.sqrt(w.sum()))
+
+    def weighted(key: str) -> tuple[float | None, float | None]:
+        if not differences:
+            return None, None
+        w = np.array([1.0 / d[key] ** 2 for d in differences])
+        return (float(np.sum(w * np.array([d["difference"] for d in differences])) / w.sum()),
+                float(1.0 / math.sqrt(w.sum())))
+
+    mean, mean_err = weighted("error")
+    mean_scaled, mean_err_scaled = weighted("error_scaled")
     wps = [_num(e.position) for e in entries if e.study == "working point" and e.fitted]
 
     return SystematicsSummary(
@@ -561,6 +616,12 @@ def systematics_summary(
         n_insufficient=sum(e.status == "insufficient" for e in entries),
         n_failed=sum(e.status == "failed" for e in entries),
         validation_model=inclusive.model,
+        pdg_offset_error_scaled=head.error_scaled if head.fitted else None,
+        category_max_delta_sigma_scaled=max(
+            (abs(_num(e.delta_sigma_scaled)) for e in regions if e.delta_sigma_scaled is not None), default=None
+        ),
+        charge_weighted_mean_scaled=mean_scaled,
+        charge_weighted_mean_error_scaled=mean_err_scaled,
     )
 
 
@@ -604,7 +665,7 @@ class ValidationResult:
         """Plain-text tables: one row per entry, then the systematics summary."""
         head = (
             f"{'study':<15}{'entry':<22}{'pairs':>8}  {'position [GeV]':>22}{'resolution [GeV]':>22}"
-            f"{'chi2/ndf':>10}{'signal':>10}{'delta/sigma':>13}  status"
+            f"{'chi2/ndf':>10}{'signal':>10}{'delta/sigma':>13}{'S':>7}{'err x S':>11}{'d/s scaled':>12}  status"
         )
         title = (
             f"Validation ({self.channel}; scans and inclusive reference fitted with the validation model "
@@ -619,14 +680,20 @@ class ValidationResult:
                     f"{f'{e.position:.{d + 1}f} +- {e.error:.{d + 1}f}':>22}"
                     f"{f'{e.resolution:.{d + 1}f} +- {e.resolution_error:.{d + 1}f}':>22}"
                     f"{e.chi2_ndf:>10.3f}{e.signal_yield:>10,.0f}"
-                    f"{'' if e.delta_sigma is None else f'{e.delta_sigma:+.2f}':>13}  "
+                    f"{'' if e.delta_sigma is None else f'{e.delta_sigma:+.2f}':>13}"
+                    f"{_num(e.scale_factor):>7.2f}{f'{_num(e.error_scaled):.{d + 1}f}':>11}"
+                    f"{'' if e.delta_sigma_scaled is None else f'{e.delta_sigma_scaled:+.2f}':>12}  "
                     + ("fitted" if e.yields_reliable else "fitted (yields not reliable)")
                 )
             else:
-                lines.append(f"{e.study:<15}{e.label:<22}{e.n_pairs:>8,}  {'':>77}  {e.status_text}")
+                lines.append(f"{e.study:<15}{e.label:<22}{e.n_pairs:>8,}  {'':>107}  {e.status_text}")
         lines.append(
             "delta/sigma = (entry - inclusive) / sqrt(err^2 + err_incl^2); the samples overlap, so this overstates "
             "the uncertainty of the difference"
+        )
+        lines.append(
+            "S = max(1, sqrt(chi2/ndf)) of the entry's fit; err x S = scaled statistical error; d/s scaled = "
+            "(entry - inclusive) / sqrt((err S)^2 + (err_incl S_incl)^2) (dev/validation_plan.md, prompt 10)"
         )
         lines.append("")
         lines.append(self.summary.table())
