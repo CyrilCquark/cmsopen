@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -43,6 +44,8 @@ def write_z_file(
     plus_phi_shift=None,
     npv=False,
     medium_id=False,
+    wide_fraction=0.0,
+    wide_sigma=None,
 ):
     """A NanoAOD-like file: one Z-like or background opposite-sign pair per event, plus junk muons.
 
@@ -56,12 +59,15 @@ def write_z_file(
     ``plus_phi_shift`` = 4 values, one per mu+ phi quarter [-pi, -pi/2), ..., [pi/2, pi], add known mass shifts
     (GeV) to every pair of that category before the muon momenta are built; ``npv`` writes PV_npvsGood (uniform
     0-34, from a separate random stream); ``medium_id`` writes Muon_mediumId (true for the pair muons).
+    ``wide_fraction`` > 0 gives that fraction of signal events a total Gaussian resolution ``wide_sigma`` (GeV)
+    instead of TRUE_SIGMA: a two-resolution mixture, like barrel and endcap pairs (separate random stream).
     """
     rng = np.random.default_rng(seed)
     gamma = 0.5 * pdg_mass_width("Z")[2]
     n = n_events
     is_sig = rng.random(n) < 0.8
     m = np.empty(n)
+    mix_rng = np.random.default_rng(seed + 3000) if wide_fraction else None
     for _ in range(50):  # rejection sampling into 60-120 GeV, vectorized over events
         bad = ~((m >= 60) & (m < 120)) if _ else np.ones(n, bool)
         k = int(bad.sum())
@@ -70,6 +76,9 @@ def write_z_file(
         sig = TRUE_MASS + gamma * rng.standard_cauchy(k) + TRUE_SIGMA * rng.standard_normal(k)
         if fsr:
             sig -= np.where(rng.random(k) < fsr, rng.exponential(4.0, k), 0.0)
+        if mix_rng is not None:  # widen a fraction of events to wide_sigma (resolutions add in quadrature)
+            extra = math.sqrt(wide_sigma**2 - TRUE_SIGMA**2)
+            sig = sig + np.where(mix_rng.random(k) < wide_fraction, mix_rng.normal(0.0, extra, k), 0.0)
         bkg = 60 + rng.exponential(25.0, k)
         m[bad] = np.where(is_sig[bad], sig, bkg)
     a = rng.uniform(-0.8, 0.8, n)
