@@ -472,6 +472,7 @@ def _corner(loc: str) -> tuple[float, float, str, str]:
 
 
 _BOX_FONT_SIZES = (8.5, 8.0, 7.5)
+_LAST_RESORT_FONT_SIZES = (7.0, 6.5)  # only with opaque boxes, after everything else failed
 
 
 def _candidate_box(loc: str, axbb: Any, width: float, height: float, pad: float) -> Any:
@@ -523,7 +524,11 @@ def _place_boxes(ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str,
     3. as a last resort, reference lines (not data) may pass behind the
        boxes, which then get an opaque white background so the line is
        hidden rather than drawn through the text, and the y-axis may grow
-       further.
+       further;
+    4. only if that fails too (a long annotation beside the legend, e.g. a
+       resolution mixture with six-digit yields), step 3 repeats with the
+       text at 7 pt and then 6.5 pt. Figures placed by steps 1-3 are
+       unaffected.
 
     Data points, error bars and fitted curves are never allowed under a box.
     If nothing works, a RuntimeError is raised rather than a cluttered
@@ -534,7 +539,8 @@ def _place_boxes(ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str,
     if annotation is None:
         pairs = [(a, None) for a in _LOCATIONS]
     ylim0 = ax.get_ylim()
-    stages = [(size, 5, False) for size in _BOX_FONT_SIZES] + [(_BOX_FONT_SIZES[-1], 12, True)]
+    stages = [(size, 5, False) for size in _BOX_FONT_SIZES]
+    stages += [(size, 12, True) for size in (_BOX_FONT_SIZES[-1], *_LAST_RESORT_FONT_SIZES)]
     with _measuring_dpi(fig):
         for size, max_grow, opaque in stages:
             ax.set_ylim(*ylim0)
@@ -551,8 +557,6 @@ def _place_boxes(ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str,
                     return
                 lo, hi = ax.get_ylim()
                 ax.set_ylim(lo, hi * 3.0 if logy else lo + (hi - lo) * 1.15)
-            if opaque:
-                break
     raise RuntimeError("could not place the legend and annotation without overlapping the data")
 
 
