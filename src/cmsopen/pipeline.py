@@ -882,9 +882,16 @@ def _validate(
 
 
 def _figures(
-    cfg: ChannelConfig, hist: MassHistogram, fit: FitResult, ss_hist: MassHistogram | None, cutflow: CutFlow
+    cfg: ChannelConfig,
+    hist: MassHistogram,
+    fit: FitResult,
+    ss_hist: MassHistogram | None,
+    cutflow: CutFlow,
+    files: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """The result figures, every label built from the channel's resonance and the PDG values of ``particle``."""
+    """The result figures, every label built from the channel's resonance, the PDG values of ``particle`` and the
+    run periods of ``files`` (:func:`cmsopen.datasets.run_label`)."""
+    from cmsopen.datasets import run_label
     from cmsopen.plotting import plot_cutflow, plot_mass_spectrum, plot_os_vs_ss
 
     pdg_mass, _, width, _ = pdg_mass_width(cfg.resonance)
@@ -897,6 +904,7 @@ def _figures(
         resonance_label=symbol,
         pdg_mass=pdg_mass,
         natural_width=width if fit.gamma is not None else None,
+        data_label=run_label(list(files)),
     )
     if ss_hist is not None:
         figures["os_vs_ss"], _ = plot_os_vs_ss(hist, ss_hist, resonance_label=symbol, pdg_mass=pdg_mass)
@@ -1082,7 +1090,7 @@ def analyze(
             )
 
     ss_hist = make_histogram(ss_masses, bins=n_bins, range=cfg.mass_range) if len(ss_masses) else None
-    figures = _figures(cfg, hist, fit, ss_hist, cutflow)
+    figures = _figures(cfg, hist, fit, ss_hist, cutflow, files)
 
     result = AnalysisResult(
         config=cfg,

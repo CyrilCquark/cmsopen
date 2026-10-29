@@ -241,14 +241,17 @@ def test_annotation_hides_yields_when_background_negative():
 
 def test_annotation_contents_match_the_fit():
     h, fit = toy_fit()
-    text = annotation_text(plot_mass_spectrum(h, fit)[1][0]).get_text()
+    label = r"2012C DoubleMuParked, $\sqrt{s}$ = 8 TeV"
+    text = annotation_text(plot_mass_spectrum(h, fit, data_label=label)[1][0]).get_text()
     m = re.search(r"m_\{\\mathrm\{peak\}\}\$ = ([0-9.]+) \$\\pm\$ ([0-9.]+) GeV \(stat\.\)", text)
     assert m, text
     digits = len(m.group(1).split(".")[1])
     assert float(m.group(1)) == round(fit.peak_position[0], digits)
     assert float(m.group(2)) == round(fit.peak_position[1], digits)
     assert f"{fit.chi2:.1f}/{fit.ndf}" in text
-    assert "2012C DoubleMuParked" in text and "sqrt{s}" in text and "8 TeV" in text
+    assert text.splitlines()[-1] == label  # the data label is passed in (run_label), never hard-coded
+    default = annotation_text(plot_mass_spectrum(h, fit)[1][0]).get_text()
+    assert default.splitlines()[-1] == "CMS 2012 open data, DoubleMuParked, $\\sqrt{s}$ = 8 TeV"
     assert "sigma_{\\mathrm{res}}" in text and "Gamma_{Z}$ = 2.496 GeV (fixed)" in text
 
 

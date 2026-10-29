@@ -14,25 +14,34 @@ restarted. When it finishes, the file's size and its adler32 checksum (the
 checksum the portal publishes for every file) are compared with the
 recorded values, so a truncated or corrupted copy is never mistaken for the
 real data.
+
+:func:`run_label` names the data-taking period of a set of input files for
+figure annotations (for example "2012B+2012C DoubleMuParked"). It looks the
+files up in the project's file listings (the production registry and the
+development-set listing), never in a hard-coded table, and falls back to a
+generic 2012 label for files it does not know.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 import urllib.error
 import urllib.request
 import zlib
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 __all__ = [
     "DEV_ADLER32",
     "DEV_FILENAME",
     "DEV_SIZE",
     "DEV_URL",
+    "GENERIC_DATA_LABEL",
     "DownloadError",
     "adler32_of",
     "fetch_example_data",
+    "run_label",
 ]
 
 DEV_FILENAME = "45F7AE81-7A79-4CB1-998E-7BD156490294.root"
@@ -48,6 +57,70 @@ DEV_ADLER32 = "9f7301c5"
 """adler32 checksum of the development file, as published by the portal (DATA.md)."""
 
 _BLOCK = 1 << 20  # 1 MiB
+
+GENERIC_DATA_LABEL = r"CMS 2012 open data, DoubleMuParked, $\sqrt{s}$ = 8 TeV"
+"""The figure label for input files that no file listing knows."""
+REGISTRY_PATH = Path("results") / "production_files.json"
+DEV_SET_PATH = Path("dev") / "development_set.json"
+
+
+def _listing_roots(paths: list[str | Path]) -> list[Path]:
+    """Directories holding a file listing: each input file's parents, then the working directory's."""
+    starts = [Path(p).expanduser().resolve().parent for p in paths if "://" not in str(p)] + [Path.cwd()]
+    roots: list[Path] = []
+    for start in starts:
+        for d in (start, *start.parents):
+            if d not in roots and ((d / REGISTRY_PATH).is_file() or (d / DEV_SET_PATH).is_file()):
+                roots.append(d)
+    return roots
+
+
+def _periods_by_name(root: Path) -> dict[str, str]:
+    """File name -> run period ("2012C", ...) from the listings under ``root``; production names stay in memory."""
+    names: dict[str, str] = {}
+    periods: dict[int, str] = {}
+    try:
+        registry: Any = json.loads((root / REGISTRY_PATH).read_text())
+        for record in registry["records"]:
+            period = str(record["run_period"]).removeprefix("Run")
+            periods[int(record["record_id"])] = period
+            names.update({entry["filename"]: period for entry in record["selected"]})
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        dev: Any = json.loads((root / DEV_SET_PATH).read_text())
+        listed = [(dev["original_development_file"], dev["original_development_record_id"])]
+        listed += [(f["filename"], f["record_id"]) for f in dev["files"]]
+        names.update({name: periods[int(rid)] for name, rid in listed if int(rid) in periods})
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return names
+
+
+def run_label(paths: str | Path | list[str | Path]) -> str:
+    """The data label of a figure: the run periods of the input files, e.g. "2012B+2012C DoubleMuParked, 8 TeV".
+
+    CMS recorded the 2012 proton-proton collisions at a centre-of-mass energy
+    sqrt(s) = 8 TeV in run periods A-D, each released as its own record on
+    the CERN Open Data portal. Detector conditions (alignment, calibration,
+    pileup) differ between periods, so a figure must say which periods its
+    events come from. The period of each file is looked up by name in the
+    project's listings: the production registry (records and their run
+    periods) and the development-set listing (files and their records),
+    found next to the input files or the working directory. If any file is
+    not listed, the label is the generic :data:`GENERIC_DATA_LABEL`. Only the
+    label is returned; no file name is printed.
+    """
+    files = [paths] if isinstance(paths, (str, Path)) else list(paths)
+    if not files:
+        return GENERIC_DATA_LABEL
+    known: dict[str, str] = {}
+    for root in reversed(_listing_roots(files)):  # the listing nearest to the files wins
+        known.update(_periods_by_name(root))
+    periods = {known.get(Path(str(p)).name) for p in files}
+    if None in periods:
+        return GENERIC_DATA_LABEL
+    return "+".join(sorted(str(p) for p in periods)) + r" DoubleMuParked, $\sqrt{s}$ = 8 TeV"
 
 
 class DownloadError(RuntimeError):

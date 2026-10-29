@@ -374,7 +374,8 @@ def layer3() -> nbformat.NotebookNode:
             "ax.set_xlim(edges[0], edges[-1])\n"
             "ax.set_ylim(0, 1.3 * max(c_counts.max(), s_counts.max()))\n"
             'ax.legend(loc="upper right", fontsize=9, frameon=False)\n'
-            'ax.text(0.99, 1.01, "CMS Open Data, 2012C DoubleMuParked, 8 TeV", transform=ax.transAxes,\n'
+            "from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings\n"
+            'ax.text(0.99, 1.01, f"CMS Open Data, {run_label(DATA_FILE)}", transform=ax.transAxes,\n'
             '        ha="right", va="bottom", fontsize=9)\n'
             "with np.errstate(divide=\"ignore\", invalid=\"ignore\"):\n"
             "    ratio = np.where(c_counts > 0, s_counts / c_counts, np.nan)\n"
@@ -682,7 +683,8 @@ def layer4() -> nbformat.NotebookNode:
             'ax.set_xlabel("Dimuon invariant mass $M_{\\\\mu\\\\mu}$ [GeV]")\n'
             'ax.set_ylabel("Muon pairs / 2 GeV")\n'
             'ax.legend(loc="upper right", fontsize=9, frameon=False)\n'
-            'ax.text(0.99, 1.01, "CMS Open Data, 2012C DoubleMuParked, 8 TeV", transform=ax.transAxes,\n'
+            "from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings\n"
+            'ax.text(0.99, 1.01, f"CMS Open Data, {run_label(DATA_FILE)}", transform=ax.transAxes,\n'
             '        ha="right", va="bottom", fontsize=9)\n'
             "plt.show()"
         ),
@@ -774,7 +776,8 @@ def layer5() -> nbformat.NotebookNode:
             'ax.axvline(91.1876, color="gray", linestyle="--", linewidth=1, label="PDG Z mass 91.1876 GeV")\n'
             'ax.set_xlabel("Dimuon invariant mass $M_{\\\\mu\\\\mu}$ [GeV]")\n'
             'ax.set_ylabel("Pairs / 2 GeV")\n'
-            'ax.set_title("CMS Open Data 2012C DoubleMuParked (first look)")\n'
+            "from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings\n"
+            'ax.set_title(f"CMS Open Data, {run_label(DATA_FILE)} (first look)")\n'
             "ax.legend()\n"
             "plt.show()"
         ),
@@ -1003,7 +1006,9 @@ ax.set_xlabel("Dimuon invariant mass [GeV]")
 ax.set_ylabel("Pairs / 1 GeV")
 ax.set_xlim(60, 120)
 ax.legend(fontsize=8)
-ax.set_title("CMS Open Data 2012C DoubleMuParked: Z peak fits (quick plot)", fontsize=10)
+from cmsopen.datasets import run_label  # the run periods of the input file, from the file listings
+
+ax.set_title(f"CMS Open Data, {run_label(DATA_FILE)}: Z peak fits (quick plot)", fontsize=10)
 plt.show()"""
         ),
         new_markdown_cell(
@@ -1099,7 +1104,8 @@ def annotated_peak(fig):
     '''The peak position and error printed in the figure's annotation, as text (None if absent).'''
     for text in fig.axes[0].texts:
         if text.get_gid() == "annotation":
-            m = re.search(r"m_\{\\mathrm\{peak\}\}\$ = ([0-9.]+) \$\\pm\$ ([0-9.]+) GeV", text.get_text())
+            m = re.search(r"(?:m_\{\\mathrm\{peak\}\}|M_\{\\mathrm\{pole\}\})\$ = ([0-9.]+) \$\\pm\$ ([0-9.]+) GeV",
+                          text.get_text())  # m_peak (Voigt, Gaussian) or M_pole (Crystal Ball models)
             return (m.group(1), m.group(2)) if m else None
     return None
 
@@ -1215,9 +1221,11 @@ print(main_fit.table())"""
         new_markdown_cell(
             r"""## The Z peak with its fit
 
-A Voigt peak (natural width fixed, Gaussian resolution free) on a quadratic background, fitted over 70-110 GeV.
-Both fits' backgrounds dip below zero near 110 GeV, so the annotation does not quote yields. The pulls show the
-radiative tail: a run of positive pulls at 83-87 GeV that the symmetric peak cannot describe."""
+The Z_mumu channel's default model, fitted over 70-110 GeV exactly as `cmsopen.analyze` fits it: a Breit-Wigner of
+the Z natural width (fixed) convolved with two Crystal Ball resolution cores (a narrow and a wide one, sharing the
+low-mass radiative tail) on an exponential background. `python examples/make_figures.py --model voigt_poly` gives the
+earlier Voigt + quadratic figure. The annotation's last line names the run period of the input file, derived from
+the project's file listings."""
         ),
         new_code_cell(r"""display(Image(filename=str(outdir / "z_peak_fit.png"), width=640))"""),
         new_markdown_cell(

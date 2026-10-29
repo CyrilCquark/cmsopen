@@ -30,6 +30,7 @@ REGISTRY = REPO / "results" / "production_files.json"
 OUT = REPO / "dev" / "development_set.json"
 API = "https://opendata.cern.ch/api/records/{}"
 ORIGINAL = "45F7AE81-7A79-4CB1-998E-7BD156490294.root"
+ORIGINAL_RECORD = 31129  # the original development file's record (DATA.md)
 TAKE = {31129: 3, 31123: 2}
 
 
@@ -80,7 +81,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAIL: {overlap} development-set file(s) coincide with production files")
         return 1
     OUT.write_text(json.dumps({"rule": "dev/development_set.md", "original_development_file": ORIGINAL,
-                               "files": chosen}, indent=2) + "\n")
+                               "original_development_record_id": ORIGINAL_RECORD, "files": chosen},
+                              indent=2) + "\n")
     for c in chosen:
         print(c["filename"])
     print("disjoint from production: OK")

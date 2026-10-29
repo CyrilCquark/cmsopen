@@ -62,7 +62,8 @@ def annotated_peak(fig) -> tuple[str, str] | None:
     """The peak position and error printed in the figure's annotation, as text (None if absent)."""
     for text in fig.axes[0].texts:
         if text.get_gid() == "annotation":
-            m = re.search(r"m_\{\\mathrm\{peak\}\}\$ = ([0-9.]+) \$\\pm\$ ([0-9.]+) GeV", text.get_text())
+            m = re.search(r"(?:m_\{\\mathrm\{peak\}\}|M_\{\\mathrm\{pole\}\})\$ = ([0-9.]+) \$\\pm\$ ([0-9.]+) GeV",
+                          text.get_text())  # m_peak (Voigt, Gaussian) or M_pole (Crystal Ball models)
             return (m.group(1), m.group(2)) if m else None
     return None
 

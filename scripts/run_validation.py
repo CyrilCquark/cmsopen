@@ -33,7 +33,7 @@ def entries_figure(v: ValidationResult) -> Figure:
     """Position - inclusive position (with statistical errors) for every entry; unfitted entries are labelled."""
     entries = list(v.entries)
     with paper_style():
-        fig = Figure(figsize=(6.5, 0.24 * len(entries) + 1.6), layout="constrained")
+        fig = Figure(figsize=(6.5, 0.27 * len(entries) + 1.6), layout="constrained")
         ax = fig.subplots()
         incl, incl_err = v.inclusive.position, v.inclusive.error
         y = list(range(len(entries)))[::-1]
@@ -44,14 +44,14 @@ def entries_figure(v: ValidationResult) -> Figure:
                 ax.errorbar(1e3 * (e.position - incl), yi, xerr=1e3 * e.error, fmt="o", color="black", ms=3)
             else:
                 text = f"insufficient (n = {e.n_pairs:,})" if e.status == "insufficient" else "fit failed"
-                ax.text(0.02, yi, text, transform=ax.get_yaxis_transform(), va="center", fontsize=7,
+                ax.text(0.02, yi, text, transform=ax.get_yaxis_transform(), va="center", fontsize=8,
                         color=OKABE_ITO["vermillion"])
         if incl_err is not None:
             ax.axvspan(-1e3 * incl_err, 1e3 * incl_err, color=OKABE_ITO["sky_blue"], alpha=0.35, lw=0,
                        label="inclusive stat. error")
-            ax.legend(loc="lower right", fontsize=7)
+            ax.legend(loc="lower right", fontsize=8)
         ax.axvline(0.0, color="0.4", lw=0.8)
-        ax.set_yticks(y, labels, fontsize=7)
+        ax.set_yticks(y, labels, fontsize=8)
         ax.set_xlabel(f"position - inclusive [MeV] ({v.model})")
         ax.set_title(f"CMS Open Data, {v.channel}: validation (development file)", fontsize=9, loc="left")
     return fig

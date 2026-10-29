@@ -66,6 +66,7 @@ from typing import TYPE_CHECKING, Any, cast
 import awkward as ak
 import numpy as np
 
+from cmsopen.datasets import GENERIC_DATA_LABEL
 from cmsopen.fitting import FitResult, MassHistogram
 from cmsopen.objects import Muon
 from cmsopen.selection import CutFlow, Selection
@@ -104,7 +105,8 @@ OKABE_ITO: dict[str, str] = {
 FOOTNOTE = "Unofficial analysis of CMS Open Data"
 """Printed on every figure: the data are real CMS data, the analysis is not an official CMS result."""
 
-DATA_SOURCE = r"2012C DoubleMuParked, $\sqrt{s}$ = 8 TeV"
+MIN_FONT_SIZE = 8.0
+"""No text in any figure is smaller than this (points): when a box does not fit, its content is shortened."""
 SERIF_FONTS = ("STIX Two Text", "STIXGeneral", "DejaVu Serif")
 """Serif text fonts in order of preference; all ship with matplotlib (STIX Two from 3.10, the others earlier)."""
 WIDTH = 5.0  # inches: 1.5-column figure width
@@ -218,7 +220,7 @@ def _prepare_figure(fig: Figure | None, figsize: tuple[float, float]) -> Figure:
 def _titles(ax: Axes, label: str) -> None:
     """The data label above the axes on the left, the unofficial-analysis footnote on the right."""
     ax.set_title(label, loc="left", fontsize=10)
-    ax.set_title(FOOTNOTE, loc="right", fontsize=7.5, color="0.35", style="italic")
+    ax.set_title(FOOTNOTE, loc="right", fontsize=MIN_FONT_SIZE, color="0.35", style="italic")
 
 
 def _separate_titles(ax: Axes) -> None:
@@ -471,8 +473,7 @@ def _corner(loc: str) -> tuple[float, float, str, str]:
     return x, y, ha, va
 
 
-_BOX_FONT_SIZES = (8.5, 8.0, 7.5)
-_LAST_RESORT_FONT_SIZES = (7.0, 6.5)  # only with opaque boxes, after everything else failed
+_BOX_FONT_SIZES = (8.5, MIN_FONT_SIZE)
 
 
 def _candidate_box(loc: str, axbb: Any, width: float, height: float, pad: float) -> Any:
@@ -520,27 +521,23 @@ def _place_boxes(ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str,
        x 2 linear), which moves the data down and frees the upper corners;
     2. if a box is too wide to fit beside something that spans the full
        height (the peak, the PDG line), its text is made 0.5 pt smaller,
-       down to 7.5 pt, and step 1 repeats;
+       down to :data:`MIN_FONT_SIZE` (8 pt), and step 1 repeats;
     3. as a last resort, reference lines (not data) may pass behind the
        boxes, which then get an opaque white background so the line is
        hidden rather than drawn through the text, and the y-axis may grow
-       further;
-    4. only if that fails too (a long annotation beside the legend, e.g. a
-       resolution mixture with six-digit yields), step 3 repeats with the
-       text at 7 pt and then 6.5 pt. Figures placed by steps 1-3 are
-       unaffected.
+       further.
 
-    Data points, error bars and fitted curves are never allowed under a box.
-    If nothing works, a RuntimeError is raised rather than a cluttered
-    figure returned.
+    Data points, error bars and fitted curves are never allowed under a box,
+    and no text gets smaller than 8 pt. If nothing works, a RuntimeError is
+    raised rather than a cluttered figure returned; :func:`plot_mass_spectrum`
+    then shortens its annotation and tries again.
     """
     fig = _figure_of(ax)
     pairs: list[tuple[str, str | None]] = [(a, b) for a in _LOCATIONS for b in _LOCATIONS if a != b]
     if annotation is None:
         pairs = [(a, None) for a in _LOCATIONS]
     ylim0 = ax.get_ylim()
-    stages = [(size, 5, False) for size in _BOX_FONT_SIZES]
-    stages += [(size, 12, True) for size in (_BOX_FONT_SIZES[-1], *_LAST_RESORT_FONT_SIZES)]
+    stages = [(size, 5, False) for size in _BOX_FONT_SIZES] + [(_BOX_FONT_SIZES[-1], 12, True)]
     with _measuring_dpi(fig):
         for size, max_grow, opaque in stages:
             ax.set_ylim(*ylim0)
@@ -635,7 +632,20 @@ def _resonance_symbol(resonance_label: str | None, symbol: str) -> str:
     return rf"${symbol}_{{{resonance_label}}}$" if resonance_label else rf"${symbol}$"
 
 
-def _fit_annotation(fit: FitResult, resonance_label: str | None = None, natural_width: float | None = None) -> str:
+def _fit_annotation(
+    fit: FitResult,
+    resonance_label: str | None = None,
+    natural_width: float | None = None,
+    data_label: str | None = None,
+    level: int = 0,
+) -> str:
+    """The annotation text; ``level`` 1 leaves out the fixed Crystal Ball tail (alpha, n), level 2 also the fixed
+    natural width, level 3 also puts the data label on two lines (split at its last comma).
+
+    The left-out lines are reported in summary.txt, summary.json and the
+    figure caption; they are dropped only when the full block cannot be
+    placed at :data:`MIN_FONT_SIZE` without covering the data.
+    """
     lines = [
         f"{_MODEL_LABELS.get(fit.model_name, fit.model_name)} + {fit.background_label} fit, "
         f"{fit.fit_range[0]:g}$-${fit.fit_range[1]:g} GeV"
@@ -654,11 +664,11 @@ def _fit_annotation(fit: FitResult, resonance_label: str | None = None, natural_
         lines.append(rf"$\sigma$ = {s} $\pm$ {se} GeV (effective)")
     else:
         lines.append(rf"$\sigma_{{\mathrm{{res}}}}$ = {s} $\pm$ {se} GeV")
-    if fit.gamma is not None:
+    if fit.gamma is not None and level < 2:
         width = 2 * fit.gamma if natural_width is None else natural_width
         gamma_symbol = _resonance_symbol(resonance_label, r"\Gamma")
         lines.append(f"{gamma_symbol} = {_width_text(width)} (fixed)")
-    if fit.cb_n is not None:
+    if fit.cb_n is not None and level < 1:
         a, ae = _fmt_pm(*fit.parameters["alpha"])
         lines.append(rf"$\alpha$ = {a} $\pm$ {ae},  $n$ = {fit.cb_n:g} (fixed)")
     lines.append(rf"$\chi^2$/ndf = {fit.chi2:.1f}/{fit.ndf}")
@@ -671,7 +681,8 @@ def _fit_annotation(fit: FitResult, resonance_label: str | None = None, natural_
         )
     else:
         lines.append("yields not shown: background not positive")
-    lines.append(DATA_SOURCE)
+    label = GENERIC_DATA_LABEL if data_label is None else data_label
+    lines.append("\n".join(label.rsplit(", ", 1)) if level >= 3 else label)
     return "\n".join(lines)
 
 
@@ -715,6 +726,7 @@ def plot_mass_spectrum(
     resonance_label: str | None = None,
     pdg_mass: float | None = None,
     natural_width: float | None = None,
+    data_label: str | None = None,
 ) -> tuple[Figure, list[Axes]]:
     """Draw the dimuon mass spectrum with its fit, the PDG mass and a pull panel.
 
@@ -773,6 +785,14 @@ def plot_mass_spectrum(
     natural_width : float, optional
         Natural width in GeV shown in the annotation; it must equal the width
         the fit held fixed (``2 * fit.gamma``), which is used if omitted.
+    data_label : str, optional
+        The data line of the annotation, e.g. from
+        :func:`cmsopen.datasets.run_label`; default
+        :data:`cmsopen.datasets.GENERIC_DATA_LABEL`. If the annotation does
+        not fit beside the data at 8 pt, the fixed tail parameters (alpha, n)
+        and then the fixed natural width are left out of it (they are in the
+        summary and the caption), and then the data label is split over two
+        lines; the font is never made smaller.
 
     Returns
     -------
@@ -897,7 +917,7 @@ def plot_mass_spectrum(
             annotation = ax.text(
                 0.03,
                 0.97,
-                _fit_annotation(fit, resonance_label, natural_width),
+                _fit_annotation(fit, resonance_label, natural_width, data_label),
                 transform=ax.transAxes,
                 fontsize=8.5,
                 linespacing=1.45,
@@ -905,7 +925,20 @@ def plot_mass_spectrum(
                 va="top",
                 gid=_ANNOTATION_GID,
             )
-        _place_boxes(ax, annotation, logy, {})
+        ylim = ax.get_ylim()
+        for level in range(1, 4):
+            try:
+                _place_boxes(ax, annotation, logy, {})
+                break
+            except RuntimeError:
+                if annotation is None:
+                    raise
+                # start again from the original axis with a shorter annotation (never a smaller font)
+                ax.set_ylim(*ylim)
+                annotation.set_bbox(None)
+                annotation.set_text(_fit_annotation(fit, resonance_label, natural_width, data_label, level))
+        else:
+            _place_boxes(ax, annotation, logy, {})
         _separate_titles(ax)
     return fig, axes
 

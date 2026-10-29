@@ -159,7 +159,8 @@ def make_figures_in(tmp_path, monkeypatch):
     for key in ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"):
         monkeypatch.setenv(key, ENV[key])
     calls = []
-    monkeypatch.setattr(make_figures, "build", lambda path: calls.append(("build", path)) or make_figures.Figures())
+    monkeypatch.setattr(make_figures, "build",
+                        lambda path, model=None: calls.append(("build", path)) or make_figures.Figures())
     monkeypatch.setattr(make_figures, "write", lambda figs, outdir: calls.append(("write", outdir)) or figs)
     return make_figures, repo, calls
 
