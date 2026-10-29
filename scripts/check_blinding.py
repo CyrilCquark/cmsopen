@@ -9,10 +9,15 @@ Fails (exit 1, listing the offenders) if
     (the UUID without ".root"), so partial references are caught too; or
 
 (b) the SHA-256 of the registry differs from the hash recorded in
-    dev/registry.sha256, or either file is missing.
+    dev/registry.sha256, or either file is missing; or
+
+(c) a file of the development set (dev/development_set.json, if it exists,
+    and its original development file) coincides with a production file.
+    Only the number of such files is printed, never a name.
 
 Otherwise prints "OK: no production file referenced outside the registry;
-registry intact" and exits 0. Exit 2 on a git error. Standard library only.
+registry intact" (and, with a development set, "OK: development set (N
+files) disjoint from production") and exits 0. Exit 2 on a git error. Standard library only.
 
 Usage:
     python scripts/check_blinding.py
@@ -28,6 +33,7 @@ from pathlib import Path
 
 REGISTRY = "results/production_files.json"
 HASH_FILE = "dev/registry.sha256"
+DEV_SET = "dev/development_set.json"
 
 
 def repo_root() -> Path:
@@ -41,6 +47,11 @@ def repo_root() -> Path:
 def production_names(registry: dict) -> list[str]:
     """Every selected production filename in the registry."""
     return [entry["filename"] for record in registry["records"] for entry in record["selected"]]
+
+
+def development_names(dev_set: dict) -> list[str]:
+    """Every file of the development set: the original development file and the selected ones."""
+    return [dev_set["original_development_file"], *(f["filename"] for f in dev_set["files"])]
 
 
 def repo_files(root: Path) -> list[str]:
@@ -92,13 +103,27 @@ def main() -> int:
         content = path.read_bytes()
         for name, stem in stems.items():
             if stem in content or stem.lower() in content.lower():
-                problems.append(f"{rel}: references production file {name}")
+                shown = "(name not printed)" if rel == DEV_SET else name
+                problems.append(f"{rel}: references production file {shown}")
+    n_dev = None
+    if (root / DEV_SET).exists():
+        try:
+            dev = development_names(json.loads((root / DEV_SET).read_text()))
+        except (ValueError, KeyError, TypeError) as exc:
+            problems.append(f"cannot read the development set {DEV_SET}: {exc}")
+        else:
+            n_dev = len(dev)
+            clash = len(set(dev) & set(names))
+            if clash:
+                problems.append(f"{clash} development-set file(s) coincide with production files (names not printed)")
     if problems:
         print("FAIL: blinding check")
         for p in problems:
             print(f"  {p}")
         return 1
     print("OK: no production file referenced outside the registry; registry intact")
+    if n_dev is not None:
+        print(f"OK: development set ({n_dev} files) disjoint from production")
     return 0
 
 

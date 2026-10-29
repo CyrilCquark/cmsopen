@@ -1,0 +1,46 @@
+{
+  "rule": "dev/development_set.md",
+  "original_development_file": "45F7AE81-7A79-4CB1-998E-7BD156490294.root",
+  "files": [
+    {
+      "record_id": 31129,
+      "index": 0,
+      "filename": "06C1145E-99D4-4DAC-859D-F634CC8714AF.root",
+      "size_bytes": 1542887879,
+      "checksum": "adler32:5dbc2549",
+      "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/06C1145E-99D4-4DAC-859D-F634CC8714AF.root"
+    },
+    {
+      "record_id": 31129,
+      "index": 1,
+      "filename": "0995C487-F7CE-4AC4-851D-F3202F7A9712.root",
+      "size_bytes": 1591473515,
+      "checksum": "adler32:dad1b86b",
+      "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/0995C487-F7CE-4AC4-851D-F3202F7A9712.root"
+    },
+    {
+      "record_id": 31129,
+      "index": 2,
+      "filename": "0B22B275-85C5-4E44-8D89-D18B56091507.root",
+      "size_bytes": 1545239719,
+      "checksum": "adler32:9565b142",
+      "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012C_DoubleMuParked/0B22B275-85C5-4E44-8D89-D18B56091507.root"
+    },
+    {
+      "record_id": 31123,
+      "index": 0,
+      "filename": "03C5684F-8BAF-4312-8235-2B0039F2FB93.root",
+      "size_bytes": 1454534615,
+      "checksum": "adler32:07ab1c98",
+      "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/03C5684F-8BAF-4312-8235-2B0039F2FB93.root"
+    },
+    {
+      "record_id": 31123,
+      "index": 1,
+      "filename": "12EE191C-00CB-4150-BBD9-8D1266BB7FD8.root",
+      "size_bytes": 1430080716,
+      "checksum": "adler32:4f41a164",
+      "https_url": "https://opendata.cern.ch/eos/opendata/cms/derived-data/NanoAODRun1/01-Jul-22/Run2012B_DoubleMuParked/12EE191C-00CB-4150-BBD9-8D1266BB7FD8.root"
+    }
+  ]
+}

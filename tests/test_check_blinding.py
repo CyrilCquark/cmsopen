@@ -92,3 +92,30 @@ def test_missing_hash_or_registry_fails(repo):
     (repo / "results" / "production_files.json").unlink()
     out = run(repo)
     assert out.returncode == 1 and "missing" in out.stdout
+
+
+def write_dev_set(repo, names):
+    dev_set = {"original_development_file": DEV, "files": [{"filename": n} for n in names]}
+    (repo / "dev" / "development_set.json").write_text(json.dumps(dev_set) + "\n")
+
+
+def test_disjoint_development_set_passes(repo):
+    write_dev_set(repo, ["EEEEEEEE-0000-0000-0000-000000000001.root", "EEEEEEEE-0000-0000-0000-000000000002.root"])
+    out = run(repo)
+    assert out.returncode == 0, out.stdout
+    assert out.stdout.splitlines()[-1] == "OK: development set (3 files) disjoint from production"
+
+
+def test_development_set_overlapping_production_fails_without_printing_the_name(repo):
+    write_dev_set(repo, ["EEEEEEEE-0000-0000-0000-000000000001.root", PROD[1]])
+    out = run(repo)
+    assert out.returncode == 1
+    assert "1 development-set file(s) coincide with production files" in out.stdout
+    assert "dev/development_set.json: references production file (name not printed)" in out.stdout
+    assert PROD[1] not in out.stdout and PROD[1].removesuffix(".root") not in out.stdout + out.stderr
+
+
+def test_unreadable_development_set_fails(repo):
+    (repo / "dev" / "development_set.json").write_text("{}\n")
+    out = run(repo)
+    assert out.returncode == 1 and "cannot read the development set" in out.stdout
