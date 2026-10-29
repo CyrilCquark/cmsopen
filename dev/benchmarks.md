@@ -487,3 +487,74 @@ the original development file alone (information only). Defaults unchanged
 (dev/model_choice.md, Amendment 3 results); the J/psi headline chi2/ndf stays
 2.155 (benchmark 2.0). The diagnostics of the standing defaults are
 unchanged from prompt 9 (recomputed, identical).
+
+## Validation with scaled statistical errors (2026-10-29, prompt 10)
+
+Development observation (6-file development set). dev/validation_plan.md,
+prompt 10 addendum: S = max(1, sqrt(chi2/ndf)) per fit, scaled error = error
+x S, delta/sigma also with scaled errors; raw values kept. Validation models
+unchanged (Z cb_bw_exp, J/psi cb_bw_poly2). Full tables in
+build/rehearsal/<channel>/validation_scaled.txt.
+
+```
+== Z_mumu (validation model cb_bw_exp); inclusive reference 90.9075, err 0.0088, chi2/ndf 3.57, S 1.89, err x S 0.0167
+entry                        pairs   position chi2/ndf     S      err  err x S  d/s raw d/s scaled
+region BB                   64,738    90.9742    0.820  1.00   0.0137   0.0137    +4.09      +3.09
+region BE                   76,121    90.8975    1.788  1.34   0.0133   0.0177    -0.63      -0.41
+region EE                   32,895    90.7268    2.346  1.53   0.0230   0.0352    -7.34      -4.64
+phi(mu+) [-pi, -pi/2)       43,135    90.8695    1.790  1.34   0.0170   0.0227    -1.99      -1.35
+phi(mu+) [-pi/2, 0)         43,999    91.0087    1.753  1.32   0.0182   0.0241    +4.99      +3.45
+phi(mu+) [0, pi/2)          42,645    90.9603    1.529  1.24   0.0178   0.0220    +2.65      +1.91
+phi(mu+) [pi/2, pi]         43,975    90.8012    1.781  1.33   0.0178   0.0237    -5.36      -3.66
+phi(mu-) [-pi, -pi/2)       42,726    90.9426    1.385  1.18   0.0181   0.0213    +1.74      +1.30
+phi(mu-) [-pi/2, 0)         43,757    90.8180    1.912  1.38   0.0176   0.0243    -4.55      -3.04
+phi(mu-) [0, pi/2)          43,321    90.8319    1.609  1.27   0.0169   0.0214    -3.96      -2.78
+phi(mu-) [pi/2, pi]         43,950    91.0505    1.812  1.35   0.0183   0.0247    +7.03      +4.80
+eta(mu+) [-2.4, -0.8)       50,924    90.8702    1.912  1.38   0.0170   0.0235    -1.95      -1.29
+eta(mu+) [-0.8, 0.8)        71,168    90.9512    1.455  1.21   0.0130   0.0157    +2.77      +1.90
+eta(mu+) [0.8, 2.4]         51,662    90.8640    2.189  1.48   0.0168   0.0249    -2.29      -1.45
+eta(mu-) [-2.4, -0.8)       51,248    90.8532    2.112  1.45   0.0168   0.0244    -2.87      -1.84
+eta(mu-) [-0.8, 0.8)        70,402    90.9549    0.939  1.00   0.0133   0.0133    +2.97      +2.22
+eta(mu-) [0.8, 2.4]         52,104    90.8841    2.713  1.65   0.0167   0.0276    -1.24      -0.73
+headline offset -0.2952 +- 0.0090 raw, +- 0.0090 scaled
+categories: largest |d/s| raw 7.34, scaled 4.64
+mu+ - mu- phi [-pi, -pi/2): -0.0731 +- 0.0248 raw (-2.95 sigma), +- 0.0311 scaled (-2.35 sigma)
+mu+ - mu- phi [-pi/2, 0): +0.1907 +- 0.0253 raw (+7.53 sigma), +- 0.0342 scaled (+5.57 sigma)
+mu+ - mu- phi [0, pi/2): +0.1283 +- 0.0246 raw (+5.23 sigma), +- 0.0307 scaled (+4.17 sigma)
+mu+ - mu- phi [pi/2, pi]: -0.2493 +- 0.0255 raw (-9.76 sigma), +- 0.0342 scaled (-7.28 sigma)
+mu+ - mu- eta [-2.4, -0.8): +0.0170 +- 0.0239 raw (+0.71 sigma), +- 0.0338 scaled (+0.50 sigma)
+mu+ - mu- eta [-0.8, 0.8): -0.0038 +- 0.0186 raw (-0.20 sigma), +- 0.0206 scaled (-0.18 sigma)
+mu+ - mu- eta [0.8, 2.4]: -0.0201 +- 0.0237 raw (-0.85 sigma), +- 0.0372 scaled (-0.54 sigma)
+weighted mean -0.0006 +- 0.0088 raw; +0.0002 +- 0.0114 scaled
+model list: voigt_poly not eligible, cb_bw_exp eligible, cb_bw_poly2 eligible, cb2_bw_exp eligible, cb2_bw_poly2 eligible, cb3_bw_exp not eligible, cb3_bw_poly2 not eligible
+== Jpsi_mumu (validation model cb_bw_poly2); inclusive reference 3.09361, err 0.00014, chi2/ndf 19.31, S 4.39, err x S 0.00060
+entry                        pairs   position chi2/ndf     S      err  err x S  d/s raw d/s scaled
+region BB                   89,040    3.09402    8.523  2.92  0.00014  0.00040    +2.12      +0.57
+region BE                    7,950    3.09254    1.118  1.06  0.00060  0.00064    -1.73      -1.22
+region EE                   24,699    3.08923    2.041  1.43  0.00040  0.00057   -10.44      -5.31
+phi(mu+) [-pi, -pi/2)       31,245    3.09330    5.812  2.41  0.00027  0.00064    -1.04      -0.36
+phi(mu+) [-pi/2, 0)         29,966    3.09346    4.962  2.23  0.00028  0.00062    -0.50      -0.18
+phi(mu+) [0, pi/2)          29,157    3.09391    5.791  2.41  0.00027  0.00065    +0.97      +0.33
+phi(mu+) [pi/2, pi]         31,321    3.09379    6.176  2.49  0.00028  0.00068    +0.57      +0.19
+phi(mu-) [-pi, -pi/2)       31,161    3.09326    5.549  2.36  0.00027  0.00063    -1.18      -0.41
+phi(mu-) [-pi/2, 0)         30,121    3.09327    4.695  2.17  0.00028  0.00060    -1.13      -0.41
+phi(mu-) [0, pi/2)          29,041    3.09398    5.941  2.44  0.00027  0.00066    +1.22      +0.42
+phi(mu-) [pi/2, pi]         31,366    3.09394    6.314  2.51  0.00028  0.00069    +1.06      +0.36
+eta(mu+) [-2.4, -0.8)       26,374    3.09190    2.840  1.69  0.00035  0.00059    -4.57      -2.04
+eta(mu+) [-0.8, 0.8)        68,527    3.09402    5.729  2.39  0.00015  0.00035    +2.04      +0.59
+eta(mu+) [0.8, 2.4]         26,788    3.09148    2.114  1.45  0.00035  0.00051    -5.65      -2.70
+eta(mu-) [-2.4, -0.8)       26,464    3.09202    2.529  1.59  0.00035  0.00055    -4.28      -1.96
+eta(mu-) [-0.8, 0.8)        68,558    3.09400    5.626  2.37  0.00015  0.00035    +1.93      +0.56
+eta(mu-) [0.8, 2.4]         26,667    3.09160    2.257  1.50  0.00035  0.00053    -5.36      -2.52
+headline offset -0.00349 +- 0.00014 raw, +- 0.00020 scaled
+categories: largest |d/s| raw 10.44, scaled 5.31
+mu+ - mu- phi [-pi, -pi/2): +0.00004 +- 0.00038 raw (+0.11 sigma), +- 0.00090 scaled (+0.05 sigma)
+mu+ - mu- phi [-pi/2, 0): +0.00019 +- 0.00039 raw (+0.49 sigma), +- 0.00086 scaled (+0.22 sigma)
+mu+ - mu- phi [0, pi/2): -0.00008 +- 0.00038 raw (-0.21 sigma), +- 0.00093 scaled (-0.08 sigma)
+mu+ - mu- phi [pi/2, pi]: -0.00015 +- 0.00039 raw (-0.39 sigma), +- 0.00097 scaled (-0.15 sigma)
+mu+ - mu- eta [-2.4, -0.8): -0.00012 +- 0.00049 raw (-0.24 sigma), +- 0.00081 scaled (-0.15 sigma)
+mu+ - mu- eta [-0.8, 0.8): +0.00002 +- 0.00021 raw (+0.10 sigma), +- 0.00050 scaled (+0.04 sigma)
+mu+ - mu- eta [0.8, 2.4]: -0.00012 +- 0.00050 raw (-0.24 sigma), +- 0.00073 scaled (-0.16 sigma)
+weighted mean -0.00001 +- 0.00013 raw; -0.00002 +- 0.00029 scaled
+model list: voigt_poly eligible, cb_bw_exp eligible, cb_bw_poly2 eligible, cb2_bw_exp eligible, cb2_bw_poly2 eligible, cb3_bw_exp not eligible, cb3_bw_poly2 not eligible
+```
