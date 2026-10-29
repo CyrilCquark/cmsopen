@@ -809,7 +809,11 @@ def analyze(
         None or 1: process the chunks one after another in this process.
         Greater than 1: process them in a pool of that many worker
         processes. The chunks are merged in their fixed file and event order,
-        so the result is identical to the serial one.
+        so the result is identical to the serial one. On macOS and Windows
+        the workers are started with "spawn", which re-imports the calling
+        script: a script that passes ``n_workers`` must put its top-level
+        code under ``if __name__ == "__main__":``. Notebook cells and the
+        ``cmsopen`` command need nothing extra.
 
     Raises
     ------

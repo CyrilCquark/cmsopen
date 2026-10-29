@@ -1256,6 +1256,337 @@ display(Image(filename=str(outdir / "muon_eta.png"), width=640))"""
     return _notebook(cells)
 
 
+LAYER8_SETUP = r"""import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+
+import numpy as np
+from IPython.display import Image, display
+
+import cmsopen
+from cmsopen.datasets import DEV_FILENAME, DEV_SIZE, fetch_example_data
+
+# Development-file results of the earlier layers (regression values; checked only on that file).
+DEV_FINAL_CUTFLOW = (57_058, 28_528, 28_528)  # muons, events with muons, events (last cutflow row)
+DEV_FIT_ENTRIES = 26_195  # opposite-sign pairs in the 70-110 GeV fit range
+LAYER6_PEAK_GEV = 90.7829  # Layer 6 voigt_poly peak position on the development file
+LAYER8_START = "da40816"  # this layer's START commit, the docs-freeze baseline
+FIRST_EVENTS = 100_000
+OUTPUTS = ("cutflow.pdf", "cutflow.png", "mass_fit.pdf", "mass_fit.png", "os_vs_ss.pdf", "os_vs_ss.png",
+           "summary.json", "summary.txt")
+REPO = Path.cwd().parent  # the notebook runs in examples/
+times = {}
+
+
+def timed(name, func, *args, **kwargs):
+    '''Call func(*args, **kwargs), print and remember its wall time, return its result.'''
+    start = time.perf_counter()
+    out = func(*args, **kwargs)
+    times[name] = time.perf_counter() - start
+    print(f"[time] {name}: {times[name]:.2f} s")
+    return out
+
+
+def is_dev_file(path):
+    '''True for the development file of DATA.md (by name and size).'''
+    return path.name == DEV_FILENAME and path.stat().st_size == DEV_SIZE
+
+
+def same_result(a, b):
+    '''The parts in which two analysis results differ (empty if identical): masses, cutflow, fits, summary.'''
+    differ = []
+    if not np.array_equal(a.masses, b.masses):
+        differ.append("masses")
+    if not np.array_equal(a.same_sign_masses, b.same_sign_masses):
+        differ.append("same-sign masses")
+    if a.cutflow.to_records() != b.cutflow.to_records():
+        differ.append("cutflow")
+    da, db = a.to_dict(), b.to_dict()
+    for key in ("fit", "alternate_fit", "histogram", "pdg_comparison"):
+        if json.dumps(da[key], sort_keys=True) != json.dumps(db[key], sort_keys=True):
+            differ.append(key)
+    if a.summary() != b.summary():
+        differ.append("summary")
+    return differ
+
+
+def list_files(paths):
+    '''Print each path with its size in bytes.'''
+    for p in paths:
+        print(f"  {p}  {p.stat().st_size:,} bytes")
+
+
+def cli_command():
+    '''The installed cmsopen console script next to this Python, or on PATH (None if absent).'''
+    script = Path(sys.executable).parent / "cmsopen"
+    found = str(script) if script.exists() else shutil.which("cmsopen")
+    return [found] if found else None
+
+
+def run_check_script(name, *args):
+    '''Run scripts/<name> from the repository root; (exit status, last output line), None if not in a clone.'''
+    script = REPO / "scripts" / name
+    if not script.exists() or not (REPO / ".git").exists():
+        return None
+    out = subprocess.run([sys.executable, str(script), *args], cwd=REPO, capture_output=True, text=True)
+    lines = (out.stdout + out.stderr).strip().splitlines()
+    return out.returncode, lines[-1] if lines else ""
+
+
+print(f"cmsopen imported from: {cmsopen.__file__}")
+tmp = Path(tempfile.mkdtemp(prefix="cmsopen-layer8-"))
+print(f"Output directory: {tmp}")"""
+
+LAYER8_CHECKS = (
+    r"""checks = Checks()
+last = result.cutflow[-1]
+if is_dev_file(DATA_FILE):
+    got = (last.n_particles, last.n_events_with_particles, last.n_events)
+    checks.check(
+        "Z: final cutflow row and fit-range entries match the development results",
+        got == DEV_FINAL_CUTFLOW and result.fit.n_entries == DEV_FIT_ENTRIES,
+        f"{got[0]:,} muons / {got[1]:,} events / {got[2]:,} events, {result.fit.n_entries:,} entries in the fit "
+        f"range; expected {DEV_FINAL_CUTFLOW[0]:,} / {DEV_FINAL_CUTFLOW[1]:,} / {DEV_FINAL_CUTFLOW[2]:,}, "
+        f"{DEV_FIT_ENTRIES:,}",
+    )
+    m, me = result.fit.peak_position
+    checks.check(
+        "Z: fitted peak position agrees with the Layer 6 value within the statistical uncertainty",
+        abs(m - LAYER6_PEAK_GEV) < me,
+        f"pipeline {m:.4f} +- {me:.4f} GeV, Layer 6 {LAYER6_PEAK_GEV:.4f} GeV, "
+        f"difference {m - LAYER6_PEAK_GEV:+.4f} GeV",
+    )
+else:
+    checks.skip("Z: development cutflow, fit entries and Layer 6 peak", f"{DATA_FILE.name} is not the development file")
+
+differ = same_result(unchunked, serial)
+checks.check(
+    f"chunked (4 x 25,000) equals unchunked (1 x {FIRST_EVENTS:,}) on the first {FIRST_EVENTS:,} events",
+    not differ,
+    f"{len(serial.masses):,} masses, cutflow, fits and summary compared" + (f"; differ: {differ}" if differ else ""),
+)
+differ = same_result(serial, parallel)
+checks.check(
+    "parallel (n_workers=2) equals serial exactly",
+    not differ,
+    "masses, same-sign masses, cutflow, both fits, histogram, PDG comparison and summary"
+    + (f"; differ: {differ}" if differ else ""),
+)
+
+names = sorted(p.name for p in z_files)
+runs = [tmp / "z", *(out for _, _, out in cli.values())]
+identical = [
+    all((d / n).exists() and (d / n).read_bytes() == (tmp / "z" / n).read_bytes() for n in OUTPUTS) for d in runs
+]
+checks.check(
+    "all expected output files exist",
+    names == sorted(OUTPUTS) and all((tmp / "z" / n).stat().st_size > 0 for n in OUTPUTS),
+    ", ".join(names),
+)
+checks.check(
+    "independent runs give byte-identical output files",
+    len(runs) >= 2 and all(identical),
+    f"{len(OUTPUTS)} files in each of {len(runs)} runs (cmsopen.analyze, "
+    f"{', '.join(cli) or 'no CLI'}) compared with cmsopen.analyze",
+)
+for label, (code, err, out) in cli.items():
+    text = (out / "summary.txt").read_text() if (out / "summary.txt").exists() else ""
+    equal = text == result.summary() + "\n"
+    checks.check(
+        f"CLI `{label} analyze` exits 0 and its summary.txt equals result.summary()",
+        code == 0 and equal,
+        f"exit {code}, summary equal: {equal}" + (f", stderr: {err[-200:]}" if err else ""),
+    )
+if commands["cmsopen"] is None:
+    checks.check("the installed cmsopen command exists", False, "not found next to Python or on PATH")
+
+jm, jme = jpsi.fit.peak_position
+js, jse = jpsi.fit.resolution
+finite = bool(np.all(np.isfinite(jpsi.fit.values)) and np.all(np.isfinite(jpsi.fit.errors)))
+n_window = int(np.sum((jpsi.masses >= 2.9) & (jpsi.masses < 3.3)))
+checks.check(
+    "J/psi: the fit converges and its peak lies within 2.9-3.3 GeV (sanity bound; the rest is reported only)",
+    finite and 2.9 < jm < 3.3,
+    f"{len(jpsi.masses):,} pairs ({n_window:,} in 2.9-3.3 GeV, {jpsi.fit.n_entries:,} in the fit range), "
+    f"peak {jm:.4f} +- {jme:.4f} GeV, resolution {js:.4f} +- {jse:.4f} GeV, "
+    f"chi2/ndf {jpsi.fit.chi2:.1f}/{jpsi.fit.ndf} = {jpsi.fit.chi2_ndf:.2f}, "
+    f"yields reliable: {jpsi.fit.yields_reliable}",
+)
+if fetched is None:
+    checks.skip("fetch_example_data verifies the existing file without downloading", "not the development file")
+else:
+    checks.check(
+        "fetch_example_data verified the existing file and returned it without downloading",
+        fetched == DATA_FILE.resolve() and n_requests == 0 and unchanged,
+        f"returned {fetched}; {n_requests} HTTP requests; size and mtime unchanged: {unchanged}",
+    )
+
+for script, script_args, label in (
+    ("check_docs_frozen.py", ("--since", LAYER8_START), f"docs-freeze check (since {LAYER8_START})"),
+    ("check_blinding.py", (), "blinding check"),
+):
+    res = run_check_script(script, *script_args)
+    if res is None:
+        checks.skip(label, f"no git clone with scripts/ at {REPO}")
+    else:
+        checks.check(f"{label} reports OK", res[0] == 0 and res[1].startswith("OK"), res[1])
+
+print()
+print("Wall time per step:")
+for name, seconds in times.items():
+    print(f"  {name:<34} {seconds:8.2f} s")
+"""
+    + FINISH
+)
+
+
+def layer8() -> nbformat.NotebookNode:
+    cells = [
+        new_code_cell(LOAD_PATH),
+        new_markdown_cell(
+            r"""# Layer 8: the whole analysis in one call with `cmsopen.analyze`
+
+`cmsopen.analyze(file)` runs every earlier layer in order: it requires the dimuon trigger, selects muons, keeps
+events with two of them, forms opposite-sign pairs and chooses one per event with a mass-blind rule, computes the
+invariant masses, fits the peak with two line shapes, compares the result with the PDG value, refits over a grid of
+fit choices and draws the figures. The file is read in chunks, so memory stays bounded, and the chunks are merged in
+a fixed order, so the result does not depend on the chunk size or on the number of worker processes.
+
+This notebook runs the Z channel, the J/psi channel, a parallel run, the data helper and the `cmsopen` command, then
+checks them against each other and against the earlier layers."""
+        ),
+        new_code_cell(LAYER8_SETUP),
+        new_markdown_cell(
+            r"""## 1. Z $\to \mu^+\mu^-$ in one line
+
+`analyze` prints `result.summary()` (inputs, cutflow, pairs, both fits, the PDG comparison and the fit-choice
+stability). `result.save` writes the figures (PNG and PDF), `summary.txt` and `summary.json` into a new temporary
+directory; protected documentation paths are refused."""
+        ),
+        new_code_cell(
+            r"""start = time.perf_counter()
+result = cmsopen.analyze(DATA_FILE)
+times["Z analysis"] = time.perf_counter() - start
+print(f"[time] Z analysis: {times['Z analysis']:.2f} s")"""
+        ),
+        new_code_cell(
+            r"""z_files = timed("Z save", result.save, tmp / "z")
+print(f"Written to {tmp / 'z'}:")
+list_files(z_files)"""
+        ),
+        new_markdown_cell(
+            r"""### The saved figures
+
+The mass spectrum with the primary fit and its pull panel, the opposite-sign versus same-sign spectra, and the
+cutflow: the number of muons and events left after each cut."""
+        ),
+        new_code_cell(
+            r"""for name in ("mass_fit", "os_vs_ss", "cutflow"):
+    display(Image(filename=str(tmp / "z" / f"{name}.png"), width=640))"""
+        ),
+        new_markdown_cell(
+            r"""## 2. J/$\psi \to \mu^+\mu^-$: the same chain with another channel
+
+The `Jpsi_mumu` channel uses soft-ID muons above 3 GeV, the J/$\psi$ dimuon triggers and a 2.6-3.6 GeV window.
+Only the configuration changes; the code path is the same."""
+        ),
+        new_code_cell(
+            r"""jpsi = timed("J/psi analysis", cmsopen.analyze, DATA_FILE, channel="Jpsi_mumu")
+jpsi_files = jpsi.save(tmp / "jpsi")
+display(Image(filename=str(tmp / "jpsi" / "mass_fit.png"), width=640))"""
+        ),
+        new_markdown_cell(
+            r"""## 3. Chunks and worker processes
+
+The first 100,000 events are analysed three times: as one chunk, as four chunks of 25,000 events, and as four
+chunks spread over two worker processes (`n_workers=2`). The results must be identical.
+
+**From a notebook cell this works as it is.** A *script* that uses `n_workers` on macOS (or Windows) must put its
+top-level code under `if __name__ == "__main__":`, because the worker processes are started with "spawn" and
+re-import the calling script; a notebook cell is not re-imported, so it needs no guard."""
+        ),
+        new_code_cell(
+            r"""first = dict(n_events=FIRST_EVENTS, verbose=False, stability=False)
+unchunked = timed("unchunked (1 chunk of 100,000)", cmsopen.analyze, DATA_FILE, chunk_size=FIRST_EVENTS, **first)
+serial = timed("serial (4 chunks of 25,000)", cmsopen.analyze, DATA_FILE, chunk_size=25_000, **first)
+parallel = timed("parallel (n_workers=2)", cmsopen.analyze, DATA_FILE, chunk_size=25_000, n_workers=2, **first)
+print(f"{len(serial.masses):,} pairs; peak {serial.fit.peak_position[0]:.4f} GeV (serial), "
+      f"{parallel.fit.peak_position[0]:.4f} GeV (parallel)")"""
+        ),
+        new_markdown_cell(
+            r"""## 4. The data helper
+
+`fetch_example_data(folder)` downloads the development file into `folder`, resuming an interrupted download and
+verifying the size and the adler32 checksum. Pointed at the folder that already holds the verified file, it only
+checks it and returns the path. HTTP requests are counted here to show that nothing was downloaded."""
+        ),
+        new_code_cell(
+            r"""fetched, n_requests, unchanged = None, None, None
+if is_dev_file(DATA_FILE):
+    requests = []
+    real_urlopen = urllib.request.urlopen
+    urllib.request.urlopen = lambda *a, **k: requests.append(a) or real_urlopen(*a, **k)  # count requests
+    before = DATA_FILE.stat()
+    try:
+        fetched = timed("fetch_example_data (verify)", fetch_example_data, DATA_FILE.resolve().parent, progress=False)
+    finally:
+        urllib.request.urlopen = real_urlopen
+    after = DATA_FILE.stat()
+    n_requests = len(requests)
+    unchanged = (before.st_size, before.st_mtime_ns) == (after.st_size, after.st_mtime_ns)
+    print(f"returned: {fetched}")
+    print(f"HTTP requests made: {n_requests}; file size and modification time unchanged: {unchanged}")
+    print("no download happened" if n_requests == 0 and unchanged else "a download happened")
+else:
+    print("skipped: not the development file of DATA.md (the helper would download it)")"""
+        ),
+        new_markdown_cell(
+            r"""## 5. The command line
+
+`python -m cmsopen analyze FILE --quiet --outdir DIR` and the installed `cmsopen` command run the same analysis and
+write the same files. Each is an independent run, so its files are also compared byte for byte with the ones saved
+above."""
+        ),
+        new_code_cell(
+            r"""commands = {"python -m cmsopen": [sys.executable, "-m", "cmsopen"], "cmsopen": cli_command()}
+cli = {}
+for label, cmd in commands.items():
+    if cmd is None:
+        print(f"{label}: not installed")
+        continue
+    out = tmp / ("cli_module" if label.startswith("python") else "cli_script")
+    proc = timed(f"CLI {label}", subprocess.run, [*cmd, "analyze", str(DATA_FILE), "--quiet", "--outdir", str(out)],
+                 capture_output=True, text=True)
+    cli[label] = (proc.returncode, proc.stderr.strip(), out)
+    print(f"{' '.join([Path(cmd[0]).name, *cmd[1:]])} analyze ... -> exit {proc.returncode}")"""
+        ),
+        new_markdown_cell(
+            r"""## Self-checks
+
+1. Z, development file only: the final cutflow row and the number of pairs in the fit range equal the earlier
+   layers' results, and the fitted peak agrees with the Layer 6 value within its statistical uncertainty.
+2. Four chunks equal one chunk on the first 100,000 events.
+3. Two worker processes equal the serial run exactly (masses, cutflow, fits, summary).
+4. Every expected output file exists, and independent runs give byte-identical files.
+5. Both command-line forms exit 0 and write a `summary.txt` equal to `result.summary()`.
+6. J/$\psi$: the fit converges and its peak lies in 2.9-3.3 GeV (a sanity bound; the other numbers are reported
+   only).
+7. The data helper verified the existing file without downloading.
+8. The docs-freeze and blinding checks report OK.
+
+The wall time of every step is printed at the end (no threshold)."""
+        ),
+        new_code_cell(CHECKS_CLASS),
+        new_code_cell(LAYER8_CHECKS),
+    ]
+    return _notebook(cells)
+
+
 def _notebook(cells: list) -> nbformat.NotebookNode:
     for i, cell in enumerate(cells):
         cell.id = f"cell-{i:02d}"  # deterministic ids so rebuilds give identical files
@@ -1273,6 +1604,7 @@ NOTEBOOKS = {
     "layer5_kinematics.ipynb": layer5,
     "layer6_fitting.ipynb": layer6,
     "layer7_plotting.ipynb": layer7,
+    "layer8_pipeline.ipynb": layer8,
 }
 
 

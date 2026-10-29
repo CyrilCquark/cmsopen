@@ -151,3 +151,8 @@ def test_config_object_overrides_channel_name(zfile):
     r = run(zfile, channel="does_not_matter", config=cfg)
     assert r.config is cfg and r.fit.fit_range == (75.0, 105.0)
     assert isinstance(r.config, ChannelConfig)
+
+
+def test_analyze_docstring_explains_the_spawn_guard():
+    doc = " ".join(analyze.__doc__.split())
+    assert 'if __name__ == "__main__":' in doc and "macOS" in doc

@@ -33,7 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         metavar="N",
-        help="process chunks in N worker processes (identical results to serial)",
+        help=(
+            "process chunks in N worker processes (identical results to serial); from your own script on macOS, "
+            "calling analyze(n_workers=N) needs the `if __name__ == \"__main__\":` guard"
+        ),
     )
     a.add_argument("--no-stability", action="store_true", help="skip the fit-choice stability scan")
     a.add_argument("--quiet", action="store_true", help="do not print the summary")

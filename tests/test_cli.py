@@ -65,3 +65,4 @@ def test_usage_errors_and_help():
     assert "analyze" in text and "fetch" in text
     sub = build_parser()._subparsers._group_actions[0].choices["analyze"].format_help()
     assert "Jpsi_mumu" in sub and "Z_mumu" in sub and "--workers" in sub
+    assert '__name__ == "__main__"' in " ".join(sub.split())  # the macOS guard note of --workers
