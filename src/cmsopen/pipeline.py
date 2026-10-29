@@ -269,7 +269,7 @@ def resonance_label(config: ChannelConfig) -> str:
 
 # The second fit reported next to the primary one, to show how the result depends on the line shape.
 _ALTERNATE_MODEL = {"gauss_poly": "voigt_poly", "voigt_poly": "gauss_poly", "cb_bw_exp": "voigt_poly",
-                    "cb_bw_poly2": "voigt_poly"}
+                    "cb_bw_poly2": "voigt_poly", "cb2_bw_exp": "voigt_poly", "cb2_bw_poly2": "voigt_poly"}
 
 
 def _channel(channel: str, config: ChannelConfig | None) -> ChannelConfig:
@@ -933,7 +933,7 @@ def analyze(
         Process at most this many events in total, taking files in order.
     chunk_size : int
         Events per chunk.
-    model : {"voigt_poly", "gauss_poly", "cb_bw_exp", "cb_bw_poly2"}, optional
+    model : {"voigt_poly", "gauss_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2"}, optional
         The primary peak model (default: the channel's ``model``). The ``cb_bw_*`` models (Breit-Wigner (x)
         Crystal Ball, see :func:`cmsopen.fitting.crystalball_bw`) use the
         channel's fixed ``cb_n``. The other fit reported next to it is

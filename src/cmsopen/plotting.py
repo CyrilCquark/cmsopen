@@ -614,6 +614,8 @@ _MODEL_LABELS = {
     "voigt_poly": "Voigt",
     "cb_bw_exp": r"BW$\otimes$CB",
     "cb_bw_poly2": r"BW$\otimes$CB",
+    "cb2_bw_exp": r"BW$\otimes$2CB",
+    "cb2_bw_poly2": r"BW$\otimes$2CB",
 }
 
 
@@ -638,10 +640,17 @@ def _fit_annotation(fit: FitResult, resonance_label: str | None = None, natural_
     position = r"$M_{\mathrm{pole}}$" if fit.cb_n is not None else r"$m_{\mathrm{peak}}$"  # BW pole for cb_bw_*
     lines.append(rf"{position} = {m} $\pm$ {me} GeV (stat.)")
     s, se = _fmt_pm(*fit.resolution)
-    if fit.gamma is None:
+    if "r" in fit.parameters:  # a resolution mixture: report the effective width and the components
+        s1, s1e = _fmt_pm(*fit.parameters["sigma"])
+        lines.append(rf"FWHM/2.355 = {s} $\pm$ {se} GeV")
+        r, re = _fmt_pm(*fit.parameters["r"])
+        fr, fre = _fmt_pm(*fit.parameters["f"])
+        lines.append(rf"$\sigma_1$ = {s1} $\pm$ {s1e} GeV, $r$ = {r} $\pm$ {re}, $f$ = {fr} $\pm$ {fre}")
+    elif fit.gamma is None:
         lines.append(rf"$\sigma$ = {s} $\pm$ {se} GeV (effective)")
     else:
         lines.append(rf"$\sigma_{{\mathrm{{res}}}}$ = {s} $\pm$ {se} GeV")
+    if fit.gamma is not None:
         width = 2 * fit.gamma if natural_width is None else natural_width
         gamma_symbol = _resonance_symbol(resonance_label, r"\Gamma")
         lines.append(f"{gamma_symbol} = {_width_text(width)} (fixed)")

@@ -60,6 +60,7 @@ import numpy as np
 
 from cmsopen.fitting import (
     CB_MODELS,
+    MIXTURE_MODELS,
     FitError,
     FitResult,
     fit_mass_peak,
@@ -473,9 +474,11 @@ def systematics_summary(
     )
     stab_positions = [r["mass"] for r in stab.rows]
 
-    other = {"cb_bw_exp": "cb_bw_poly2", "cb_bw_poly2": "cb_bw_exp"}.get(model, model)
-    degree = config.poly_degree if model in CB_MODELS else config.poly_degree + 1
-    variation: dict[str, Any] = {"model": other if model in CB_MODELS else f"{model}, degree {degree}"}
+    other = {"cb_bw_exp": "cb_bw_poly2", "cb_bw_poly2": "cb_bw_exp", "cb2_bw_exp": "cb2_bw_poly2",
+             "cb2_bw_poly2": "cb2_bw_exp"}.get(model, model)
+    fixed_background = model in CB_MODELS or model in MIXTURE_MODELS
+    degree = config.poly_degree if fixed_background else config.poly_degree + 1
+    variation: dict[str, Any] = {"model": other if fixed_background else f"{model}, degree {degree}"}
     try:
         alt = fit_mass_peak(hist, model=other, cb_n=config.cb_n, **{**common, "poly_degree": degree})
         variation.update(status="fitted", position=alt.peak_position[0])

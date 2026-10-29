@@ -11,6 +11,7 @@ from synthetic import REAL_FILE
 import cmsopen
 from cmsopen.fitting import (
     CB_MODELS,
+    MIXTURE_MODELS,
     MODELS,
     FitError,
     FitResult,
@@ -31,8 +32,9 @@ from cmsopen.fitting import (
 TRUE_MEAN, TRUE_SIGMA = 91.0, 2.0
 EDGES = np.linspace(60.0, 120.0, 61)
 
-# The Gaussian and Voigt models with a polynomial background; the cb_bw_* models are tested in test_fitting_cb.py.
-POLY_MODELS = tuple(m for m in MODELS if m not in CB_MODELS)
+# The Gaussian and Voigt models with a polynomial background; the cb_bw_* and cb2_bw_* models are tested in
+# test_fitting_cb.py and test_fitting_cb2.py.
+POLY_MODELS = tuple(m for m in MODELS if m not in CB_MODELS + MIXTURE_MODELS)
 
 
 def gauss_exp_toy(rng, n_signal=4000.0, n_background=4000.0, mean=TRUE_MEAN, sigma=TRUE_SIGMA, slope=25.0, edges=EDGES):
