@@ -60,7 +60,7 @@ import math
 import textwrap
 from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import awkward as ak
 import numpy as np
@@ -172,7 +172,8 @@ def paper_style() -> Iterator[None]:
     """Context manager: apply the paper style, and restore the previous rcParams on exit."""
     import matplotlib
 
-    with matplotlib.rc_context(paper_rc()):
+    rc: dict[Any, Any] = paper_rc()
+    with matplotlib.rc_context(rc):
         yield
 
 
@@ -180,7 +181,8 @@ def apply_paper_style() -> None:
     """Apply the paper style globally (for the rest of the session; :func:`paper_style` is scoped)."""
     import matplotlib
 
-    matplotlib.rcParams.update(paper_rc())
+    rc: dict[Any, Any] = paper_rc()
+    matplotlib.rcParams.update(rc)
 
 
 def _new_figure(figsize: tuple[float, float]) -> Figure:
@@ -190,6 +192,16 @@ def _new_figure(figsize: tuple[float, float]) -> Figure:
     fig = Figure(figsize=figsize, layout="constrained")
     FigureCanvasAgg(fig)
     return fig
+
+
+def _figure_of(ax: Axes) -> Figure:
+    """The figure an axes belongs to (the plotting functions only build plain figures, not sub-figures)."""
+    return cast("Figure", ax.figure)
+
+
+def _renderer(fig: Figure) -> Any:
+    """The renderer of a figure's canvas; the Agg canvas has ``get_renderer``, which the base class does not declare."""
+    return cast(Any, fig.canvas).get_renderer()
 
 
 def _prepare_figure(fig: Figure | None, figsize: tuple[float, float]) -> Figure:
@@ -210,11 +222,11 @@ def _titles(ax: Axes, label: str) -> None:
 
 def _separate_titles(ax: Axes) -> None:
     """If the left label and the right footnote would touch, lift the label onto its own row."""
-    fig = ax.figure
+    fig = _figure_of(ax)
     with _measuring_dpi(fig):
         fig.draw_without_rendering()
-        renderer = fig.canvas.get_renderer()
-        left, right = ax._left_title, ax._right_title
+        renderer = _renderer(fig)
+        left, right = cast(Any, ax)._left_title, cast(Any, ax)._right_title
         gap = 6 * fig.dpi / 72.0
         lb, rb = left.get_window_extent(renderer), right.get_window_extent(renderer)
         if left.get_text() and right.get_text() and lb.x1 + gap > rb.x0:
@@ -282,7 +294,7 @@ def _obstacles(ax: Axes) -> list[tuple[str, np.ndarray, float]]:
     """Every drawn data element of ``ax`` as (name, display points, radius in pixels)."""
     from matplotlib.collections import PathCollection
 
-    fig = ax.figure
+    fig = _figure_of(ax)
     px_per_pt = fig.dpi / 72.0
     bb = ax.get_window_extent()
     margin = 4 * px_per_pt
@@ -291,7 +303,7 @@ def _obstacles(ax: Axes) -> list[tuple[str, np.ndarray, float]]:
     for line in ax.lines:
         if not line.get_visible():
             continue
-        name = line.get_gid() or line.get_label() or "line"
+        name = str(line.get_gid() or line.get_label() or "line")
         xy = line.get_transform().transform(line.get_path().vertices)
         if line.get_marker() not in (None, "", "None", " "):
             radius = 0.5 * line.get_markersize() * px_per_pt + line.get_markeredgewidth() * px_per_pt
@@ -309,7 +321,7 @@ def _obstacles(ax: Axes) -> list[tuple[str, np.ndarray, float]]:
     for coll in ax.collections:
         if not coll.get_visible():
             continue
-        name = coll.get_gid() or coll.get_label() or type(coll).__name__
+        name = str(coll.get_gid() or coll.get_label() or type(coll).__name__)
         if isinstance(coll, PathCollection):  # scatter markers: positions in data coordinates
             xy = coll.get_offset_transform().transform(coll.get_offsets())
             radius = 0.5 * math.sqrt(float(np.max(coll.get_sizes(), initial=1.0))) * px_per_pt
@@ -319,7 +331,7 @@ def _obstacles(ax: Axes) -> list[tuple[str, np.ndarray, float]]:
     for patch in ax.patches:
         if not patch.get_visible():
             continue
-        name = patch.get_gid() or patch.get_label() or type(patch).__name__
+        name = str(patch.get_gid() or patch.get_label() or type(patch).__name__)
         out.append(
             (
                 name,
@@ -422,7 +434,7 @@ def layout_overlaps(fig: Figure, dpi: float = LAYOUT_DPI) -> list[str]:
     """
     with _measuring_dpi(fig, dpi):
         fig.draw_without_rendering()
-        renderer = fig.canvas.get_renderer()
+        renderer = _renderer(fig)
         problems = [f"axes {i}: {p}" for i, ax in enumerate(fig.axes) for p in _axes_overlaps(ax, renderer)]
         return problems + _clipped_text(fig, renderer)
 
@@ -432,7 +444,7 @@ def _clipped_text(fig: Figure, renderer: Any) -> list[str]:
     from matplotlib.text import Text
 
     page = fig.bbox
-    hidden = set()  # labels of ticks outside the view interval: generated but never drawn
+    hidden: set[int] = set()  # labels of ticks outside the view interval: generated but never drawn
     for ax in fig.axes:
         for axis in (ax.xaxis, ax.yaxis):
             lo, hi = sorted(axis.get_view_interval())
@@ -487,7 +499,7 @@ def _annotation_box(loc: str, axbb: Any, width: float, height: float) -> Any:
 def _apply(legend: Any, annotation: Any, legend_loc: str, annot_loc: str | None) -> None:
     legend.set_loc(legend_loc)
     if annotation is not None:
-        x, y, ha, va = _corner(annot_loc)
+        x, y, ha, va = _corner(cast(str, annot_loc))
         annotation.set_position((x, y))
         annotation.set_ha(ha)
         annotation.set_va(va)
@@ -516,8 +528,8 @@ def _place_boxes(ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str,
     If nothing works, a RuntimeError is raised rather than a cluttered
     figure returned.
     """
-    fig = ax.figure
-    pairs = [(a, b) for a in _LOCATIONS for b in _LOCATIONS if a != b]
+    fig = _figure_of(ax)
+    pairs: list[tuple[str, str | None]] = [(a, b) for a in _LOCATIONS for b in _LOCATIONS if a != b]
     if annotation is None:
         pairs = [(a, None) for a in _LOCATIONS]
     ylim0 = ax.get_ylim()
@@ -544,10 +556,10 @@ def _place_boxes(ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str,
 
 
 def _try_pairs(ax: Axes, legend: Any, annotation: Any, pairs: list, opaque: bool) -> bool:
-    fig = ax.figure
+    fig = _figure_of(ax)
     _apply(legend, annotation, *pairs[0])
     fig.draw_without_rendering()
-    renderer = fig.canvas.get_renderer()
+    renderer = _renderer(fig)
     axbb = ax.get_window_extent(renderer)
     pad = 1.5 * fig.dpi / 72.0
     legend_bb = legend.get_window_extent(renderer)
@@ -560,7 +572,7 @@ def _try_pairs(ax: Axes, legend: Any, annotation: Any, pairs: list, opaque: bool
     for legend_loc, annot_loc in pairs:
         boxes = [_candidate_box(legend_loc, axbb, legend_bb.width, legend_bb.height, legend_pad)]
         if annotation is not None:
-            boxes.append(_annotation_box(annot_loc, axbb, *annot_size))
+            boxes.append(_annotation_box(annot_loc, axbb, *cast(tuple[float, float], annot_size)))
         if any(b.x0 < axbb.x0 or b.x1 > axbb.x1 or b.y0 < axbb.y0 or b.y1 > axbb.y1 for b in boxes):
             continue
         if len(boxes) == 2 and boxes[0].overlaps(boxes[1]):
@@ -569,7 +581,7 @@ def _try_pairs(ax: Axes, legend: Any, annotation: Any, pairs: list, opaque: bool
             continue
         _apply(legend, annotation, legend_loc, annot_loc)
         fig.draw_without_rendering()
-        if not _axes_overlaps(ax, fig.canvas.get_renderer()):
+        if not _axes_overlaps(ax, _renderer(fig)):
             return True
     return False
 
@@ -710,7 +722,7 @@ def plot_mass_spectrum(
         fig = _prepare_figure(fig, (WIDTH, 4.8 if with_pulls else 3.8))
         if with_pulls:
             ax, rax = fig.subplots(2, 1, sharex=True, gridspec_kw={"height_ratios": [3.2, 1.0]})
-            fig.get_layout_engine().set(h_pad=0.0, hspace=0.0)
+            cast(Any, fig.get_layout_engine()).set(h_pad=0.0, hspace=0.0)
             axes = [ax, rax]
         else:
             ax = fig.subplots()
@@ -798,8 +810,9 @@ def plot_mass_spectrum(
         _titles(ax, label)
 
         if with_pulls:
-            inside = fit.fit_mask
-            pull = (counts[inside] - fit.expected_counts()) / masshist.fit_errors[inside]
+            fitted = cast(FitResult, fit)  # with_pulls implies a fit
+            inside = fitted.fit_mask
+            pull = (counts[inside] - fitted.expected_counts()) / masshist.fit_errors[inside]
             rax.axhline(0.0, color="black", linewidth=0.6, gid="pull-zero")
             for level in (-2.0, 2.0):
                 rax.axhline(level, color="0.45", linestyle=":", linewidth=0.8, gid="pull-2sigma")
@@ -1041,7 +1054,7 @@ def plot_cutflow(
             for _ in range(20):
                 ax.set_xlim(0, xmax)
                 fig.draw_without_rendering()
-                renderer = fig.canvas.get_renderer()
+                renderer = _renderer(fig)
                 right = ax.get_window_extent(renderer).x1
                 if max(t.get_window_extent(renderer).x1 for t in texts) < right - 3:
                     break

@@ -68,7 +68,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from numbers import Real
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 import awkward as ak
 import numpy as np
@@ -741,19 +741,20 @@ class Selection:
 
     def quality_id(self, name: str) -> Selection:
         """Keep muons passing the named ID working point. See :func:`quality_id`."""
-        return self._particle_cut("quality_id", quality_id(self._particles, name), {"name": name})
+        return self._particle_cut("quality_id", quality_id(cast(Muon, self._particles), name), {"name": name})
 
     def max_abs_dxy(self, value: float) -> Selection:
         """Keep muons with |dxy| < value (cm, strict). See :func:`max_abs_dxy`."""
-        return self._particle_cut("max_abs_dxy", max_abs_dxy(self._particles, value), {"value": float(value)})
+        mask = max_abs_dxy(cast(Muon, self._particles), value)
+        return self._particle_cut("max_abs_dxy", mask, {"value": float(value)})
 
     def max_abs_dz(self, value: float) -> Selection:
         """Keep muons with |dz| < value (cm, strict). See :func:`max_abs_dz`."""
-        return self._particle_cut("max_abs_dz", max_abs_dz(self._particles, value), {"value": float(value)})
+        return self._particle_cut("max_abs_dz", max_abs_dz(cast(Muon, self._particles), value), {"value": float(value)})
 
     def global_muon(self) -> Selection:
         """Keep muons that are both global and tracker muons. See :func:`global_muon`."""
-        return self._particle_cut("global_muon", global_muon(self._particles), {})
+        return self._particle_cut("global_muon", global_muon(cast(Muon, self._particles)), {})
 
     def apply(self, **cuts: Any) -> Selection:
         """Apply several particle-level cuts given as keywords, in keyword order.

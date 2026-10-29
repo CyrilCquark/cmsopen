@@ -45,7 +45,7 @@ import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 import awkward as ak
 import hist
@@ -222,6 +222,7 @@ class MassHistogram:
     def to_hist(self) -> hist.Hist:
         """Return the same histogram as a :class:`hist.Hist` (with a ``mass`` axis)."""
         widths = self.widths
+        axis: hist.axis.Regular | hist.axis.Variable
         if np.allclose(widths, widths[0]):
             axis = hist.axis.Regular(
                 len(self.counts), self.edges[0], self.edges[-1], name="mass", label="Dimuon mass [GeV]"
@@ -279,6 +280,7 @@ def make_histogram(
     if data.size == 0:
         raise ValueError("make_histogram() got no values; there is nothing to histogram")
     data = data[~np.isnan(data)]
+    axis: hist.axis.Regular | hist.axis.Variable
     if isinstance(bins, (int, np.integer)):
         lo, hi = float(range[0]), float(range[1])
         if bins < 1 or not hi > lo:
@@ -419,7 +421,7 @@ class FitResult:
     range; ``details["significant"]`` says whether by more than 3 of its
     own propagated errors.
     """
-    _density: Callable[..., np.ndarray] = field(default=None, repr=False)
+    _density: Callable[..., np.ndarray] | None = field(default=None, repr=False)
 
     @property
     def yields_reliable(self) -> bool:
@@ -507,7 +509,7 @@ class FitResult:
 
     def expected_counts(self) -> np.ndarray:
         """Expected count in each fitted bin from the fitted model (bin-integrated)."""
-        return self._density(self.values)
+        return cast(Callable[..., np.ndarray], self._density)(self.values)
 
     # -- yields ------------------------------------------------------------------------
 

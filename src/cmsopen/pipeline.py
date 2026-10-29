@@ -49,7 +49,7 @@ from dataclasses import dataclass, field, fields
 from importlib import metadata
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 import awkward as ak
 import numpy as np
@@ -841,7 +841,7 @@ def analyze(
     files = [str(path)] if isinstance(path, (str, Path)) else [str(p) for p in path]
     if not files:
         raise ValueError("no input files given")
-    fit_range = tuple(fit_range) if fit_range is not None else cfg.fit_range
+    frange = cast(tuple[float, float], tuple(fit_range)) if fit_range is not None else cfg.fit_range
     n_bins = bins if bins is not None else cfg.bins
     muon_fields = _muon_fields(cfg.muon_cuts)
 
@@ -853,23 +853,23 @@ def analyze(
     ss_masses = np.concatenate([c.same_sign for c in chunks])
     n_os = sum(c.n_os for c in chunks)
 
-    in_range = int(np.sum((masses >= fit_range[0]) & (masses < fit_range[1])))
+    in_range = int(np.sum((masses >= frange[0]) & (masses < frange[1])))
     if in_range < cfg.min_pairs:
         raise AnalysisError(
-            f"too few pairs to fit: {in_range} opposite-sign pairs in {fit_range[0]:g}-{fit_range[1]:g} GeV "
+            f"too few pairs to fit: {in_range} opposite-sign pairs in {frange[0]:g}-{frange[1]:g} GeV "
             f"(need at least {cfg.min_pairs}); {len(masses)} pairs in total from {n_done:,} events"
         )
     hist = make_histogram(masses, bins=n_bins, range=cfg.mass_range)
     width = pdg_mass_width(cfg.resonance)[2]
     warnings: list[str] = []
     try:
-        fit = fit_mass_peak(hist, model=model, fit_range=fit_range, poly_degree=cfg.poly_degree, natural_width=width)
+        fit = fit_mass_peak(hist, model=model, fit_range=frange, poly_degree=cfg.poly_degree, natural_width=width)
     except FitError as exc:
         raise AnalysisError(f"the {model} fit failed: {exc}") from None
     other = next(m for m in MODELS if m != model)
     try:
         alternate: FitResult | None = fit_mass_peak(
-            hist, model=other, fit_range=fit_range, poly_degree=cfg.poly_degree, natural_width=width
+            hist, model=other, fit_range=frange, poly_degree=cfg.poly_degree, natural_width=width
         )
     except FitError as exc:
         alternate = None
@@ -883,7 +883,7 @@ def analyze(
     if stability:
         stab = fit_stability(
             masses,
-            fit_ranges=cfg.stability_fit_ranges or (fit_range,),
+            fit_ranges=cfg.stability_fit_ranges or (frange,),
             bin_widths=cfg.stability_bin_widths or ((cfg.mass_range[1] - cfg.mass_range[0]) / n_bins,),
             hist_range=cfg.mass_range,
             natural_width=width,
