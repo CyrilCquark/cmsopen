@@ -221,6 +221,11 @@ Standing rule for every layer. A layer is NOT done until ALL of these hold:
     --cov-fail-under=90`, `mypy src` and `ruff check src tests scripts
     examples`, configured in pyproject.toml).
 
+Process rule (full suite before such commits): before committing ANY change
+to a default, a check or an existing test, run the FULL test suite (`pytest`,
+not `pytest -m "not slow"`) and show that it passes in the same step. The
+fast suite is only for iteration.
+
 Never claim success without showing real command output. If a check
 fails, report the failure. Do not weaken or edit a check to make it pass.
 
