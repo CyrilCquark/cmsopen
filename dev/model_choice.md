@@ -138,3 +138,21 @@ Notes:
   Observed on the development file with the selected models: Z_mumu
   cb_bw_exp 1.64 (within the benchmark), Jpsi_mumu cb_bw_poly2 2.97 (not
   within it). Development observations only.
+
+## Amendment 1 (written and committed before any amended fit was run)
+
+Reason: on the development file the Jpsi_mumu cb_n scan ended at the edge of
+the original grid (n = 20) with chi2/ndf still falling, so the grid did not
+contain the minimum the rule asks for.
+
+Change: the cb_n grid is extended, for BOTH channels, to
+{1, 2, 3, 5, 10, 20, 30, 50, 100}. Every other part of the rule and of "How
+each step is carried out" above is unchanged (the scan uses cb_bw_exp; the
+eligibility criteria (a)-(c); lowest chi2/ndf, AIC within 5 %; ties to the
+smaller n; no added parameters; no changed cut).
+
+The original Prompt 5 tables and outcome above are kept as they were. The
+amended results are added below under "Amendment 1 results", produced by
+`python scripts/model_choice.py --grid amended`. A default (cb_n or model)
+changes only if the unchanged rule, on the amended grid, selects something
+different, in a separate commit with the full test suite passing.

@@ -11,7 +11,9 @@ polynomial degree, the natural width from the particle package.
 Prints Markdown tables and the outcome; changes nothing.
 
 Usage:
-    python scripts/model_choice.py [--file PATH]
+    python scripts/model_choice.py [--file PATH] [--grid original|amended]
+
+``--grid amended`` uses the cb_n grid of Amendment 1 in dev/model_choice.md.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from cmsopen.datasets import DEV_FILENAME
 from cmsopen.fitting import FitError, FitResult, MassHistogram, fit_mass_peak, pdg_mass_width
 from cmsopen.pipeline import CHANNELS, ChannelConfig
 
-CB_N_GRID = (1, 2, 3, 5, 10, 20)
+CB_N_GRIDS = {"original": (1, 2, 3, 5, 10, 20), "amended": (1, 2, 3, 5, 10, 20, 30, 50, 100)}  # Amendment 1
 COMPARED = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2")
 CLOSE = 0.05  # chi2/ndf within 5 % of the lowest: decide by AIC
 REPO = Path(__file__).resolve().parents[1]
@@ -54,14 +56,14 @@ def pm(value: float, error: float, digits: int) -> str:
     return f"{value:.{digits}f} +- {error:.{digits}f}"
 
 
-def scan(h: MassHistogram, cfg: ChannelConfig) -> tuple[float | None, list[str]]:
+def scan(h: MassHistogram, cfg: ChannelConfig, grid: tuple[int, ...]) -> tuple[float | None, list[str]]:
     """Step 1: the cb_n with the lowest chi2/ndf (cb_bw_exp), and the Markdown table of the scan."""
     rows = [
         "| cb_n | chi2 / ndf | chi2/ndf | p-value | pole M [GeV] | sigma [GeV] | alpha |",
         "|---|---|---|---|---|---|---|",
     ]
     best: tuple[float, float] | None = None
-    for n in CB_N_GRID:
+    for n in grid:
         try:
             r = fit(h, cfg, "cb_bw_exp", float(n))
         except FitError as exc:
@@ -124,7 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     """Run the rule for every registered channel on the development file and print the results."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=REPO / "data" / DEV_FILENAME, help="the development file")
-    path = parser.parse_args(argv).file.resolve()
+    parser.add_argument("--grid", choices=sorted(CB_N_GRIDS), default="original", help="cb_n grid (default original)")
+    args = parser.parse_args(argv)
+    path, grid = args.file.resolve(), CB_N_GRIDS[args.grid]
     if path.name != DEV_FILENAME:
         print(f"error: the rule is applied to the development file {DEV_FILENAME} only", file=sys.stderr)
         return 2
@@ -137,8 +141,8 @@ def main(argv: list[str] | None = None) -> int:
         h = analyze(path, channel=name, stability=False, verbose=False).histogram  # the channel's own histogram
         print(f"### {name}\n")
         print(f"Histogram: {h!r}; fit range {cfg.fit_range[0]:g}-{cfg.fit_range[1]:g} GeV.\n")
-        cb_n, rows = scan(h, cfg)
-        print("Step 1, cb_n scan (cb_bw_exp):\n")
+        cb_n, rows = scan(h, cfg, grid)
+        print(f"Step 1, cb_n scan (cb_bw_exp), grid {args.grid} {grid}:\n")
         print("\n".join(rows))
         print(f"\nChosen cb_n: {cb_n}\n")
         if cb_n is None:
@@ -154,9 +158,10 @@ def main(argv: list[str] | None = None) -> int:
         outcome[name] = (cb_n, chosen)
     print("### Outcome\n")
     for name, (cb_n, chosen) in outcome.items():
-        default = "voigt_poly"
-        change = "unchanged" if chosen in (None, default) else f"changes from {default} to {chosen}"
-        print(f"- {name}: cb_n = {cb_n}; selected model {chosen}; default model {change}.")
+        cfg = CHANNELS[name]
+        n_text = "unchanged" if cb_n == cfg.cb_n else f"differs from the registered {cfg.cb_n:g}"
+        m_text = "unchanged" if chosen in (None, cfg.model) else f"differs from the registered {cfg.model}"
+        print(f"- {name}: selected cb_n = {cb_n} ({n_text}); selected model {chosen} ({m_text}).")
     return 0
 
 
