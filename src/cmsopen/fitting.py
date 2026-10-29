@@ -666,6 +666,15 @@ class FitResult:
     _density: Callable[..., np.ndarray] | None = field(default=None, repr=False)
     cb_n: float | None = None
     """The fixed Crystal Ball tail exponent of the ``cb_bw_*`` models (None for the others)."""
+    bounds: tuple[np.ndarray, np.ndarray] | None = field(default=None, repr=False)
+    """(lower, upper) limits of each free parameter in the fit (infinite where unbounded)."""
+
+    @property
+    def on_bound(self) -> list[str]:
+        """Names of the parameters that ended on a bound (empty for a fit returned by :func:`fit_mass_peak`)."""
+        if self.bounds is None:
+            return []
+        return [self.parameter_names[i] for i in _bounds_hit(self.values, *self.bounds)]
 
     @property
     def n_signal_parameters(self) -> int:
@@ -1236,6 +1245,7 @@ def fit_mass_peak(
         warnings=tuple(notes),
         _density=expected,
         cb_n=float(cast(float, cb_n)) if is_cb else None,
+        bounds=(lower, upper),
     )
 
 
