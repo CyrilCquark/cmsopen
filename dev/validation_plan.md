@@ -161,3 +161,11 @@ Consequences on the development file: for Jpsi_mumu, most charge-study bins
 are just below the threshold, so the mu+ minus mu- comparison has only the
 phi [pi/2, pi] and central-eta bins, and no working point can be fitted.
 Z_mumu EE (4,982) misses the threshold by 18 pairs; it is still not fitted.
+
+## Addendum (2026-10-29, at the user's instruction in prompt 7)
+
+The systematics summary's model list now also contains the Amendment 2
+resolution mixtures cb2_bw_exp and cb2_bw_poly2 (dev/model_choice.md), each
+labelled eligible or not by the same criteria, so the model part of the
+fit-choice spread includes them. Nothing else in this plan changes; the
+validation is rerun as pre-registered with the new default models.
