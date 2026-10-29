@@ -139,6 +139,7 @@ def tiny_file(tmp_path_factory):
     return write_z_file(tmp_path_factory.mktemp("tiny") / "tiny.root", 200, seed=4)
 
 
+@pytest.mark.slow
 def test_chunked_equals_unchunked(tiny_file):
     f = tiny_file
     results = [run(f, chunk_size=c) for c in (1, 7, 10_000)]
@@ -170,6 +171,7 @@ def test_cutflow_combine():
 # -- 3. limits and several files ----------------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_n_events_and_two_files(small_files):
     f1, f2 = small_files
     r = run(f1, n_events=400)
@@ -263,6 +265,7 @@ def test_channel_registry():
 # -- 5. saving and the summary --------------------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_save_outputs_and_determinism(tmp_path, small_files):
     r1 = run(small_files[0], stability=True)
     r2 = run(small_files[0], stability=True)
@@ -302,6 +305,7 @@ def test_verbose_prints_the_summary(small_files, capsys):
 # -- 6. command line ---------------------------------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_cli_module(tmp_path, small_files):
     out = subprocess.run(
         [
@@ -367,6 +371,7 @@ def test_exports():
 
 
 @pytest.mark.skipif(not REAL_FILE.exists(), reason=f"real CMS file not downloaded: {REAL_FILE} (see DATA.md)")
+@pytest.mark.slow
 def test_real_file_reproduces_development_results():
     """Regression check against the earlier layers' development results (numbers live in this test only)."""
     r = analyze(REAL_FILE, verbose=False, stability=False)

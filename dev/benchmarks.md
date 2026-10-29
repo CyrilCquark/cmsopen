@@ -40,3 +40,12 @@ Before each worker kept its file open between chunks, the same check gave no
 speed-up at all (2 workers 13.27 s, 4 workers 11.02 s, 8 workers 11.58 s):
 opening the file costs about 0.13 s, paid once per chunk. 8 workers are slower
 than 4 on this machine.
+
+## Test-suite durations (2026-10-28, 8-core Mac, dev venv)
+
+Development observation, measured with `time`, run one after the other:
+
+| command | tests | wall time |
+|---|---|---|
+| `pytest -q -m "not slow"` | 289 passed, 28 deselected | 94.7 s |
+| `pytest -q` (everything) | 317 passed | 366.7 s |

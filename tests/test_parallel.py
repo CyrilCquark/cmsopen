@@ -10,6 +10,8 @@ from test_pipeline import write_z_file
 
 from cmsopen.pipeline import CHANNELS, AnalysisError, analyze
 
+pytestmark = pytest.mark.slow  # worker pools: every test here starts processes
+
 
 @pytest.fixture(scope="module")
 def files(tmp_path_factory):

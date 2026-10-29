@@ -182,6 +182,7 @@ def test_from_events_synthetic(full_nano_file: Path):
 
 
 @pytest.mark.skipif(not REAL_FILE.exists(), reason=f"real CMS file not downloaded: {REAL_FILE} (see DATA.md)")
+@pytest.mark.slow
 def test_from_events_real_file():
     with open_events(REAL_FILE) as events:
         mu = Muon.from_events(events, entry_stop=100_000)

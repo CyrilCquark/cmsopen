@@ -12,7 +12,13 @@ Z boson invariant mass peak (~91 GeV) from DoubleMuon NanoAOD files.
   running anything: `source .venv/bin/activate`.
 - Never use the system `python3` (3.9.6, too old).
 - Install: `pip install -e ".[dev]"`
-- Test: `pytest`
+- Test: `pytest` (runs everything; this is the full run used by the
+  Definition of done and by `scripts/check_quality.py`).
+- Fast run for development: `pytest -m "not slow"`. The `slow` marker
+  (registered in pyproject.toml) is on tests that take more than about 5 s,
+  read the real data file, run the 1,000-toy pull test, or start worker
+  processes (all of `tests/test_parallel.py`). Measured durations of both
+  runs are in `dev/benchmarks.md`.
 
 ## Working on a new machine
 

@@ -38,6 +38,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: takes more than about 5 s, or reads the real data file, or runs the 1,000-toy pull test (deselect with -m \"not slow\")",
+]
 
 [tool.coverage.run]
 source = ["cmsopen"]

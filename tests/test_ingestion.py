@@ -151,6 +151,7 @@ def test_non_nanoaod_files_rejected(tmp_path: Path):
 
 
 @pytest.mark.skipif(not REAL_FILE.exists(), reason=f"real CMS file not downloaded: {REAL_FILE} (see DATA.md)")
+@pytest.mark.slow
 def test_real_file_reproduces_measured_numbers():
     with open_events(REAL_FILE) as ev:
         assert ev.tree_name == "Events"

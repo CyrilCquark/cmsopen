@@ -265,6 +265,7 @@ def _state(sel: Selection):
     return p.p4.pt.tolist(), p.p4.eta.tolist(), p.charge.tolist(), p.extras.dxy.tolist()
 
 
+@pytest.mark.slow
 def test_particle_cuts_commute(random_muons: Muon):
     """Every one of the 7! = 5040 orderings of the seven particle-level cuts keeps the same muons.
 
@@ -545,6 +546,7 @@ def test_muons_without_cuts_unchanged(full_events, events):
 
 
 @pytest.mark.skipif(not REAL_FILE.exists(), reason=f"real CMS file not downloaded: {REAL_FILE} (see DATA.md)")
+@pytest.mark.slow
 def test_real_file_matches_independent_awkward():
     """The Z->mumu selection equals a plain uproot+awkward computation that does not call cmsopen cuts."""
     branches = ["Muon_pt", "Muon_eta", "Muon_tightId", "Muon_pfRelIso04_all", "HLT_Mu17_Mu8", "HLT_Mu17_TkMu8"]

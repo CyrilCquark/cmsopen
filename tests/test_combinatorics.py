@@ -171,6 +171,7 @@ def test_equal_pt_keeps_input_order():
 
 
 @pytest.mark.parametrize("charge", ["opposite", "same", "any"])
+@pytest.mark.slow
 def test_shuffled_input_gives_same_pairs(charge):
     muons = random_muons(seed=7)
     rng = np.random.default_rng(3)
@@ -465,6 +466,7 @@ def test_package_exports():
 
 
 @pytest.mark.skipif(not REAL_FILE.exists(), reason=f"real CMS file not downloaded: {REAL_FILE} (see DATA.md)")
+@pytest.mark.slow
 def test_real_file_pair_counts_match_independent_numpy():
     """Pair counts on the first 100,000 raw events equal counting formulas computed without cmsopen."""
     n_read = 100_000

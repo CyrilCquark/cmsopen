@@ -68,6 +68,7 @@ def test_gaussian_toy_recovers_truth():
 # -- 2. pull test -----------------------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_pull_test_1000_toys(capsys):
     rng = np.random.default_rng(2012)
     pulls = []
@@ -373,6 +374,7 @@ def test_package_exports():
 
 
 @pytest.mark.skipif(not REAL_FILE.exists(), reason=f"real CMS file not downloaded: {REAL_FILE} (see DATA.md)")
+@pytest.mark.slow
 def test_real_file_z_peak():
     from cmsopen import ZMUMU_MUON_CUTS, best_pair, open_events, opposite_sign_pairs
     from cmsopen.ingestion import DIMUON_TRIGGERS_2012
