@@ -145,7 +145,7 @@ def tiny_file(tmp_path_factory):
 @pytest.mark.slow
 def test_chunked_equals_unchunked(tiny_file):
     f = tiny_file
-    results = [run(f, chunk_size=c) for c in (1, 7, 10_000)]
+    results = [run(f, chunk_size=c, model="voigt_poly") for c in (1, 7, 10_000)]  # Voigt-shaped synthetic data
     ref = results[-1]
     for r in results[:-1]:
         np.testing.assert_array_equal(r.masses, ref.masses)
@@ -177,14 +177,15 @@ def test_cutflow_combine():
 @pytest.mark.slow
 def test_n_events_and_two_files(small_files):
     f1, f2 = small_files
-    r = run(f1, n_events=400)
+    voigt = {"model": "voigt_poly"}  # Voigt-shaped synthetic data, no radiative tail
+    r = run(f1, n_events=400, **voigt)
     assert r.n_events == 400 and r.cutflow[0].n_events == 400
-    a, b, both = run(f1), run(f2), run([f1, f2])
+    a, b, both = run(f1, **voigt), run(f2, **voigt), run([f1, f2], **voigt)
     assert both.n_events == a.n_events + b.n_events == 1100
     assert both.cutflow.to_records() == CutFlow.combine([a.cutflow, b.cutflow]).to_records()
     np.testing.assert_array_equal(both.masses, np.concatenate([a.masses, b.masses]))
     assert both.files == [str(f1), str(f2)]
-    limited = run([f1, f2], n_events=700)  # all of the first file, 100 events of the second
+    limited = run([f1, f2], n_events=700, **voigt)  # all of the first file, 100 events of the second
     assert limited.n_events == 700 and limited.cutflow[0].n_events == 700
 
 
@@ -270,8 +271,8 @@ def test_channel_registry():
 
 @pytest.mark.slow
 def test_save_outputs_and_determinism(tmp_path, small_files):
-    r1 = run(small_files[0], stability=True)
-    r2 = run(small_files[0], stability=True)
+    r1 = run(small_files[0], stability=True, model="voigt_poly")  # Voigt-shaped synthetic data
+    r2 = run(small_files[0], stability=True, model="voigt_poly")
     w1, w2 = r1.save(tmp_path / "one"), r2.save(tmp_path / "two")
     names = sorted(p.name for p in w1)
     assert {"summary.txt", "summary.json", "mass_fit.png", "mass_fit.pdf", "cutflow.png", "cutflow.pdf"} <= set(names)

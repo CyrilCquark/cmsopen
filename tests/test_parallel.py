@@ -20,6 +20,9 @@ def files(tmp_path_factory):
 
 
 def run(path, **kw):
+    # The synthetic files have a Voigt peak with no radiative tail, so the Voigt model is requested explicitly;
+    # test_default_cb_model_parallel_equals_serial covers the channel's default (Crystal Ball) model.
+    kw.setdefault("model", "voigt_poly")
     return analyze(path, verbose=False, stability=False, **kw)
 
 
@@ -82,6 +85,8 @@ def test_cli_workers(tmp_path, files):
             "--chunk-size",
             "50",
             "--no-stability",
+            "--model",
+            "voigt_poly",
             "--outdir",
             str(tmp_path / "w"),
         ],
@@ -99,6 +104,8 @@ def test_cli_workers(tmp_path, files):
             "--chunk-size",
             "50",
             "--no-stability",
+            "--model",
+            "voigt_poly",
             "--outdir",
             str(tmp_path / "s"),
         ],
@@ -108,3 +115,12 @@ def test_cli_workers(tmp_path, files):
     assert serial.returncode == 0
     assert (tmp_path / "w" / "summary.json").read_bytes() == (tmp_path / "s" / "summary.json").read_bytes()
     assert out.stdout.replace(str(tmp_path / "w"), "") == serial.stdout.replace(str(tmp_path / "s"), "")
+
+
+def test_default_cb_model_parallel_equals_serial(tmp_path):
+    """The channel's default model (cb_bw_exp for Z_mumu) on a file with a radiative tail: identical in parallel."""
+    f = write_z_file(tmp_path / "fsr.root", 3000, seed=3, fsr=0.3)
+    serial = analyze(f, verbose=False, stability=True, chunk_size=500)
+    parallel = analyze(f, verbose=False, stability=True, chunk_size=500, n_workers=2)
+    assert serial.fit.model_name == "cb_bw_exp"
+    assert_identical(serial, parallel)
