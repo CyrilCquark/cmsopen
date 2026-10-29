@@ -31,13 +31,31 @@ M_MU = 0.1056583755
 TRUE_MASS, TRUE_SIGMA = 91.0, 1.5  # injected peak position and Gaussian resolution, GeV (synthetic)
 
 
-def write_z_file(path, n_events, seed=1, triggers=("HLT_Mu17_Mu8", "HLT_Mu17_TkMu8"), tree="Events", fsr=0.0):
+def write_z_file(
+    path,
+    n_events,
+    seed=1,
+    triggers=("HLT_Mu17_Mu8", "HLT_Mu17_TkMu8"),
+    tree="Events",
+    fsr=0.0,
+    y_max=0.5,
+    region_shift=None,
+    plus_phi_shift=None,
+    npv=False,
+    medium_id=False,
+):
     """A NanoAOD-like file: one Z-like or background opposite-sign pair per event, plus junk muons.
 
     Signal masses follow a Breit-Wigner of the PDG Z width convolved with a Gaussian of TRUE_SIGMA,
     centred on TRUE_MASS; the background falls exponentially. Junk muons are soft or outside |eta| < 2.4,
     and 5 % of events have one pair muon non-isolated, so the cuts have work to do. With ``fsr`` > 0, that fraction
     of signal events loses an exponentially distributed mass (mean 4 GeV): a radiative low-mass tail.
+
+    Validation options (all off by default, leaving the file and the random stream unchanged): ``y_max`` is the
+    half range of the pair rapidity (wider puts muons in the endcaps); ``region_shift`` = (BB, BE, EE) and
+    ``plus_phi_shift`` = 4 values, one per mu+ phi quarter [-pi, -pi/2), ..., [pi/2, pi], add known mass shifts
+    (GeV) to every pair of that category before the muon momenta are built; ``npv`` writes PV_npvsGood (uniform
+    0-34, from a separate random stream); ``medium_id`` writes Muon_mediumId (true for the pair muons).
     """
     rng = np.random.default_rng(seed)
     gamma = 0.5 * pdg_mass_width("Z")[2]
@@ -55,17 +73,36 @@ def write_z_file(path, n_events, seed=1, triggers=("HLT_Mu17_Mu8", "HLT_Mu17_TkM
         bkg = 60 + rng.exponential(25.0, k)
         m[bad] = np.where(is_sig[bad], sig, bkg)
     a = rng.uniform(-0.8, 0.8, n)
-    y = rng.uniform(-0.5, 0.5, n)
+    y = rng.uniform(-y_max, y_max, n)
+    if region_shift is not None or plus_phi_shift is not None:
+        extra = np.random.default_rng(seed + 1000)  # a separate stream: the default file is unchanged
+        phi1_pre = extra.uniform(-np.pi, np.pi, n)
+        q_pre = extra.choice([-1, 1], n)
+    else:
+        phi1_pre = q_pre = None
+    if region_shift is not None:
+        barrel = np.abs(np.column_stack([y + a, y - a])) < 1.2
+        region = 2 - barrel.sum(axis=1)  # 0 BB, 1 BE, 2 EE
+        m = m + np.asarray(region_shift, dtype=float)[region]
+    if plus_phi_shift is not None:
+        phi_plus = np.where(q_pre > 0, phi1_pre, np.mod(phi1_pre + 2 * np.pi, 2 * np.pi) - np.pi)
+        quarter = np.clip(np.floor((phi_plus + np.pi) / (np.pi / 2)).astype(int), 0, 3)
+        m = m + np.asarray(plus_phi_shift, dtype=float)[quarter]
     pt = m / (2 * np.cosh(a))  # massless back-to-back legs in the transverse plane: m = 2 pt cosh(a)
     phi1 = rng.uniform(-np.pi, np.pi, n)
     phi2 = np.mod(phi1 + 2 * np.pi, 2 * np.pi) - np.pi
     q = rng.choice([-1, 1], n)
+    if phi1_pre is not None:  # the shifted categories were drawn from these angles and charges
+        phi1, q = phi1_pre, q_pre
+        phi2 = np.mod(phi1 + 2 * np.pi, 2 * np.pi) - np.pi
     iso2 = np.where(rng.random(n) < 0.05, 0.5, 0.02)
     pair = {
         "pt": np.column_stack([pt, pt]), "eta": np.column_stack([y + a, y - a]), "phi": np.column_stack([phi1, phi2]),
         "mass": np.full((n, 2), M_MU), "charge": np.column_stack([q, -q]),
         "tightId": np.ones((n, 2), bool), "pfRelIso04_all": np.column_stack([np.full(n, 0.02), iso2]),
     }
+    if medium_id:
+        pair["mediumId"] = np.ones((n, 2), bool)
     n_junk = rng.integers(0, 4, n)
     tot = int(n_junk.sum())
     soft = rng.random(tot) < 0.5
@@ -75,9 +112,11 @@ def write_z_file(path, n_events, seed=1, triggers=("HLT_Mu17_Mu8", "HLT_Mu17_TkM
         "phi": rng.uniform(-np.pi, np.pi, tot), "mass": np.full(tot, M_MU), "charge": rng.choice([-1, 1], tot),
         "tightId": rng.random(tot) < 0.5, "pfRelIso04_all": rng.uniform(0, 1, tot),
     }
+    if medium_id:
+        junk["mediumId"] = junk["tightId"] | (junk["pfRelIso04_all"] < 0.3)
     muon = {}
     for k in pair:
-        dtype = {"charge": np.int32, "tightId": bool}.get(k, np.float32)
+        dtype = {"charge": np.int32, "tightId": bool, "mediumId": bool}.get(k, np.float32)
         left = ak.values_astype(ak.Array(pair[k].tolist()), dtype)
         right = ak.values_astype(ak.unflatten(junk[k], n_junk), dtype)
         muon[k] = ak.concatenate([left, right], axis=1)
@@ -86,6 +125,8 @@ def write_z_file(path, n_events, seed=1, triggers=("HLT_Mu17_Mu8", "HLT_Mu17_TkM
         "run": np.full(n, 194050, np.uint32), "luminosityBlock": np.arange(n, dtype=np.uint32) // 100,
         "event": np.arange(1, n + 1, dtype=np.uint64), "Muon": ak.zip(muon),
     }
+    if npv:
+        branches["PV_npvsGood"] = np.random.default_rng(seed + 2000).integers(0, 35, n).astype(np.int32)
     fired = {"HLT_Mu17_Mu8": u < 0.7, "HLT_Mu17_TkMu8": (u >= 0.6) & (u < 0.9)}
     for t in triggers:
         branches[t] = fired[t]
