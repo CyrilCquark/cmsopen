@@ -287,6 +287,7 @@ def test_analyze_with_a_cb_model(fsr_file, model, background, tmp_path):
     from test_pipeline import TRUE_MASS
 
     from cmsopen import analyze
+    from cmsopen.pipeline import CHANNELS
     from cmsopen.plotting import layout_overlaps
 
     r = analyze(fsr_file, model=model, verbose=False, outdir=tmp_path)
@@ -295,10 +296,11 @@ def test_analyze_with_a_cb_model(fsr_file, model, background, tmp_path):
     assert abs(m - TRUE_MASS) < 3 * me  # the pole mass, not the radiatively shifted maximum
     assert r.stability.n_fits == 9 and {row["model"] for row in r.stability.rows} == {model}
     d = r.to_dict()
-    assert d["fit"]["background"] == background and d["fit"]["cb_n"] == 3.0 and d["channel"]["cb_n"] == 3.0
+    cb_n = CHANNELS["Z_mumu"].cb_n
+    assert d["fit"]["background"] == background and d["fit"]["cb_n"] == cb_n == d["channel"]["cb_n"]
     assert ("Fits (signal + background):" in r.summary()) is (background == "exp")
     note = next(t.get_text() for t in r.figures["mass_fit"].axes[0].texts if t.get_gid() == "annotation")
-    assert f"BW$\\otimes$CB + {background} fit" in note and "$n$ = 3 (fixed)" in note and "\\alpha" in note
+    assert f"BW$\\otimes$CB + {background} fit" in note and f"$n$ = {cb_n:g} (fixed)" in note and "\\alpha" in note
     assert layout_overlaps(r.figures["mass_fit"]) == []
     assert (tmp_path / "summary.json").exists()
 
@@ -309,9 +311,11 @@ def test_analyze_and_cli_report_a_missing_tail(tmp_path, capsys):
     from cmsopen import AnalysisError, analyze
     from cmsopen.__main__ import main
 
+    # A tail-free file: here alpha is left free (cb_bw_exp can still find a loose alpha in the fluctuations of a
+    # small sample; the deterministic no-tail case is test_no_tail_in_the_data_is_a_loud_failure).
     plain = write_z_file(tmp_path / "plain.root", 3000, seed=3)
     with pytest.raises(AnalysisError, match="no radiative tail"):
-        analyze(plain, model="cb_bw_exp", verbose=False, stability=False)
+        analyze(plain, model="cb_bw_poly2", verbose=False, stability=False)
     assert main(["analyze", str(plain), "--model", "cb_bw_poly2", "--quiet", "--no-stability"]) == 1
     assert "no radiative tail" in capsys.readouterr().err
 

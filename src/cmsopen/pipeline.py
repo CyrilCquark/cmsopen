@@ -222,6 +222,7 @@ register_channel(
         poly_degree=2,
         resonance="Z",
         resonance_label="Z",
+        cb_n=2.0,  # dev/model_choice.md, step 1
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((70.0, 110.0), (75.0, 105.0), (80.0, 100.0)),
         stability_bin_widths=(0.5, 1.0, 2.0),
@@ -240,6 +241,7 @@ register_channel(
         poly_degree=2,
         resonance="J/psi",
         resonance_label=r"J/\psi",
+        cb_n=20.0,  # dev/model_choice.md, step 1
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((2.8, 3.4), (2.85, 3.35), (2.9, 3.3)),
         stability_bin_widths=(0.01, 0.02, 0.04),

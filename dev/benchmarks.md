@@ -49,3 +49,21 @@ Development observation, measured with `time`, run one after the other:
 |---|---|---|
 | `pytest -q -m "not slow"` | 289 passed, 28 deselected | 94.7 s |
 | `pytest -q` (everything) | 317 passed | 366.7 s |
+
+## Model choice on the development file (2026-10-28)
+
+Development observations, labelled as such; full tables in
+`dev/model_choice.md` (rule committed before the run, applied by
+`scripts/model_choice.py`). Errors statistical only.
+
+| channel | cb_n (scan) | model | eligible | chi2/ndf | p-value | peak or pole [GeV] | resolution [GeV] |
+|---|---|---|---|---|---|---|---|
+| Z_mumu | 2 | voigt_poly | no (background < 0) | 2.7477 | 1.9e-07 | 90.783 +- 0.018 | 1.395 +- 0.024 |
+| Z_mumu | 2 | cb_bw_exp (selected) | yes | 1.6438 | 0.0104 | 90.875 +- 0.022 | 1.338 +- 0.029 |
+| Z_mumu | 2 | cb_bw_poly2 | no (background < 0) | 1.4039 | 0.0618 | 90.858 +- 0.023 | 1.330 +- 0.029 |
+| Jpsi_mumu | 20 | voigt_poly | yes | 6.4217 | 5.66e-21 | 3.0922 +- 0.0003 | 0.0319 +- 0.0003 |
+| Jpsi_mumu | 20 | cb_bw_exp | yes | 3.3786 | 4.08e-08 | 3.0934 +- 0.0003 | 0.0309 +- 0.0003 |
+| Jpsi_mumu | 20 | cb_bw_poly2 (selected) | yes | 2.9740 | 2.14e-06 | 3.0933 +- 0.0003 | 0.0306 +- 0.0003 |
+
+chi2/ndf benchmark: <= 2.0 (T2, production sample). Observed here (development
+file, selected model): Z_mumu 1.6438, Jpsi_mumu 2.9740.
