@@ -77,8 +77,8 @@ def main() -> int:
         sys.exit(f"error: file not found: {path}")
 
     print(f"cmsopen imported from: {cmsopen.__file__}")
-    status = vector.__version__ if vector else "not installed"
-    print(f"vector library: {status} (pip install vector to enable the cross-check)")
+    missing = "not installed (pip install vector to enable the cross-check)"
+    print(f"vector library: {vector.__version__ if vector else missing}")
     print()
     with open_events(path) as events:
         muons = Muon.from_events(events, entry_stop=N_EVENTS)

@@ -158,8 +158,8 @@ def layer2() -> nbformat.NotebookNode:
             "except ImportError:\n"
             "    vector = None\n\n"
             'print(f"cmsopen imported from: {cmsopen.__file__}")\n'
-            'status = vector.__version__ if vector else "not installed"\n'
-            'print(f"vector library: {status} (pip install vector to enable the cross-check)")'
+            'missing = "not installed (pip install vector to enable the cross-check)"\n'
+            'print(f"vector library: {vector.__version__ if vector else missing}")'
         ),
         new_markdown_cell("## Load the first 100,000 events as a `Muon` collection"),
         new_code_cell(
@@ -729,8 +729,8 @@ def layer5() -> nbformat.NotebookNode:
             "except ImportError:\n"
             "    vector = None\n\n"
             'print(f"cmsopen imported from: {cmsopen.__file__}")\n'
-            'status = vector.__version__ if vector else "not installed"\n'
-            'print(f"vector library: {status} (pip install vector to enable the cross-check)")'
+            'missing = "not installed (pip install vector to enable the cross-check)"\n'
+            'print(f"vector library: {vector.__version__ if vector else missing}")'
         ),
         new_markdown_cell("## Select the leading muon pair in each event"),
         new_code_cell(
