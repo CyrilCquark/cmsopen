@@ -299,3 +299,50 @@ are seen.
 The reported resolution of a mixture fit is the numerical FWHM of the fitted
 signal divided by 2.355 (the existing numerical FWHM); sigma1, r and f are
 reported beside it.
+
+## Amendment 2 results (development file, 2026-10-29)
+
+Development observations from `python scripts/model_choice.py --amendment2` at
+commit 8323935 (Amendment 2 committed at 5e9f276, before any mixture fit on
+real data). Errors statistical only. FWHM/2.355 is the numerical FWHM of the
+whole fitted signal divided by 2.355; for the Z it includes the natural width,
+so it is not comparable with a single-core sigma.
+
+#### Z_mumu (Amendment 2; cb_n = 2, current default cb_bw_exp)
+
+| model | role | eligible | converged | on bound | background > 0 | chi2 / ndf | chi2/ndf | p-value | pole [GeV] | sigma1 [GeV] | r | f | FWHM/2.355 [GeV] | signal yield | background yield | k | AIC |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cb_bw_exp | current default | yes | yes | none | yes | 55.9 / 34 | 1.6438 | 0.0104 | 90.875 +- 0.022 | 1.338 +- 0.029 | - | - | 2.022 +- 0.025 | 25,531 +- 184 | 608 +- 95 | 6 | 67.9 |
+| cb2_bw_exp | candidate | yes | yes | none | yes | 28.5 / 32 | 0.8909 | 0.644 | 90.852 +- 0.023 | 1.218 +- 0.050 | 3.445 +- 0.577 | 0.907 +- 0.029 | 1.961 +- 0.031 | 25,740 +- 224 | 427 +- 158 | 8 | 44.5 |
+| cb2_bw_poly2 | information only | yes | yes | none | yes | 28.0 / 31 | 0.9047 | 0.619 | 90.848 +- 0.024 | 1.222 +- 0.051 | 3.471 +- 0.776 | 0.907 +- 0.028 | 1.962 +- 0.032 | 25,710 +- 380 | 457 +- 345 | 9 | 46.0 |
+
+cb2_bw_exp: (a) converged: yes; (b) no parameter on a bound: yes; (c) background positive over the fit range: yes; (d) AIC 44.5 <= 67.9 - 10 = 57.9: yes.
+Selected: cb2_bw_exp (changes the default).
+
+#### Jpsi_mumu (Amendment 2; cb_n = 100, current default cb_bw_poly2)
+
+| model | role | eligible | converged | on bound | background > 0 | chi2 / ndf | chi2/ndf | p-value | pole [GeV] | sigma1 [GeV] | r | f | FWHM/2.355 [GeV] | signal yield | background yield | k | AIC |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cb_bw_poly2 | current default | yes | yes | none | yes | 65.5 / 23 | 2.8473 | 5.92e-06 | 3.0934 +- 0.0003 | 0.0306 +- 0.0003 | - | - | 0.0306 +- 0.0003 | 16,031 +- 145 | 3,399 +- 91 | 7 | 79.5 |
+| cb2_bw_exp | information only | yes | yes | none | yes | 27.1 / 22 | 1.2298 | 0.209 | 3.0931 +- 0.0003 | 0.0248 +- 0.0017 | 1.673 +- 0.062 | 0.566 +- 0.128 | 0.0286 +- 0.0005 | 16,427 +- 142 | 3,042 +- 82 | 8 | 43.1 |
+| cb2_bw_poly2 | candidate | yes | yes | none | yes | 25.9 / 21 | 1.2332 | 0.21 | 3.0931 +- 0.0003 | 0.0222 +- 0.0025 | 1.685 +- 0.106 | 0.376 +- 0.139 | 0.0282 +- 0.0006 | 16,289 +- 159 | 3,181 +- 111 | 9 | 43.9 |
+
+cb2_bw_poly2: (a) converged: yes; (b) no parameter on a bound: yes; (c) background positive over the fit range: yes; (d) AIC 43.9 <= 79.5 - 10 = 69.5: yes.
+Selected: cb2_bw_poly2 (changes the default).
+
+#### Outcome of Amendment 2
+
+- Z_mumu: default cb_bw_exp changes to cb2_bw_exp.
+- Jpsi_mumu: default cb_bw_poly2 changes to cb2_bw_poly2.
+
+Notes on Amendment 2:
+
+- Both mixture variants converge with no parameter on a bound and a positive
+  background, on both channels. For Z_mumu, cb2_bw_poly2's quadratic
+  background is now positive over the fit range (cb_bw_poly2's was not).
+- Z_mumu: a narrow core with about 91 % of the signal and a wide core at
+  about 3.4 times its width.
+- Jpsi_mumu: about 38 % (cb2_bw_poly2) to 57 % (cb2_bw_exp) in the narrow
+  core, the wide core about 1.7 times wider.
+- Outcome: both defaults change (separate commit): Z_mumu cb_bw_exp ->
+  cb2_bw_exp, Jpsi_mumu cb_bw_poly2 -> cb2_bw_poly2; cb_n unchanged.

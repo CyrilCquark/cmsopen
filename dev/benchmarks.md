@@ -119,3 +119,20 @@ Jpsi_mumu (inclusive 3.09335 +- 0.00034 GeV, resolution 0.0306 GeV, chi2/ndf 2.8
 
 chi2/ndf benchmark: <= 2.0 (T2, production). Observed (development file):
 Z_mumu inclusive 1.644; Jpsi_mumu inclusive 2.847, BB 1.422.
+
+## Model choice, Amendment 2: resolution mixtures (2026-10-29)
+
+Development observations; full tables in `dev/model_choice.md` ("Amendment 2
+results"). Errors statistical only. Resolution = FWHM/2.355 of the whole signal.
+
+| channel | model | role | chi2/ndf | p-value | pole [GeV] | sigma1 [GeV] | r | f | FWHM/2.355 [GeV] | AIC |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Z_mumu | cb_bw_exp | previous default | 1.6438 | 0.0104 | 90.875 +- 0.022 | 1.338 +- 0.029 | - | - | 2.022 +- 0.025 | 67.9 |
+| Z_mumu | cb2_bw_exp | selected | 0.8909 | 0.644 | 90.852 +- 0.023 | 1.218 +- 0.050 | 3.445 +- 0.577 | 0.907 +- 0.029 | 1.961 +- 0.031 | 44.5 |
+| Z_mumu | cb2_bw_poly2 | information | 0.9047 | 0.619 | 90.848 +- 0.024 | 1.222 +- 0.051 | 3.471 +- 0.776 | 0.907 +- 0.028 | 1.962 +- 0.032 | 46.0 |
+| Jpsi_mumu | cb_bw_poly2 | previous default | 2.8473 | 5.92e-06 | 3.0934 +- 0.0003 | 0.0306 +- 0.0003 | - | - | 0.0306 +- 0.0003 | 79.5 |
+| Jpsi_mumu | cb2_bw_exp | information | 1.2298 | 0.209 | 3.0931 +- 0.0003 | 0.0248 +- 0.0017 | 1.673 +- 0.062 | 0.566 +- 0.128 | 0.0286 +- 0.0005 | 43.1 |
+| Jpsi_mumu | cb2_bw_poly2 | selected | 1.2332 | 0.21 | 3.0931 +- 0.0003 | 0.0222 +- 0.0025 | 1.685 +- 0.106 | 0.376 +- 0.139 | 0.0282 +- 0.0006 | 43.9 |
+
+chi2/ndf benchmark: <= 2.0 (T2, production sample). Observed here (development
+file, selected model): Z_mumu 0.8909, Jpsi_mumu 1.2332.
