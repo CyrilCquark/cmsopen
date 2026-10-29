@@ -23,3 +23,8 @@ data/*
 # Stray verification dirs (verification runs in a mktemp dir instead)
 /clone/
 /freshenv/
+
+# Coverage data
+.coverage
+.coverage.*
+htmlcov/
