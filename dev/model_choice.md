@@ -243,3 +243,59 @@ Notes on Amendment 1:
   made here.
 - Outcome: Jpsi_mumu cb_n changes from 20 to 100 (separate commit); its
   model (cb_bw_poly2) and everything for Z_mumu are unchanged.
+
+## Amendment 2: a resolution-mixture model (written and committed before any mixture fit on real data)
+
+Motivation (development observations, dev/benchmarks.md and dev/validation_plan.md
+results): the per-category fits are adequate (chi2/ndf Z BB 1.12, Z BE 1.00,
+J/psi BB 1.42) but the inclusive fits are not (Z 1.64, J/psi 2.85). Barrel and
+endcap muons have different momentum resolutions (on the development file the
+fitted Z resolution is about 0.97 GeV in BB and 1.46 GeV in BE), so the
+inclusive sample is a mixture of resolutions that one Gaussian core cannot
+describe. A physically motivated resolution mixture is tested under the rule
+below, written before any mixture fit. The user made no prediction of the
+outcome.
+
+### Models
+
+- `cb2_bw_exp` and `cb2_bw_poly2`. Signal: a Breit-Wigner (pole M free,
+  natural width fixed from the `particle` package) convolved with
+  f * CB(sigma1, alpha, n) + (1 - f) * CB(r * sigma1, alpha, n).
+  M, alpha and n are shared by the two components; n = the channel's current
+  `cb_n` (Z 2, J/psi 100), not re-scanned. Free parameters beyond the
+  single-resolution model: r and f. Bounds: r in [1.2, 4.0], f in
+  [0.05, 0.95] (all other bounds as for the single-resolution models).
+- The Gamma < 0.05 sigma1 branch applies as before (the Crystal Balls alone,
+  without the Breit-Wigner, when the natural width is below 0.05 sigma1;
+  since r > 1 the wider component is then also far above the width).
+- Backgrounds as for the existing CB models: positive exponential
+  (`cb2_bw_exp`) or quadratic (`cb2_bw_poly2`).
+- Operational details (fixed now): each component is normalised separately
+  over the fit bins, so f is the fraction of the in-range signal in the
+  narrow component and the amplitude is the number of signal events in the
+  fit range; sigma1 is the narrow core (r >= 1.2 > 1 by the bounds).
+
+### Rule, per channel
+
+The default stays the current one unless the mixture variant with the SAME
+background as the current default (Z_mumu: `cb2_bw_exp` against `cb_bw_exp`;
+Jpsi_mumu: `cb2_bw_poly2` against `cb_bw_poly2`) is
+
+  (a) converged (`fit_mass_peak` returns without `FitError`, which also covers
+      a parameter not constrained by the data),
+  (b) has no parameter on a bound, including r and f (`FitResult.on_bound`
+      empty),
+  (c) has a positive background over the fit range (`yields_reliable`), and
+  (d) has AIC_mixture <= AIC_default - 10, with AIC = chi2 + 2k and k the
+      number of free parameters of each fit, both fitted to the same
+      histogram and fit range.
+
+The other mixture model is fitted and reported for information only. No other
+parameters, cuts or grids change. The rule is not altered after the results
+are seen.
+
+### Reporting
+
+The reported resolution of a mixture fit is the numerical FWHM of the fitted
+signal divided by 2.355 (the existing numerical FWHM); sigma1, r and f are
+reported beside it.
