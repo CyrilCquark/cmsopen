@@ -346,3 +346,70 @@ Notes on Amendment 2:
   core, the wide core about 1.7 times wider.
 - Outcome: both defaults change (separate commit): Z_mumu cb_bw_exp ->
   cb2_bw_exp, Jpsi_mumu cb_bw_poly2 -> cb2_bw_poly2; cb_n unchanged.
+
+## Amendment 3: a three-resolution model (written and committed 2026-10-29, prompt 10, before any three-resolution fit)
+
+Motivation (development observations, dev/benchmarks.md, prompt 9): on the
+6-file development set the J/psi headline fit (`cb2_bw_poly2`) has chi2/ndf
+2.155 (ndf 21) against the benchmark of 2.0. Its residuals show no run
+structure (runs test p = 0.47, lag-1 autocorrelation +0.04); the excess chi2
+is concentrated in the core and on the left of the peak, and chi2/ndf grows
+with the bin width. The momentum resolution varies continuously with
+pseudorapidity and transverse momentum, and two Gaussian cores are the
+coarsest approximation of that continuum; a third core is the next one. This
+amendment tests it under the rule below, written before any three-resolution
+fit. The user made no prediction of the outcome.
+
+### Models
+
+- `cb3_bw_exp` and `cb3_bw_poly2`. Signal: a Breit-Wigner (pole M free,
+  natural width fixed from the `particle` package) convolved with
+  f1 * CB(sigma1) + (1 - f1) * [g * CB(r2 * sigma1) + (1 - g) * CB(r2 * s * sigma1)].
+  The three Crystal Balls share M, alpha and n; n = the channel's current
+  `cb_n` (Z 2, J/psi 100), not re-scanned. Free parameters beyond the
+  two-resolution model: s and g.
+- Bounds (fixed now): r2 in [1.2, 3.0], s in [1.2, 3.0], f1 in [0.05, 0.90],
+  g in [0.05, 0.95]; all other bounds as for the two-resolution models. With
+  r2 > 1 and s > 1 the three widths sigma1 < r2 * sigma1 < r2 * s * sigma1
+  are ordered by construction.
+- The Gamma < 0.05 sigma1 branch applies (decided once, from sigma1, for all
+  three components).
+- Backgrounds as for the existing CB models: positive exponential
+  (`cb3_bw_exp`) or quadratic (`cb3_bw_poly2`).
+- Operational details (fixed now): each component is normalised separately
+  over the fit bins, so f1 is the fraction of the in-range signal in the
+  narrowest component and g the fraction of the remainder in the middle one;
+  the amplitude is the number of signal events in the fit range. The
+  reported resolution is the numerical FWHM of the fitted signal divided by
+  2.355, with sigma1, r2, s, f1 and g beside it.
+
+### Evaluation set
+
+The 6-file development set (dev/development_set.md), in its fixed order;
+identifiability of a third core needs the statistics. The original
+development file alone is fitted and reported for information only.
+
+### Rule, per channel
+
+The default stays the current one (Z_mumu `cb2_bw_exp`, Jpsi_mumu
+`cb2_bw_poly2`) unless the three-resolution variant with the SAME background
+(Z_mumu: `cb3_bw_exp`; Jpsi_mumu: `cb3_bw_poly2`), fitted to the same 6-file
+histogram and fit range, is
+
+  (a) converged (`fit_mass_peak` returns without `FitError`),
+  (b) has no parameter on a bound (`FitResult.on_bound` empty) and passes the
+      unconstrained-parameter check (also part of `fit_mass_peak`),
+  (c) has a positive background over the fit range (`yields_reliable`), and
+  (d) has AIC_cb3 <= AIC_default - 10, with AIC = chi2 + 2k and k the number
+      of free parameters of each fit.
+
+The other cb3 model is fitted and reported for information only. No other
+parameter, cut, bin width or fit range changes. The rule is not altered
+after the results are seen.
+
+### Statement
+
+This is the last J/psi line-shape amendment before the production run. If
+the rule does not select a cb3 model, or the selected model's chi2/ndf stays
+above the benchmark of 2.0, that is the recorded observation; the benchmark
+is not lowered or reinterpreted.
