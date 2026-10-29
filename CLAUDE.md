@@ -297,6 +297,7 @@ fails, report the failure. Do not weaken or edit a check to make it pass.
 | 4 combinatorics | Done: (a)–(e) met; live browser check 2026-10-27, Tier 1 (Claude in Chrome). |
 | 5 kinematics | Done: (a)–(e) met; live browser check 2026-10-27. |
 | 6 fitting | Done: (a)–(e) met; live browser check 2026-10-27, Tier 1 (Claude in Chrome). |
+| 6b line shape and validation | Done: (a)–(h) met; live browser check 2026-10-29, browser check Tier 1 (Claude in Chrome). |
 | 7 plotting | Done: (a)–(e) met; live browser check 2026-10-27, Tier 1 (Claude in Chrome). |
 | 8 pipeline | Done: (a)–(h) met; live browser check 2026-10-28, browser check Tier 1 (Claude in Chrome). |
 | 9–10 | Not started. |
