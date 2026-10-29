@@ -1592,6 +1592,186 @@ The wall time of every step is printed at the end (no threshold)."""
     return _notebook(cells)
 
 
+LAYER6B_SETUP = r"""import json
+import tempfile
+import time
+from pathlib import Path
+
+import numpy as np
+from IPython.display import Image, display
+
+import cmsopen
+from cmsopen.fitting import FitError, FitResult, fit_mass_peak, pdg_mass_width
+from cmsopen.pipeline import CHANNELS
+from cmsopen.validation import MIN_PAIRS
+
+COMPARED = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2")
+PARTITIONS = ("region", "phi(mu+)", "phi(mu-)", "eta(mu+)", "eta(mu-)", "pT(sublead)", "PV_npvsGood")
+PARALLEL_EVENTS = 150_000
+
+
+def compare_models(result):
+    '''voigt_poly, cb_bw_exp and cb_bw_poly2 on the channel's histogram (a FitResult, or the failure reason).'''
+    cfg = result.config
+    out = {}
+    for model in COMPARED:
+        try:
+            out[model] = fit_mass_peak(result.histogram, model=model, fit_range=cfg.fit_range,
+                                       poly_degree=cfg.poly_degree, natural_width=pdg_mass_width(cfg.resonance)[2],
+                                       cb_n=cfg.cb_n)
+        except FitError as exc:
+            out[model] = f"fit failed: {exc}"
+    return out
+
+
+def print_comparison(name, fits):
+    '''One line per model: position, resolution, chi2/ndf, AIC and whether its yields are reliable.'''
+    print(f"Model comparison, {name}:")
+    for model, fit in fits.items():
+        if isinstance(fit, str):
+            print(f"  {model:<12} {fit}")
+            continue
+        m, me = fit.peak_position
+        s, se = fit.resolution
+        aic = fit.chi2 + 2 * len(fit.values)
+        print(f"  {model:<12} position {m:.4f} +- {me:.4f} GeV, resolution {s:.4f} +- {se:.4f} GeV, "
+              f"chi2/ndf {fit.chi2_ndf:.3f}, AIC {aic:.1f}, yields reliable: {fit.yields_reliable}")
+
+
+def background_ok(fit):
+    '''A fit claiming reliable yields must have a background that is >= 0 everywhere in its fit range.'''
+    if not fit.yields_reliable:
+        return True
+    grid = np.linspace(*fit.fit_range, 2001)
+    return bool(np.all(fit.background(grid) >= 0) and np.isfinite(fit.signal_yield[0]))
+
+
+def without_validation(d):
+    '''The JSON of a result dictionary without its validation part.'''
+    return json.dumps({k: v for k, v in d.items() if k != "validation"}, sort_keys=True)
+
+
+print(f"cmsopen imported from: {cmsopen.__file__}")
+tmp = Path(tempfile.mkdtemp(prefix="cmsopen-layer6b-"))
+results, comparisons = {}, {}"""
+
+LAYER6B_CHANNEL = r"""name = "{name}"
+cfg = CHANNELS[name]
+print(f"{{name}}: default model {{cfg.model}} (cb_n = {{cfg.cb_n:g}})")
+start = time.perf_counter()
+results[name] = result = cmsopen.analyze(DATA_FILE, channel=name, validation=True, verbose=False)
+print(f"[time] analyze with validation: {{time.perf_counter() - start:.1f}} s")
+print(result.fit.table())
+result.save(tmp / name)
+display(Image(filename=str(tmp / name / "mass_fit.png"), width=640))
+comparisons[name] = compare_models(result)
+print_comparison(name, comparisons[name])"""
+
+LAYER6B_CHECKS = (
+    r"""checks = Checks()
+for name, result in results.items():
+    v = result.validation
+    plain = cmsopen.analyze(DATA_FILE, channel=name, verbose=False)
+    checks.check(
+        f"{name}: validation off gives exactly the old output",
+        plain.validation is None and "validation" not in plain.to_dict()
+        and json.dumps(plain.to_dict(), sort_keys=True) == without_validation(result.to_dict())
+        and result.summary().startswith(plain.summary() + "\n\nValidation ("),
+        "to_dict() without the validation part and the summary text compared",
+    )
+    sums = {s: sum(e.n_pairs for e in v.study(s)) for s in PARTITIONS}
+    checks.check(
+        f"{name}: every category and binning partitions the pairs",
+        all(n == v.inclusive.n_pairs for n in sums.values()) and v.inclusive.n_pairs == result.fit.n_entries,
+        f"{v.inclusive.n_pairs:,} pairs; sums {', '.join(f'{k} {n:,}' for k, n in sums.items())}",
+    )
+    claims = [result.fit, *(f for f in comparisons[name].values() if isinstance(f, FitResult))]
+    checks.check(
+        f"{name}: every fit that claims reliable yields has a non-negative background over its fit range",
+        all(background_ok(f) for f in claims),
+        ", ".join(f"{f.model_name}: {'claims' if f.yields_reliable else 'does not claim'}" for f in claims),
+    )
+    small = [e for e in (v.inclusive, *v.entries) if e.n_pairs < MIN_PAIRS]
+    large = [e for e in (v.inclusive, *v.entries) if e.n_pairs >= MIN_PAIRS]
+    checks.check(
+        f"{name}: the {MIN_PAIRS:,}-pair rule fires exactly for the entries below {MIN_PAIRS:,} pairs",
+        all(e.status == "insufficient" and e.position is None for e in small)
+        and all(e.status in ("fitted", "failed") for e in large),
+        f"{len(small)} insufficient, {sum(e.fitted for e in large)} fitted, "
+        f"{sum(e.status == 'failed' for e in large)} failed",
+    )
+
+first = dict(channel="Z_mumu", n_events=PARALLEL_EVENTS, chunk_size=50_000, validation=True, verbose=False,
+             stability=False)
+serial = cmsopen.analyze(DATA_FILE, **first)
+parallel = cmsopen.analyze(DATA_FILE, n_workers=2, **first)
+checks.check(
+    "parallel (n_workers=2) equals serial with validation on",
+    json.dumps(serial.to_dict(), sort_keys=True) == json.dumps(parallel.to_dict(), sort_keys=True)
+    and serial.summary() == parallel.summary(),
+    "to_dict() and summary text compared",
+)
+
+"""
+    + FINISH
+)
+
+
+def layer6b() -> nbformat.NotebookNode:
+    cells = [
+        new_code_cell(LOAD_PATH),
+        new_markdown_cell(
+            r"""# Layer 6b: a line shape with final-state radiation, model choice, and validation
+
+**Final-state radiation.** A muon from the decay can radiate a photon. The photon is not part of the dimuon, so the
+measured mass is lower: events leak from the peak into a long low-mass tail. A symmetric Gaussian or Voigt peak
+cannot follow it, and a polynomial background then bends (even below zero) to absorb the tail.
+
+**The Crystal Ball.** A Gaussian core joined, $\alpha$ standard deviations below the mean, to a power-law tail
+$\propto (B - u)^{-n}$. Convolved with a Breit-Wigner of the resonance's natural width (fixed from the PDG), the
+fitted mass $M$ is the Breit-Wigner pole, the quantity the PDG quotes. The exponent $n$ is fixed per channel
+because it is strongly correlated with $\alpha$. With an exponential background (`cb_bw_exp`) the background is
+positive by construction.
+
+**Model choice.** The default model of each channel was chosen on the development file by a rule written down
+before the fits were run (`dev/model_choice.md`): eligible models converge, have no parameter on a bound and a
+positive background; the lowest $\chi^2$/ndf wins.
+
+**Validation.** The fit is repeated in pre-registered categories (`dev/validation_plan.md`): barrel and endcap,
+the azimuth and pseudorapidity of the $\mu^+$ and of the $\mu^-$ (a tracker misalignment moves the two charges in
+opposite directions), the sub-leading muon $p_T$, pileup, and six identification/isolation working points. An entry
+with fewer than 5,000 pairs is reported as *insufficient statistics* and not fitted. Every number is a measured
+shift, not a target and not an error bar."""
+        ),
+        new_code_cell(LAYER6B_SETUP),
+        new_markdown_cell(r"""## Z $\to \mu^+\mu^-$: the default fit, its figure and the model comparison"""),
+        new_code_cell(LAYER6B_CHANNEL.format(name="Z_mumu")),
+        new_markdown_cell(r"""## J/$\psi \to \mu^+\mu^-$: the default fit, its figure and the model comparison"""),
+        new_code_cell(LAYER6B_CHANNEL.format(name="Jpsi_mumu")),
+        new_markdown_cell(
+            r"""## The validation scan and the systematics summary
+
+One row per category, bin or working point: the fitted position, resolution, $\chi^2$/ndf, signal yield and the
+difference to the inclusive fit in units of the combined statistical error (the samples overlap, so this overstates
+the uncertainty of the difference). Then the systematics summary: the offset from the PDG mass, the fit-choice
+spread, the category spread, the $\mu^+ - \mu^-$ differences and the working-point spread."""
+        ),
+        new_code_cell(r"""print(results["Z_mumu"].validation.table())"""),
+        new_code_cell(r"""print(results["Jpsi_mumu"].validation.table())"""),
+        new_markdown_cell(
+            r"""## Self-checks (structural only)
+
+No physics number is asserted to be correct. Checked: validation off gives exactly the old output; every category
+and binning partitions the pairs; every fit that claims reliable yields has a non-negative background over its fit
+range; the 5,000-pair rule fires exactly for the entries below 5,000 pairs; parallel processing (`n_workers=2`, which
+works from a notebook cell as it is) equals serial with validation on."""
+        ),
+        new_code_cell(CHECKS_CLASS),
+        new_code_cell(LAYER6B_CHECKS),
+    ]
+    return _notebook(cells)
+
+
 def _notebook(cells: list) -> nbformat.NotebookNode:
     for i, cell in enumerate(cells):
         cell.id = f"cell-{i:02d}"  # deterministic ids so rebuilds give identical files
@@ -1608,6 +1788,7 @@ NOTEBOOKS = {
     "layer4_combinatorics.ipynb": layer4,
     "layer5_kinematics.ipynb": layer5,
     "layer6_fitting.ipynb": layer6,
+    "layer6b_demo.ipynb": layer6b,
     "layer7_plotting.ipynb": layer7,
     "layer8_pipeline.ipynb": layer8,
 }
