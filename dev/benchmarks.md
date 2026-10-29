@@ -80,3 +80,42 @@ Development observations; full tables in `dev/model_choice.md`
 
 chi2/ndf benchmark: <= 2.0 (T2, production sample). Observed here (development
 file): Z_mumu 1.6438, Jpsi_mumu 2.8473.
+
+## Validation on the development file (2026-10-28)
+
+Development observations, labelled as such, from `python scripts/run_validation.py`
+at commit 8d03f2e, exactly as pre-registered in `dev/validation_plan.md`
+(nothing re-binned, re-cut or tuned after the run). Full tables: build/validation/
+(untracked). Errors statistical only. Default models: Z_mumu cb_bw_exp (cb_n 2),
+Jpsi_mumu cb_bw_poly2 (cb_n 100).
+
+Z_mumu (inclusive 90.8754 +- 0.0225 GeV, resolution 1.3377 GeV, chi2/ndf 1.644):
+
+- Regions: BB 90.9494 +- 0.0365 (resolution 0.971), BE 90.8562 +- 0.0335
+  (resolution 1.458), EE insufficient statistics (n = 4,982).
+- mu+ minus mu- by phi quarter: -0.158 +- 0.061, +0.208 +- 0.068,
+  +0.235 +- 0.060, -0.285 +- 0.071 GeV; by eta bin: +0.053 +- 0.061,
+  -0.023 +- 0.048, -0.031 +- 0.060 GeV; weighted mean +0.003 +- 0.023 GeV.
+- Sub-leading pT: [20, 30) 90.765 +- 0.070, [30, 40) 90.796 +- 0.046,
+  [40, 50) fit failed (alpha not constrained), [50, inf) insufficient (n = 359).
+- Pileup: [0, 15) 90.881 +- 0.029, [15, 23) 90.858 +- 0.037, [23, inf)
+  insufficient (n = 1,037).
+- Working points: positions 90.867-90.888 GeV (spread 0.020 GeV).
+- Systematics summary: offset from PDG -0.3125 +- 0.0225 GeV (stat.); eligible
+  models: cb_bw_exp only; range x bin width spread 0.024 GeV (8 fits, 1 failed:
+  80-100 GeV with 2 GeV bins, alpha not constrained); background variation
+  (cb_bw_poly2) -0.018 GeV; BB-BE spread 0.093 GeV.
+
+Jpsi_mumu (inclusive 3.09335 +- 0.00034 GeV, resolution 0.0306 GeV, chi2/ndf 2.847):
+
+- Regions: BB 3.09387 +- 0.00034 (chi2/ndf 1.422), BE insufficient (n = 1,224),
+  EE insufficient (n = 3,956).
+- Charge: only phi [pi/2, pi] and central eta have both charges fitted;
+  mu+ minus mu- -0.0001 +- 0.0010 and +0.0001 +- 0.0005 GeV.
+- 21 of 31 entries insufficient (all six working points among them).
+- Systematics summary: offset from PDG -0.0035 +- 0.0003 GeV (stat.); all three
+  models eligible, spread 0.0013 GeV; range x bin width spread 0.0005 GeV;
+  background variation (cb_bw_exp) +0.0001 GeV.
+
+chi2/ndf benchmark: <= 2.0 (T2, production). Observed (development file):
+Z_mumu inclusive 1.644; Jpsi_mumu inclusive 2.847, BB 1.422.
