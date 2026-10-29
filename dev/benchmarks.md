@@ -476,3 +476,14 @@ Systematics summary (Jpsi_mumu, headline model cb2_bw_poly2, validation scans cb
   still insufficient on the 6 files: pT(sublead) [3, 4) GeV (240); working point medium, iso < 0.08 (3,205); working point tight, iso < 0.08 (2,948); working point tight, iso < 0.12 (4,747)
 
 ```
+
+## Amendment 3 on the 6-file development set (2026-10-29, prompt 10)
+
+Development observation (6-file development set). Neither three-resolution
+model is eligible in either channel: Z_mumu cb3_bw_exp s and g on bounds,
+cb3_bw_poly2 r2, s, f1, g not constrained; Jpsi_mumu cb3_bw_poly2 f1 on its
+lower bound (0.05), cb3_bw_exp s on its upper bound (3.0). The same holds on
+the original development file alone (information only). Defaults unchanged
+(dev/model_choice.md, Amendment 3 results); the J/psi headline chi2/ndf stays
+2.155 (benchmark 2.0). The diagnostics of the standing defaults are
+unchanged from prompt 9 (recomputed, identical).

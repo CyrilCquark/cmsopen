@@ -413,3 +413,69 @@ This is the last J/psi line-shape amendment before the production run. If
 the rule does not select a cb3 model, or the selected model's chi2/ndf stays
 above the benchmark of 2.0, that is the recorded observation; the benchmark
 is not lowered or reinterpreted.
+
+## Amendment 3 results (2026-10-29, prompt 10)
+
+Applied with `python scripts/model_choice.py --amendment3` (6-file
+development set) and `--amendment3 --single` (original development file,
+information only), at the channels' current cb_n. A model that raises
+FitError has no fitted values to tabulate; its row gives the reason.
+
+### 6-file development set (the evaluation set)
+
+#### Z_mumu
+
+| model | role | eligible | chi2 / ndf | chi2/ndf | p-value | pole [GeV] | sigma1 [GeV] | r (r2) | s | f (f1) | g | FWHM/2.355 [GeV] | signal yield | background yield | k | AIC | on a bound |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cb2_bw_exp | current default | yes | 26.4 / 32 | 0.8237 | 0.748 | 90.893 +- 0.009 | 1.157 +- 0.053 | 2.166 +- 0.131 | - | 0.786 +- 0.061 | - | 1.991 +- 0.014 | 169,753 +- 486 | 3,975 +- 266 | 8 | 42.4 | none |
+| cb3_bw_exp | candidate | no: cb3_bw_exp fit over 70-110 GeV: parameter(s) ['s', 'g'] ended on a bound (s=3, g=0.95); there is no well-defined peak to measure | | | | | | | | | | | | | | | |
+| cb3_bw_poly2 | information only | no: cb3_bw_poly2 fit over 70-110 GeV: parameter(s) ['r2', 's', 'f1', 'g'] not constrained by the data (r2=1.2 +- 26, s=1.766 +- 47, f1=0.6001 +- 38, g=0.3771 +- 56) | | | | | | | | | | | | | | | |
+
+(a)/(b) cb3_bw_exp raised FitError (not converged, a parameter on a bound or not constrained): not eligible. Selected: cb2_bw_exp (unchanged).
+
+#### Jpsi_mumu
+
+| model | role | eligible | chi2 / ndf | chi2/ndf | p-value | pole [GeV] | sigma1 [GeV] | r (r2) | s | f (f1) | g | FWHM/2.355 [GeV] | signal yield | background yield | k | AIC | on a bound |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cb2_bw_poly2 | current default | yes | 45.2 / 21 | 2.1546 | 0.00161 | 3.0934 +- 0.0001 | 0.0238 +- 0.0006 | 1.783 +- 0.030 | - | 0.581 +- 0.041 | - | 0.0274 +- 0.0002 | 101,824 +- 426 | 19,819 +- 316 | 9 | 63.2 | none |
+| cb3_bw_exp | information only | no: cb3_bw_exp fit over 2.8-3.4 GeV: parameter(s) ['s'] ended on a bound (s=3); there is no well-defined peak to measure | | | | | | | | | | | | | | | |
+| cb3_bw_poly2 | candidate | no: cb3_bw_poly2 fit over 2.8-3.4 GeV: parameter(s) ['f1'] ended on a bound (f1=0.05); there is no well-defined peak to measure | | | | | | | | | | | | | | | |
+
+(a)/(b) cb3_bw_poly2 raised FitError (not converged, a parameter on a bound or not constrained): not eligible. Selected: cb2_bw_poly2 (unchanged).
+
+Outcome: neither cb3 model is eligible in either channel ((a)/(b): a
+parameter ends on a bound, or is not constrained by the data). The rule
+selects nothing: Z_mumu stays `cb2_bw_exp`, Jpsi_mumu stays `cb2_bw_poly2`.
+As stated in the amendment, the J/psi headline chi2/ndf of 2.155 on the
+6-file development set, above the benchmark of 2.0, is the recorded
+observation; the benchmark is not lowered or reinterpreted. This was the
+last J/psi line-shape amendment before the production run.
+
+### Original development file (information only)
+
+#### Z_mumu
+
+| model | role | eligible | chi2 / ndf | chi2/ndf | p-value | pole [GeV] | sigma1 [GeV] | r (r2) | s | f (f1) | g | FWHM/2.355 [GeV] | signal yield | background yield | k | AIC | on a bound |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cb2_bw_exp | current default | yes | 28.5 / 32 | 0.8909 | 0.644 | 90.852 +- 0.023 | 1.218 +- 0.050 | 3.445 +- 0.577 | - | 0.907 +- 0.029 | - | 1.961 +- 0.031 | 25,740 +- 224 | 427 +- 158 | 8 | 44.5 | none |
+| cb3_bw_exp | candidate | no: cb3_bw_exp fit over 70-110 GeV: parameter(s) ['r2', 's', 'f1', 'g'] not constrained by the data (r2=1.2 +- 4.6e+02, s=2.876 +- 1.1e+03, f1=0.9 +- 29, g=0.07016 +- 2.7e+02) | | | | | | | | | | | | | | | |
+| cb3_bw_poly2 | information only | no: cb3_bw_poly2 fit over 70-110 GeV: parameter(s) ['r2', 'f1'] ended on a bound (r2=1.2, f1=0.9); there is no well-defined peak to measure | | | | | | | | | | | | | | | |
+
+(a)/(b) cb3_bw_exp raised FitError (not converged, a parameter on a bound or not constrained): not eligible. Selected: cb2_bw_exp (unchanged).
+
+#### Jpsi_mumu
+
+| model | role | eligible | chi2 / ndf | chi2/ndf | p-value | pole [GeV] | sigma1 [GeV] | r (r2) | s | f (f1) | g | FWHM/2.355 [GeV] | signal yield | background yield | k | AIC | on a bound |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cb2_bw_poly2 | current default | yes | 25.9 / 21 | 1.2332 | 0.21 | 3.0931 +- 0.0003 | 0.0222 +- 0.0025 | 1.685 +- 0.106 | - | 0.376 +- 0.139 | - | 0.0282 +- 0.0006 | 16,289 +- 159 | 3,181 +- 111 | 9 | 43.9 | none |
+| cb3_bw_exp | information only | no: cb3_bw_exp fit over 2.8-3.4 GeV: parameter(s) ['f1'] ended on a bound (f1=0.05); there is no well-defined peak to measure | | | | | | | | | | | | | | | |
+| cb3_bw_poly2 | candidate | no: cb3_bw_poly2 fit over 2.8-3.4 GeV: parameter(s) ['f1'] ended on a bound (f1=0.05); there is no well-defined peak to measure | | | | | | | | | | | | | | | |
+
+(a)/(b) cb3_bw_poly2 raised FitError (not converged, a parameter on a bound or not constrained): not eligible. Selected: cb2_bw_poly2 (unchanged).
+
+### Diagnostics of the standing defaults (information)
+
+No default changed. The statistics-scaling table, the per-file chi2/ndf and
+poles, the chi2/ndf over the fit-range x bin-width grid and the
+core/left/right chi2 split were recomputed (`scripts/rehearsal.py rest`) and
+are identical to the prompt 9 values in dev/benchmarks.md.
