@@ -124,7 +124,7 @@ def test_failed_stability_fits_are_reported(zfile):
 
 
 def test_result_without_alternate_fit(zfile):
-    r = run(zfile)
+    r = run(zfile, model="voigt_poly")
     alone = dataclasses.replace(r, alternate_fit=None, pdg={r.fit.model_name: r.pdg[r.fit.model_name]})
     d = alone.to_dict()
     assert d["alternate_fit"] is None and list(d["pdg_comparison"]) == [r.fit.model_name]
@@ -147,7 +147,7 @@ def test_jsonable_and_versions(monkeypatch):
 
 
 def test_config_object_overrides_channel_name(zfile):
-    cfg = dataclasses.replace(Z, name="custom", fit_range=(75.0, 105.0))
+    cfg = dataclasses.replace(Z, name="custom", fit_range=(75.0, 105.0), model="voigt_poly")
     r = run(zfile, channel="does_not_matter", config=cfg)
     assert r.config is cfg and r.fit.fit_range == (75.0, 105.0)
     assert isinstance(r.config, ChannelConfig)

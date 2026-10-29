@@ -301,6 +301,7 @@ def test_analyze_with_a_cb_model(fsr_file, model, background, tmp_path):
     assert ("Fits (signal + background):" in r.summary()) is (background == "exp")
     note = next(t.get_text() for t in r.figures["mass_fit"].axes[0].texts if t.get_gid() == "annotation")
     assert f"BW$\\otimes$CB + {background} fit" in note and f"$n$ = {cb_n:g} (fixed)" in note and "\\alpha" in note
+    assert "M_{\\mathrm{pole}}" in note and "m_{\\mathrm{peak}}" not in note
     assert layout_overlaps(r.figures["mass_fit"]) == []
     assert (tmp_path / "summary.json").exists()
 
@@ -342,3 +343,21 @@ def test_fit_records_its_bounds():
     assert r.on_bound == []
     stuck = dataclasses.replace(r, values=np.where(np.arange(len(r.values)) == 3, 10.0, r.values))
     assert stuck.on_bound == ["alpha"] and dataclasses.replace(r, bounds=None).on_bound == []
+
+
+def test_registered_default_models_follow_the_model_choice_rule(fsr_file, capsys):
+    """dev/model_choice.md selected cb_bw_exp (Z, cb_n 2) and cb_bw_poly2 (J/psi, cb_n 20) on the development file."""
+    import dataclasses
+
+    from cmsopen import analyze
+    from cmsopen.__main__ import build_parser
+    from cmsopen.pipeline import CHANNELS
+
+    assert (CHANNELS["Z_mumu"].model, CHANNELS["Z_mumu"].cb_n) == ("cb_bw_exp", 2.0)
+    assert (CHANNELS["Jpsi_mumu"].model, CHANNELS["Jpsi_mumu"].cb_n) == ("cb_bw_poly2", 20.0)
+    r = analyze(fsr_file, verbose=False, stability=False)  # no model given: the channel's default
+    assert r.fit.model_name == "cb_bw_exp" and r.alternate_fit.model_name == "voigt_poly"
+    assert analyze(fsr_file, verbose=False, stability=False, model="gauss_poly").fit.model_name == "gauss_poly"
+    with pytest.raises(ValueError, match="model must be one of"):
+        dataclasses.replace(CHANNELS["Z_mumu"], model="breit_wigner")
+    assert build_parser().parse_args(["analyze", "x.root"]).model is None

@@ -134,6 +134,11 @@ class ChannelConfig:
     resonance : str
         ``particle`` package name of the resonance, for the PDG comparison
         and the natural width of the Voigt model.
+    model : str
+        The default primary peak model of :func:`analyze` for this channel
+        (one of :data:`cmsopen.fitting.MODELS`); the registered channels
+        use the model selected on the development file by the rule in
+        dev/model_choice.md.
     cb_n : float
         The fixed tail exponent n of the Crystal Ball in the ``cb_bw_*``
         models. n and alpha are strongly correlated (a tail that starts a
@@ -168,6 +173,7 @@ class ChannelConfig:
     min_pairs: int = 100
     resonance_label: str | None = None
     cb_n: float = 3.0
+    model: str = "voigt_poly"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "muon_cuts", MappingProxyType(dict(self.muon_cuts)))
@@ -183,6 +189,8 @@ class ChannelConfig:
             )
         if self.bins < 1 or self.poly_degree < 0:
             raise ValueError("bins must be >= 1 and poly_degree >= 0")
+        if self.model not in MODELS:
+            raise ValueError(f"model must be one of {MODELS}, got {self.model!r}")
         if not (math.isfinite(self.cb_n) and self.cb_n > 0):
             raise ValueError(f"cb_n must be a positive number, got {self.cb_n!r}")
 
@@ -223,6 +231,7 @@ register_channel(
         resonance="Z",
         resonance_label="Z",
         cb_n=2.0,  # dev/model_choice.md, step 1
+        model="cb_bw_exp",  # dev/model_choice.md, step 2
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((70.0, 110.0), (75.0, 105.0), (80.0, 100.0)),
         stability_bin_widths=(0.5, 1.0, 2.0),
@@ -242,6 +251,7 @@ register_channel(
         resonance="J/psi",
         resonance_label=r"J/\psi",
         cb_n=20.0,  # dev/model_choice.md, step 1
+        model="cb_bw_poly2",  # dev/model_choice.md, step 2
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((2.8, 3.4), (2.85, 3.35), (2.9, 3.3)),
         stability_bin_widths=(0.01, 0.02, 0.04),
@@ -810,7 +820,7 @@ def analyze(
     *,
     n_events: int | None = None,
     chunk_size: int = 100_000,
-    model: str = "voigt_poly",
+    model: str | None = None,
     fit_range: tuple[float, float] | None = None,
     bins: int | None = None,
     outdir: str | Path | None = None,
@@ -847,8 +857,8 @@ def analyze(
         Process at most this many events in total, taking files in order.
     chunk_size : int
         Events per chunk.
-    model : {"voigt_poly", "gauss_poly", "cb_bw_exp", "cb_bw_poly2"}
-        The primary peak model. The ``cb_bw_*`` models (Breit-Wigner (x)
+    model : {"voigt_poly", "gauss_poly", "cb_bw_exp", "cb_bw_poly2"}, optional
+        The primary peak model (default: the channel's ``model``). The ``cb_bw_*`` models (Breit-Wigner (x)
         Crystal Ball, see :func:`cmsopen.fitting.crystalball_bw`) use the
         channel's fixed ``cb_n``. The other fit reported next to it is
         ``gauss_poly`` for ``voigt_poly`` and ``voigt_poly`` for the rest.
@@ -890,6 +900,7 @@ def analyze(
         or invalid sizes.
     """
     cfg = _channel(channel, config)
+    model = cfg.model if model is None else model
     if model not in MODELS:
         raise ValueError(f"model must be one of {MODELS}, got {model!r}")
     if not isinstance(chunk_size, (int, np.integer)) or chunk_size < 1:

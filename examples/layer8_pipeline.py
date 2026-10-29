@@ -236,12 +236,16 @@ def main() -> int:
             f"range; expected {DEV_FINAL_CUTFLOW[0]:,} / {DEV_FINAL_CUTFLOW[1]:,} / {DEV_FINAL_CUTFLOW[2]:,}, "
             f"{DEV_FIT_ENTRIES:,}",
         )
-        m, me = result.fit.peak_position
+        # Like for like: the Layer 6 value is a voigt_poly fit; analyze() reports that model next to the default one.
+        voigt = next(f for f in (result.fit, result.alternate_fit) if f is not None and f.model_name == "voigt_poly")
+        m, me = voigt.peak_position
+        pole, pole_err = result.fit.peak_position
         checks.check(
-            "Z: fitted peak position agrees with the Layer 6 value within the statistical uncertainty",
+            "Z: the voigt_poly peak position agrees with the Layer 6 value within the statistical uncertainty",
             abs(m - LAYER6_PEAK_GEV) < me,
-            f"pipeline {m:.4f} +- {me:.4f} GeV, Layer 6 {LAYER6_PEAK_GEV:.4f} GeV, "
-            f"difference {m - LAYER6_PEAK_GEV:+.4f} GeV",
+            f"pipeline voigt_poly {m:.4f} +- {me:.4f} GeV, Layer 6 {LAYER6_PEAK_GEV:.4f} GeV, "
+            f"difference {m - LAYER6_PEAK_GEV:+.4f} GeV; default model {result.fit.model_name}: "
+            f"{pole:.4f} +- {pole_err:.4f} GeV (report only)",
         )
     else:
         checks.skip("Z: development cutflow, fit entries and Layer 6 peak", f"{path.name} is not the development file")

@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--channel", default="Z_mumu", help=f"analysis channel (registered: {', '.join(sorted(CHANNELS))})")
     a.add_argument("--outdir", type=Path, default=None, help="write figures, summary.txt and summary.json here")
     a.add_argument("--n-events", type=int, default=None, help="process at most this many events in total")
-    a.add_argument("--model", default="voigt_poly", choices=MODELS, help="primary peak model")
+    a.add_argument("--model", default=None, choices=MODELS, help="primary peak model (default: the channel's model)")
     a.add_argument("--chunk-size", type=int, default=100_000, help="events per chunk (memory bound)")
     a.add_argument(
         "--workers",

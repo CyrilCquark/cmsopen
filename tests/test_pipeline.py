@@ -115,7 +115,7 @@ def run(path, **kw):
 
 
 def test_end_to_end_recovers_injected_peak(big_file):
-    r = run(big_file, stability=True)
+    r = run(big_file, stability=True, model="voigt_poly")  # the synthetic truth is a Voigt peak with no tail
     assert isinstance(r, AnalysisResult)
     m, me = r.fit.peak_position
     s, _ = r.fit.resolution
@@ -380,7 +380,11 @@ def test_real_file_reproduces_development_results():
     r = analyze(REAL_FILE, verbose=False, stability=False)
     last = r.cutflow[-1]
     assert (last.n_particles, last.n_events_with_particles, last.n_events) == (57_058, 28_528, 28_528)
-    m, me = r.fit.peak_position
+    fits = {f.model_name: f for f in (r.fit, r.alternate_fit)}
+    assert r.fit.model_name == "cb_bw_exp" and set(fits) == {"cb_bw_exp", "voigt_poly"}
+    m, me = fits["voigt_poly"].peak_position  # the Layer 6 model, now reported next to the default
     assert abs(m - 90.7829) < me
+    pole, pole_err = r.fit.peak_position  # dev/model_choice.md: cb_bw_exp, cb_n = 2
+    assert abs(pole - 90.875) < 0.001 and abs(pole_err - 0.022) < 0.001
     assert r.fit.n_entries == 26_195
     assert r.n_events == 396_766
