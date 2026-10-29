@@ -56,7 +56,10 @@ def pm(value: float, error: float, digits: int) -> str:
 
 def scan(h: MassHistogram, cfg: ChannelConfig) -> tuple[float | None, list[str]]:
     """Step 1: the cb_n with the lowest chi2/ndf (cb_bw_exp), and the Markdown table of the scan."""
-    rows = ["| cb_n | chi2 / ndf | chi2/ndf | p-value | pole M [GeV] | sigma [GeV] | alpha |", "|---|---|---|---|---|---|---|"]
+    rows = [
+        "| cb_n | chi2 / ndf | chi2/ndf | p-value | pole M [GeV] | sigma [GeV] | alpha |",
+        "|---|---|---|---|---|---|---|",
+    ]
     best: tuple[float, float] | None = None
     for n in CB_N_GRID:
         try:

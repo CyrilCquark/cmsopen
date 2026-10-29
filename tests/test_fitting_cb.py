@@ -325,3 +325,16 @@ def test_channel_config_cb_n():
         assert cfg.cb_n > 0
     with pytest.raises(ValueError, match="cb_n"):
         dataclasses.replace(CHANNELS["Z_mumu"], cb_n=0.0)
+
+
+def test_fit_records_its_bounds():
+    import dataclasses
+
+    r = fit_toy(cb_toy(np.random.default_rng(12), "Z"), "Z")
+    lower, upper = r.bounds
+    assert len(lower) == len(upper) == len(r.values)
+    assert lower[r.parameter_names.index("alpha")] == 0.1 and upper[r.parameter_names.index("alpha")] == 10.0
+    assert lower[r.parameter_names.index("c0")] == 0.0  # the exponential stays positive
+    assert r.on_bound == []
+    stuck = dataclasses.replace(r, values=np.where(np.arange(len(r.values)) == 3, 10.0, r.values))
+    assert stuck.on_bound == ["alpha"] and dataclasses.replace(r, bounds=None).on_bound == []
