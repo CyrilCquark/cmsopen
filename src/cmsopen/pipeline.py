@@ -250,7 +250,7 @@ register_channel(
         poly_degree=2,
         resonance="J/psi",
         resonance_label=r"J/\psi",
-        cb_n=20.0,  # dev/model_choice.md, step 1
+        cb_n=100.0,  # dev/model_choice.md, Amendment 1 (step 1 on the amended grid)
         model="cb_bw_poly2",  # dev/model_choice.md, step 2
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((2.8, 3.4), (2.85, 3.35), (2.9, 3.3)),
