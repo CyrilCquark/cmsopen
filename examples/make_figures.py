@@ -47,8 +47,9 @@ from cmsopen import (
     same_sign_pairs,
     select_muons,
 )
-from cmsopen.fitting import compare_to_pdg
+from cmsopen.fitting import compare_to_pdg, pdg_mass_width
 from cmsopen.ingestion import DIMUON_TRIGGERS_2012
+from cmsopen.pipeline import CHANNELS, resonance_label
 from cmsopen.plotting import (
     plot_cutflow,
     plot_eta_distribution,
@@ -105,11 +106,17 @@ def build(path: Path) -> Figures:
     h = make_histogram(best.mass, bins=60, range=(60.0, 120.0))
     for model in (MAIN_MODEL, OTHER_MODEL):
         out.fits[model] = fit_mass_peak(h, model=model, fit_range=(70.0, 110.0), poly_degree=2)
-    out.figures["z_peak_fit"], _ = plot_mass_spectrum(h, out.fits[MAIN_MODEL])
+    channel = CHANNELS["Z_mumu"]
+    symbol, pdg_mass = resonance_label(channel), pdg_mass_width(channel.resonance)[0]
+    out.figures["z_peak_fit"], _ = plot_mass_spectrum(
+        h, out.fits[MAIN_MODEL], resonance_label=symbol, pdg_mass=pdg_mass
+    )
 
     h_os = make_histogram(ak.flatten(opposite_sign_pairs(loose).mass), bins=60, range=(60.0, 120.0))
     h_ss = make_histogram(ak.flatten(same_sign_pairs(loose).mass), bins=60, range=(60.0, 120.0))
-    out.figures["z_os_vs_ss"], _ = plot_os_vs_ss(h_os, h_ss, selection="Loose selection: no ID, no isolation")
+    out.figures["z_os_vs_ss"], _ = plot_os_vs_ss(
+        h_os, h_ss, selection="Loose selection: no ID, no isolation", resonance_label=symbol, pdg_mass=pdg_mass
+    )
 
     out.figures["muon_pt"], _ = plot_pt_distribution(final, before=everything)
     out.figures["muon_eta"], _ = plot_eta_distribution(final, before=everything)

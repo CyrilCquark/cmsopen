@@ -66,6 +66,7 @@ from cmsopen.fitting import (
     fit_mass_peak,
     fit_stability,
     make_histogram,
+    pdg_latex_name,
     pdg_mass_width,
 )
 from cmsopen.ingestion import DIMUON_TRIGGERS_2012, NotNanoAODError, open_events
@@ -132,6 +133,10 @@ class ChannelConfig:
     resonance : str
         ``particle`` package name of the resonance, for the PDG comparison
         and the natural width of the Voigt model.
+    resonance_label : str, optional
+        The resonance in matplotlib mathtext (no dollar signs), used in the
+        figures' "PDG m_..." and "Gamma_..." labels, e.g. ``"Z"`` or
+        ``r"J/\\psi"``. If None, the ``particle`` package's LaTeX name is used.
     candidate_strategy : str
         :func:`cmsopen.combinatorics.best_pair` strategy (mass-blind ones
         only: ``"highest_pt_sum"`` or ``"leading"``).
@@ -154,6 +159,7 @@ class ChannelConfig:
     stability_fit_ranges: tuple[tuple[float, float], ...] = ()
     stability_bin_widths: tuple[float, ...] = ()
     min_pairs: int = 100
+    resonance_label: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "muon_cuts", MappingProxyType(dict(self.muon_cuts)))
@@ -205,6 +211,7 @@ register_channel(
         fit_range=(70.0, 110.0),
         poly_degree=2,
         resonance="Z",
+        resonance_label="Z",
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((70.0, 110.0), (75.0, 105.0), (80.0, 100.0)),
         stability_bin_widths=(0.5, 1.0, 2.0),
@@ -222,11 +229,18 @@ register_channel(
         fit_range=(2.8, 3.4),
         poly_degree=2,
         resonance="J/psi",
+        resonance_label=r"J/\psi",
         candidate_strategy="highest_pt_sum",
         stability_fit_ranges=((2.8, 3.4), (2.85, 3.35), (2.9, 3.3)),
         stability_bin_widths=(0.01, 0.02, 0.04),
     )
 )
+
+
+def resonance_label(config: ChannelConfig) -> str:
+    """The resonance of a channel in mathtext for figure labels: ``config.resonance_label``, or else the
+    ``particle`` package's LaTeX name (e.g. ``Z^{0}``)."""
+    return config.resonance_label or pdg_latex_name(config.resonance)
 
 
 def _channel(channel: str, config: ChannelConfig | None) -> ChannelConfig:
@@ -747,6 +761,29 @@ def _execute(
     return results
 
 
+def _figures(
+    cfg: ChannelConfig, hist: MassHistogram, fit: FitResult, ss_hist: MassHistogram | None, cutflow: CutFlow
+) -> dict[str, Any]:
+    """The result figures, every label built from the channel's resonance and the PDG values of ``particle``."""
+    from cmsopen.plotting import plot_cutflow, plot_mass_spectrum, plot_os_vs_ss
+
+    pdg_mass, _, width, _ = pdg_mass_width(cfg.resonance)
+    symbol = resonance_label(cfg)
+    figures: dict[str, Any] = {}
+    figures["mass_fit"], _ = plot_mass_spectrum(
+        hist,
+        fit,
+        label="CMS Open Data",
+        resonance_label=symbol,
+        pdg_mass=pdg_mass,
+        natural_width=width if fit.gamma is not None else None,
+    )
+    if ss_hist is not None:
+        figures["os_vs_ss"], _ = plot_os_vs_ss(hist, ss_hist, resonance_label=symbol, pdg_mass=pdg_mass)
+    figures["cutflow"], _ = plot_cutflow(cutflow)
+    return figures
+
+
 def analyze(
     path: str | Path | Sequence[str | Path],
     channel: str = "Z_mumu",
@@ -827,8 +864,6 @@ def analyze(
         Unknown channel (the message lists the valid ones), unknown model,
         or invalid sizes.
     """
-    from cmsopen.plotting import plot_cutflow, plot_mass_spectrum, plot_os_vs_ss
-
     cfg = _channel(channel, config)
     if model not in MODELS:
         raise ValueError(f"model must be one of {MODELS}, got {model!r}")
@@ -897,11 +932,8 @@ def analyze(
                 f"{len(stab.failed)} of {stab.n_fits} stability fits failed (listed in the stability table)"
             )
 
-    figures: dict[str, Any] = {}
-    figures["mass_fit"], _ = plot_mass_spectrum(hist, fit, label="CMS Open Data")
-    if len(ss_masses):
-        figures["os_vs_ss"], _ = plot_os_vs_ss(hist, make_histogram(ss_masses, bins=n_bins, range=cfg.mass_range))
-    figures["cutflow"], _ = plot_cutflow(cutflow)
+    ss_hist = make_histogram(ss_masses, bins=n_bins, range=cfg.mass_range) if len(ss_masses) else None
+    figures = _figures(cfg, hist, fit, ss_hist, cutflow)
 
     result = AnalysisResult(
         config=cfg,

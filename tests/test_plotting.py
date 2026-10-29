@@ -15,7 +15,7 @@ import pytest
 from scipy import integrate
 
 from cmsopen import FourMomentum, Muon
-from cmsopen.fitting import MassHistogram, fit_mass_peak, toy_histogram, voigt_plus_polynomial
+from cmsopen.fitting import MassHistogram, fit_mass_peak, pdg_mass_width, toy_histogram, voigt_plus_polynomial
 from cmsopen.plotting import (
     FOOTNOTE,
     layout_overlaps,
@@ -23,14 +23,25 @@ from cmsopen.plotting import (
     paper_style,
     plot_cutflow,
     plot_eta_distribution,
-    plot_mass_spectrum,
-    plot_os_vs_ss,
     plot_pt_distribution,
     save_figure,
 )
+from cmsopen.plotting import plot_mass_spectrum as _plot_mass_spectrum
+from cmsopen.plotting import plot_os_vs_ss as _plot_os_vs_ss
 from cmsopen.selection import Selection
 
 EDGES = np.linspace(60.0, 120.0, 61)
+# The toys here are Z-like (60-120 GeV): the figures get the Z's label and PDG mass, as analyze() passes them for
+# Z_mumu. Per-channel labels are tested in test_plot_labels.py.
+Z_LABELS = {"resonance_label": "Z", "pdg_mass": pdg_mass_width("Z")[0]}
+
+
+def plot_mass_spectrum(*args, **kwargs):
+    return _plot_mass_spectrum(*args, **{**Z_LABELS, **kwargs})
+
+
+def plot_os_vs_ss(*args, **kwargs):
+    return _plot_os_vs_ss(*args, **{**Z_LABELS, **kwargs})
 
 
 def toy_fit(seed=1, model="voigt_poly", **toy):
@@ -238,7 +249,7 @@ def test_annotation_contents_match_the_fit():
     assert float(m.group(2)) == round(fit.peak_position[1], digits)
     assert f"{fit.chi2:.1f}/{fit.ndf}" in text
     assert "2012C DoubleMuParked" in text and "sqrt{s}" in text and "8 TeV" in text
-    assert "sigma_{\\mathrm{res}}" in text and "Gamma_Z" in text
+    assert "sigma_{\\mathrm{res}}" in text and "Gamma_{Z}$ = 2.496 GeV (fixed)" in text
 
 
 # -- 5. style ----------------------------------------------------------------------------------------------------------

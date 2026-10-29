@@ -28,8 +28,9 @@ below the peak). A curve that "looks good" on a linear peak plot can hide
 large, systematic disagreements in the tails; the pull panel cannot.
 
 *The PDG mass is a reference line, not a target.* The dotted line marks the
-world-average Z mass read from the ``particle`` package. The fit does not
-use it: the peak position is measured from the data alone, and the
+world-average mass of the resonance (passed in by the caller, who reads it
+from the ``particle`` package), drawn only when it lies inside the plotted
+range. The fit does not use it: the peak position is measured from the data alone, and the
 offset between the two is part of the result (momentum scale, radiation).
 
 *An "Unofficial analysis of CMS Open Data" note.* These are real CMS data,
@@ -65,7 +66,7 @@ from typing import TYPE_CHECKING, Any, cast
 import awkward as ak
 import numpy as np
 
-from cmsopen.fitting import FitResult, MassHistogram, pdg_mass_width
+from cmsopen.fitting import FitResult, MassHistogram
 from cmsopen.objects import Muon
 from cmsopen.selection import CutFlow, Selection
 
@@ -611,7 +612,19 @@ def _fmt_pm(value: float, error: float) -> tuple[str, str]:
 _MODEL_LABELS = {"gauss_poly": "Gaussian", "voigt_poly": "Voigt"}
 
 
-def _fit_annotation(fit: FitResult) -> str:
+def _width_text(width: float) -> str:
+    """A natural width with a readable unit: MeV below 0.1 GeV (e.g. the J/psi), GeV otherwise (e.g. the Z)."""
+    if width < 0.1:
+        return f"{width * 1e3:.3g} MeV"
+    return f"{width:.3f} GeV"
+
+
+def _resonance_symbol(resonance_label: str | None, symbol: str) -> str:
+    """``symbol`` with the resonance as subscript, in mathtext, e.g. ``$\\Gamma_{J/\\psi}$`` (no subscript if None)."""
+    return rf"${symbol}_{{{resonance_label}}}$" if resonance_label else rf"${symbol}$"
+
+
+def _fit_annotation(fit: FitResult, resonance_label: str | None = None, natural_width: float | None = None) -> str:
     lines = [
         f"{_MODEL_LABELS.get(fit.model_name, fit.model_name)} + pol{fit.poly_degree} fit, "
         f"{fit.fit_range[0]:g}$-${fit.fit_range[1]:g} GeV"
@@ -623,7 +636,9 @@ def _fit_annotation(fit: FitResult) -> str:
         lines.append(rf"$\sigma$ = {s} $\pm$ {se} GeV (effective)")
     else:
         lines.append(rf"$\sigma_{{\mathrm{{res}}}}$ = {s} $\pm$ {se} GeV")
-        lines.append(rf"$\Gamma_Z$ = {2 * fit.gamma:.3f} GeV (fixed)")
+        width = 2 * fit.gamma if natural_width is None else natural_width
+        gamma_symbol = _resonance_symbol(resonance_label, r"\Gamma")
+        lines.append(f"{gamma_symbol} = {_width_text(width)} (fixed)")
     lines.append(rf"$\chi^2$/ndf = {fit.chi2:.1f}/{fit.ndf}")
     if fit.yields_reliable:
         sy, sye = fit.signal_yield
@@ -648,6 +663,20 @@ def _flat(values: Any, attr: str) -> np.ndarray:
     return np.asarray(values, dtype=np.float64).ravel()
 
 
+def _pdg_line(ax: Axes, resonance_label: str | None, pdg_mass: float | None, edges: np.ndarray) -> None:
+    """The dotted PDG reference line, only if a mass is given and it lies inside the plotted range."""
+    if pdg_mass is None or not (edges[0] <= pdg_mass <= edges[-1]):
+        return
+    ax.axvline(
+        pdg_mass,
+        color=OKABE_ITO["green"],
+        linestyle=":",
+        linewidth=1.3,
+        label=f"PDG {_resonance_symbol(resonance_label, 'm')} = {pdg_mass:.4f} GeV",
+        gid="pdg",
+    )
+
+
 # -- the mass spectrum ---------------------------------------------------------------------------
 
 
@@ -661,6 +690,9 @@ def plot_mass_spectrum(
     logy: bool = False,
     label: str = "CMS Open Data",
     fig: Figure | None = None,
+    resonance_label: str | None = None,
+    pdg_mass: float | None = None,
+    natural_width: float | None = None,
 ) -> tuple[Figure, list[Axes]]:
     """Draw the dimuon mass spectrum with its fit, the PDG mass and a pull panel.
 
@@ -673,12 +705,15 @@ def plot_mass_spectrum(
       to counts per bin, inside the fit range only;
     * optionally the same-sign spectrum as a step histogram: pairs that
       cannot come from a Z, a direct look at the combinatorial background;
-    * the PDG Z mass from the ``particle`` package as a dotted reference line
-      (the fit never uses it);
+    * the PDG mass of the resonance as a dotted reference line, labelled
+      "PDG m_<resonance>", if ``pdg_mass`` is given and lies inside the
+      plotted range (the fit never uses it);
     * a lower panel of pulls (data - fit) / sigma per fitted bin, with
       sigma = sqrt(max(N, 1)) as in the fit, and lines at 0 and +-2;
     * an annotation with the fitted peak position and its statistical error,
-      the resolution, chi2/ndf and the data source. Yields are shown only if
+      the resolution, the fixed natural width "Gamma_<resonance>" (in MeV
+      below 0.1 GeV, e.g. for the J/psi, else in GeV), chi2/ndf and the data
+      source. Yields are shown only if
       :attr:`FitResult.yields_reliable`; otherwise the block says
       "yields not shown: background not positive".
 
@@ -695,7 +730,7 @@ def plot_mass_spectrum(
     same_sign : MassHistogram, optional
         Same-sign pair masses with the same bin edges.
     pdg : bool
-        Draw the PDG Z mass line.
+        Draw the PDG mass line (needs ``pdg_mass``).
     residuals : {"pull", None}
         Draw the pull panel (needs ``fit``).
     annotate : bool
@@ -706,6 +741,16 @@ def plot_mass_spectrum(
         Text above the plot on the left.
     fig : Figure, optional
         An empty figure to draw into.
+    resonance_label : str, optional
+        The resonance in mathtext without dollar signs, e.g. ``"Z"`` or
+        ``r"J/\\psi"``; the subscript of "PDG m" and "Gamma". Nothing in this
+        function assumes a particular resonance.
+    pdg_mass : float, optional
+        PDG mass in GeV (from :func:`cmsopen.fitting.pdg_mass_width`); no
+        reference line without it.
+    natural_width : float, optional
+        Natural width in GeV shown in the annotation; it must equal the width
+        the fit held fixed (``2 * fit.gamma``), which is used if omitted.
 
     Returns
     -------
@@ -715,6 +760,10 @@ def plot_mass_spectrum(
     if residuals not in ("pull", None):
         raise ValueError(f'residuals must be "pull" or None, got {residuals!r}')
     width = _uniform_width(masshist)
+    if natural_width is not None and fit is not None and fit.gamma is not None:
+        if not math.isclose(natural_width, 2 * fit.gamma, rel_tol=1e-9, abs_tol=1e-15):
+            raise ValueError(f"natural_width {natural_width!r} GeV differs from the width fixed in the fit, "
+                             f"{2 * fit.gamma!r} GeV")
     if same_sign is not None and not np.array_equal(same_sign.edges, masshist.edges):
         raise ValueError("same_sign must have the same bin edges as masshist")
     with_pulls = residuals == "pull" and fit is not None
@@ -789,15 +838,7 @@ def plot_mass_spectrum(
         for coll in data.lines[2]:
             coll.set_gid("data-errors")
         if pdg:
-            mass = pdg_mass_width("Z")[0]
-            ax.axvline(
-                mass,
-                color=OKABE_ITO["green"],
-                linestyle=":",
-                linewidth=1.3,
-                label=rf"PDG $m_Z$ = {mass:.4f} GeV",
-                gid="pdg",
-            )
+            _pdg_line(ax, resonance_label, pdg_mass, masshist.edges)
 
         ax.set_xlim(masshist.edges[0], masshist.edges[-1])
         if logy:
@@ -834,7 +875,7 @@ def plot_mass_spectrum(
             annotation = ax.text(
                 0.03,
                 0.97,
-                _fit_annotation(fit),
+                _fit_annotation(fit, resonance_label, natural_width),
                 transform=ax.transAxes,
                 fontsize=8.5,
                 linespacing=1.45,
@@ -1071,16 +1112,20 @@ def plot_os_vs_ss(
     label: str = "CMS Open Data",
     selection: str | None = None,
     fig: Figure | None = None,
+    resonance_label: str | None = None,
+    pdg_mass: float | None = None,
 ) -> tuple[Figure, Axes]:
     """Opposite-sign and same-sign dimuon mass spectra on one log-scale axis.
 
-    The Z is neutral, so it decays only to opposite-sign pairs; same-sign
+    A neutral resonance (the Z, the J/psi) decays only to opposite-sign pairs; same-sign
     pairs come only from background (unrelated or misidentified muons). A
     peak in the opposite-sign spectrum with none in the same-sign spectrum
     shows the peak is a neutral particle. The log scale is needed because,
     after a tight selection, the same-sign spectrum is orders of magnitude
     smaller. ``selection``, if given, describes the selection as the
-    legend title.
+    legend title. ``resonance_label`` and ``pdg_mass`` draw and label the
+    PDG reference line as in :func:`plot_mass_spectrum` (only inside the
+    plotted range).
     """
     width = _uniform_width(masshist_os)
     if not np.array_equal(masshist_os.edges, masshist_ss.edges):
@@ -1110,15 +1155,7 @@ def plot_os_vs_ss(
             gid="ss",
         )
         if pdg:
-            mass = pdg_mass_width("Z")[0]
-            ax.axvline(
-                mass,
-                color=OKABE_ITO["green"],
-                linestyle=":",
-                linewidth=1.3,
-                label=rf"PDG $m_Z$ = {mass:.4f} GeV",
-                gid="pdg",
-            )
+            _pdg_line(ax, resonance_label, pdg_mass, masshist_os.edges)
         top = max(float(masshist_os.counts.max(initial=0)), float(masshist_ss.counts.max(initial=0)), 1.0)
         ax.set_xlim(masshist_os.edges[0], masshist_os.edges[-1])
         if logy:

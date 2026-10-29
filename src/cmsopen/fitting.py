@@ -123,6 +123,16 @@ class FitWarning(str):
 _PARTICLE_ALIASES = {"Z": 23, "Z0": 23, "W": 24, "W+": 24, "J/psi": 443, "Upsilon": 553}
 
 
+def _particle(particle: str | int) -> Particle:
+    pid = _PARTICLE_ALIASES.get(particle, particle) if isinstance(particle, str) else particle
+    return Particle.from_pdgid(pid) if isinstance(pid, int) else Particle.from_name(pid)
+
+
+def pdg_latex_name(particle: str | int) -> str:
+    """The ``particle`` package's LaTeX name of a particle (e.g. ``Z^{0}``, ``J/\\psi(1S)``), for figure labels."""
+    return str(_particle(particle).latex_name)
+
+
 def pdg_mass_width(particle: str | int = "Z") -> tuple[float, float, float, float]:
     """Return ``(mass, mass_error, width, width_error)`` in GeV from the ``particle`` package.
 
@@ -131,8 +141,7 @@ def pdg_mass_width(particle: str | int = "Z") -> tuple[float, float, float, floa
     follow the installed PDG edition. ``particle`` may be a name such as
     ``"Z"`` or ``"Z0"``, or a PDG Monte Carlo ID such as 23.
     """
-    pid = _PARTICLE_ALIASES.get(particle, particle) if isinstance(particle, str) else particle
-    p = Particle.from_pdgid(pid) if isinstance(pid, int) else Particle.from_name(pid)
+    p = _particle(particle)
     if p.mass is None:
         raise ValueError(f"the particle package has no mass for {p.name}")
     mev = 1e-3
