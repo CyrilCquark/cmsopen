@@ -25,6 +25,20 @@ A single Gaussian fitted to it describes both effects with one effective
 width; the Voigt model separates them by fixing the natural width to its
 known value and letting the Gaussian resolution float.
 
+Final-state radiation and the Crystal Ball. A muon from the decay can
+radiate a photon (final-state radiation, FSR). The photon is not part of
+the dimuon, so the measured mass is lower than the parent's: FSR moves
+events from the peak into a long tail on the LOW-mass side, and a
+symmetric Gaussian or Voigt peak cannot follow it (the polynomial
+background then bends to absorb the tail, sometimes below zero). The
+Crystal Ball function is the standard description of such a detector
+response: a Gaussian core joined, at alpha standard deviations below the
+mean, to a power-law tail ~ (B - u)^-n that falls much more slowly. The
+``cb_bw_*`` models convolve a Breit-Wigner (the resonance's true mass
+distribution, natural width fixed from the PDG) with that Crystal Ball, so
+the fitted mass M is the Breit-Wigner pole position, the quantity the PDG
+quotes, rather than the position of a radiatively shifted maximum.
+
 Statistics. Each bin count N is a Poisson random number whose standard
 deviation is the square root of its expected value, estimated here by
 sqrt(N). The fit minimises chi2 = sum((N - mu)^2 / sigma^2) over the bins
@@ -51,10 +65,13 @@ import awkward as ak
 import hist
 import numpy as np
 from particle import Particle
-from scipy import integrate, optimize, special, stats
+from scipy import integrate, interpolate, optimize, signal, special, stats
 
 __all__ = [
+    "CB_BW_THRESHOLD",
+    "CB_MODELS",
     "MODELS",
+    "STABILITY_MODELS",
     "FitError",
     "FitResult",
     "FitWarning",
@@ -63,6 +80,11 @@ __all__ = [
     "PullTestResult",
     "StabilityResult",
     "compare_to_pdg",
+    "crystal_ball",
+    "crystalball_bw",
+    "crystalball_bw_exp",
+    "crystalball_bw_poly2",
+    "exponential",
     "fit_mass_peak",
     "fit_stability",
     "gaussian",
@@ -75,8 +97,22 @@ __all__ = [
     "voigt_plus_polynomial",
 ]
 
-MODELS: tuple[str, ...] = ("gauss_poly", "voigt_poly")
+MODELS: tuple[str, ...] = ("gauss_poly", "voigt_poly", "cb_bw_exp", "cb_bw_poly2")
 """Model names accepted by :func:`fit_mass_peak`."""
+
+CB_MODELS: tuple[str, ...] = ("cb_bw_exp", "cb_bw_poly2")
+"""The Crystal Ball (x) Breit-Wigner models: exponential or quadratic background."""
+
+STABILITY_MODELS: tuple[str, ...] = ("gauss_poly", "voigt_poly")
+"""Peak models refitted by default in :func:`fit_stability`."""
+
+CB_BW_THRESHOLD = 0.05
+"""Below natural width / resolution = this, :func:`crystalball_bw` uses the Crystal Ball alone (no convolution)."""
+
+_CB_STEPS_PER_SIGMA = 50  # convolution grid step sigma / 50: midpoint-rule error ~ (1/50)^2 / 24 ~ 2e-5 relative
+_CB_PAD_SIGMAS = 10.0  # the grid extends 10 sigma beyond the normalisation window on each side
+_CB_MAX_GRID = 400_000
+_CB_ALPHA_MIN, _CB_ALPHA_MAX = 0.1, 10.0
 
 _FWHM_PER_SIGMA = 2.0 * math.sqrt(2.0 * math.log(2.0))  # 2.3548...
 
@@ -379,7 +415,204 @@ def voigt_plus_polynomial(
     return amplitude * special.voigt_profile(x - mean, sigma, gamma) + polynomial(x, *coeffs, x0=x0)
 
 
+def exponential(x: Any, c0: float, slope: float, x0: float = 0.0) -> np.ndarray:
+    """Exponential background density in events per GeV: c0 * exp(slope * (x - x0)).
+
+    Why an exponential: the dimuon continuum (Drell-Yan production, heavy-
+    flavour decays, misidentified muons) falls steeply and smoothly with
+    mass, and over a window of a few widths a falling exponential describes
+    it with two parameters. With ``c0 >= 0`` it is positive everywhere, as
+    a number of events must be, so it cannot dip below zero to absorb a
+    feature the peak model misses (as a polynomial can); a fit with it
+    therefore always has a well-defined signal/background split. ``c0`` is
+    the density at ``x0`` (the middle of the fit range), ``slope`` is in
+    1/GeV (negative for a falling spectrum).
+    """
+    x = np.asarray(x, dtype=np.float64)
+    return c0 * np.exp(slope * (x - x0))
+
+
+def crystal_ball(u: Any, alpha: float, n: float) -> np.ndarray:
+    """The Crystal Ball shape at u = (m - mean) / sigma, with peak value 1 (not normalised).
+
+    A Gaussian core exp(-u^2 / 2) for u > -alpha, joined at u = -alpha to a
+    power-law tail A (B - u)^-n on the low-mass side, with
+    A = (n / alpha)^n exp(-alpha^2 / 2) and B = n / alpha - alpha, so that
+    the shape and its slope are continuous at the join. The core is the
+    detector resolution; the tail describes events that lost energy to
+    final-state radiation (and, less, to energy loss in material). ``alpha``
+    (in units of sigma) sets where the tail starts, ``n`` how slowly it
+    falls. For alpha -> infinity the shape is a pure Gaussian. ``n <= 1``
+    gives a tail with no finite integral over all masses; it is still a
+    valid shape over a finite window, which is where it is normalised.
+    """
+    if not (alpha > 0 and n > 0):
+        raise ValueError(f"crystal_ball needs alpha > 0 and n > 0, got alpha={alpha!r}, n={n!r}")
+    u = np.asarray(u, dtype=np.float64)
+    tail = u <= -alpha
+    out = np.asarray(np.exp(-0.5 * np.square(np.where(tail, 0.0, u))))
+    if np.any(tail):
+        # log-space: A (B - u)^-n = exp(n ln(n/alpha) - alpha^2/2 - n ln(B - u)); B - u >= n/alpha > 0 in the tail
+        out[tail] = np.exp(n * math.log(n / alpha) - 0.5 * alpha * alpha - n * np.log(n / alpha - alpha - u[tail]))
+    return out
+
+
+def _cb_bw_shape(
+    x: np.ndarray,
+    mean: float,
+    sigma: float,
+    alpha: float,
+    n: float,
+    gamma: float,
+    window: tuple[float, float],
+    convolve: bool | None = None,
+) -> np.ndarray:
+    """Breit-Wigner (half width gamma) convolved with a Crystal Ball, unnormalised, at the masses ``x``."""
+    if convolve is None:
+        convolve = gamma > 0 and 2.0 * gamma >= CB_BW_THRESHOLD * sigma
+    if not convolve:
+        return crystal_ball((x - mean) / sigma, alpha, n)
+    if not gamma > 0:
+        raise ValueError(f"the convolution needs a positive Breit-Wigner half width, got {gamma!r}")
+    h = sigma / _CB_STEPS_PER_SIGMA
+    pad = _CB_PAD_SIGMAS * sigma
+    g_lo = min(window[0], float(x.min(initial=window[0]))) - pad
+    g_hi = max(window[1], float(x.max(initial=window[1]))) + pad
+    k = np.arange(math.floor((g_lo - mean) / h), math.ceil((g_hi - mean) / h) + 1, dtype=np.float64)
+    if k.size > _CB_MAX_GRID:
+        raise ValueError(f"convolution grid of {k.size:,} points (sigma {sigma:g} GeV is too small for the window)")
+    # The grid is aligned so that the pole M is a node. Each node carries the exact Breit-Wigner probability of
+    # its cell, [t - h/2, t + h/2] (arctan differences, written stably), so a Breit-Wigner much narrower than a
+    # cell is handled exactly too; the Crystal Ball is then sampled at the node separations.
+    a, b = (k + 0.5) * (h / gamma), (k - 0.5) * (h / gamma)
+    w = np.where(k == 0, 2.0 * np.arctan(0.5 * h / gamma), np.arctan((a - b) / (1.0 + a * b))) / math.pi
+    m = np.arange(-(k.size - 1), k.size, dtype=np.float64)
+    kernel = crystal_ball(m * (h / sigma), alpha, n)
+    f = signal.fftconvolve(w, kernel)[k.size - 1 : 2 * k.size - 1]
+    return np.asarray(interpolate.CubicSpline(mean + h * k, f)(x))
+
+
+def _gl_points(edges: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """5-point Gauss-Legendre nodes and weights over each bin of ``edges`` (flattened)."""
+    nodes, weights = np.polynomial.legendre.leggauss(5)
+    centers, widths = 0.5 * (edges[:-1] + edges[1:]), np.diff(edges)
+    return (centers[:, None] + 0.5 * widths[:, None] * nodes).ravel(), (0.5 * widths[:, None] * weights).ravel()
+
+
+def crystalball_bw(
+    x: Any,
+    amplitude: float,
+    mean: float,
+    sigma: float,
+    alpha: float,
+    *,
+    n: float,
+    gamma: float,
+    norm_edges: Sequence[float] | np.ndarray,
+    convolve: bool | None = None,
+) -> np.ndarray:
+    """Breit-Wigner convolved with a Crystal Ball, normalised to ``amplitude`` events in ``norm_edges``.
+
+    The signal of the ``cb_bw_*`` models. The true masses of the resonance
+    follow a Breit-Wigner centred on the pole mass ``mean`` (M) with half
+    width ``gamma`` (half the natural width, fixed from the PDG); the
+    detector and final-state radiation smear each mass by a Crystal Ball
+    (:func:`crystal_ball`: Gaussian core of width ``sigma``, low-mass tail
+    from ``alpha`` with exponent ``n``). The observed density is their
+    convolution. Because the radiative tail is in the response, M is the
+    Breit-Wigner pole, comparable with the PDG mass, and not the shifted
+    position of the observed maximum.
+
+    The convolution is done numerically: on a grid of step sigma / 50
+    aligned on M and reaching 10 sigma beyond the window on each side, each
+    grid cell carries its exact Breit-Wigner probability and the Crystal Ball
+    is sampled at the cell separations (an FFT convolution); a cubic spline
+    gives the values in between. The Breit-Wigner is truncated to that grid,
+    which matters only through the far power-law tail.
+
+    When the natural width is far below the resolution (2 gamma <
+    :data:`CB_BW_THRESHOLD` sigma, as for the J/psi, whose width is about
+    0.1 MeV against a resolution of tens of MeV), the Breit-Wigner is
+    effectively a delta function and the Crystal Ball is used alone. The
+    error of that branch is of order (gamma / sigma) sqrt(2 / pi) of the
+    peak height: at most about 2 % at the threshold, falling in proportion
+    to the width. ``convolve`` (True or False) overrides the choice.
+
+    The shape is normalised over the bins ``norm_edges`` (the fit bins) with
+    the same 5-point Gauss-Legendre quadrature the fit uses for bin
+    integrals, so ``amplitude`` is the number of signal events in the fit
+    range. (A Crystal Ball with n <= 1 has no finite integral over all
+    masses; over the fit range it is always normalisable.)
+    """
+    edges = np.asarray(norm_edges, dtype=np.float64)
+    x = np.asarray(x, dtype=np.float64)
+    pts, wts = _gl_points(edges)
+    shape = _cb_bw_shape(
+        np.concatenate([x.ravel(), pts]), mean, sigma, alpha, n, gamma, (float(edges[0]), float(edges[-1])), convolve
+    )
+    return amplitude * shape[: x.size].reshape(x.shape) / float(shape[x.size :] @ wts)
+
+
+def crystalball_bw_exp(
+    x: Any,
+    amplitude: float,
+    mean: float,
+    sigma: float,
+    alpha: float,
+    c0: float,
+    slope: float,
+    *,
+    n: float,
+    gamma: float,
+    norm_edges: Sequence[float] | np.ndarray,
+    x0: float = 0.0,
+) -> np.ndarray:
+    """Signal :func:`crystalball_bw` plus a positive :func:`exponential` background (events per GeV).
+
+    The ``"cb_bw_exp"`` model: Breit-Wigner (x) Crystal Ball for the
+    resonance with its radiative tail, and an exponential for the falling
+    continuum. With ``c0 >= 0`` the background is positive everywhere, so
+    the signal and background yields are always meaningful.
+    """
+    return crystalball_bw(x, amplitude, mean, sigma, alpha, n=n, gamma=gamma, norm_edges=norm_edges) + exponential(
+        x, c0, slope, x0=x0
+    )
+
+
+def crystalball_bw_poly2(
+    x: Any,
+    amplitude: float,
+    mean: float,
+    sigma: float,
+    alpha: float,
+    c0: float,
+    c1: float,
+    c2: float,
+    *,
+    n: float,
+    gamma: float,
+    norm_edges: Sequence[float] | np.ndarray,
+    x0: float = 0.0,
+) -> np.ndarray:
+    """Signal :func:`crystalball_bw` plus a quadratic :func:`polynomial` background (events per GeV).
+
+    The ``"cb_bw_poly2"`` model: the same signal as ``"cb_bw_exp"`` with a
+    more flexible background, which can, unlike the exponential, become
+    negative; a negative background is then reported as for the Voigt fit.
+    """
+    return crystalball_bw(x, amplitude, mean, sigma, alpha, n=n, gamma=gamma, norm_edges=norm_edges) + polynomial(
+        x, c0, c1, c2, x0=x0
+    )
+
+
 # -- the fit --------------------------------------------------------------------------
+
+
+def _gradient_step(value: float, error: float, fraction: float) -> float:
+    """A numerical-derivative step: ``fraction`` of the error, but never more than 0.1 % of the value itself
+    (so a positive parameter such as sigma or alpha stays positive)."""
+    h = fraction * error if error > 0 else 1e-6
+    return min(h, 1e-3 * abs(value)) if value != 0 else h
 
 
 def _sym_error(cov: np.ndarray, grad: np.ndarray) -> float:
@@ -417,7 +650,7 @@ class FitResult:
     fit_range: tuple[float, float]
     histogram: MassHistogram
     fit_mask: np.ndarray
-    poly_degree: int
+    poly_degree: int | None
     x0: float
     gamma: float | None = None
     n_entries: int = 0
@@ -431,6 +664,22 @@ class FitResult:
     own propagated errors.
     """
     _density: Callable[..., np.ndarray] | None = field(default=None, repr=False)
+    cb_n: float | None = None
+    """The fixed Crystal Ball tail exponent of the ``cb_bw_*`` models (None for the others)."""
+
+    @property
+    def n_signal_parameters(self) -> int:
+        """Number of signal parameters, which come first: amplitude, mean, sigma (and alpha for ``cb_bw_*``)."""
+        return 4 if self.model_name in CB_MODELS else 3
+
+    @property
+    def background_label(self) -> str:
+        """``"exp"`` for the exponential background, else ``"pol<degree>"``."""
+        return "exp" if self.poly_degree is None else f"pol{self.poly_degree}"
+
+    def _fit_edges(self) -> np.ndarray:
+        edges, mask = self.histogram.edges, self.fit_mask
+        return np.r_[edges[:-1][mask], edges[1:][mask][-1:]]
 
     @property
     def yields_reliable(self) -> bool:
@@ -467,7 +716,11 @@ class FitResult:
 
     @property
     def peak_position(self) -> tuple[float, float]:
-        """Fitted peak position ``(mean, error)`` in GeV."""
+        """Fitted peak position ``(mean, error)`` in GeV.
+
+        For ``"cb_bw_*"`` this is the Breit-Wigner pole mass M (the radiative
+        tail is in the Crystal Ball response), comparable with the PDG mass.
+        """
         return self.parameters["mean"]
 
     @property
@@ -475,7 +728,8 @@ class FitResult:
         """Fitted Gaussian width ``(sigma, error)`` in GeV.
 
         For ``"voigt_poly"`` this is the detector mass resolution alone (the
-        natural width is fixed separately). For ``"gauss_poly"`` it is an
+        natural width is fixed separately); for ``"cb_bw_*"`` it is the
+        Gaussian core of the Crystal Ball. For ``"gauss_poly"`` it is an
         effective width that also absorbs the natural width of the Z.
         """
         return self.parameters["sigma"]
@@ -489,6 +743,8 @@ class FitResult:
         f_G^2) with f_L = 2 gamma and f_G = 2.3548 sigma (accurate to about
         0.02 %); its error comes from sigma only, since gamma is fixed.
         """
+        if self.model_name in CB_MODELS:
+            return self._numerical_fwhm()
         sigma, err = self.resolution
         fg = _FWHM_PER_SIGMA * sigma
         if self.gamma is None:
@@ -497,9 +753,44 @@ class FitResult:
         root = math.sqrt(0.2166 * fl**2 + fg**2)
         return 0.5346 * fl + root, (fg / root) * _FWHM_PER_SIGMA * err
 
+    def _numerical_fwhm(self) -> tuple[float, float]:
+        """FWHM of the signal density found on a fine grid, error propagated with a numerical gradient."""
+        lo, hi = self.fit_range
+        grid = np.linspace(lo, hi, 20001)
+
+        def width(p: np.ndarray) -> float:
+            y = self._signal_density(grid, p)
+            half = 0.5 * float(y.max())
+            idx = np.nonzero(y >= half)[0]
+            i, j = int(idx[0]), int(idx[-1])
+            left = grid[i] if i == 0 else np.interp(half, [y[i - 1], y[i]], [grid[i - 1], grid[i]])
+            right = grid[j] if j == grid.size - 1 else np.interp(half, [y[j + 1], y[j]], [grid[j + 1], grid[j]])
+            return float(right - left)
+
+        value = width(self.values)
+        grad = np.zeros_like(self.values)
+        for i in range(1, self.n_signal_parameters):  # the width does not depend on the amplitude
+            h = _gradient_step(self.values[i], self.errors[i], 1e-3)
+            up, down = self.values.copy(), self.values.copy()
+            up[i] += h
+            down[i] -= h
+            grad[i] = (width(up) - width(down)) / (2 * h)
+        return value, _sym_error(self.covariance, grad)
+
     # -- component densities -----------------------------------------------------------
 
     def _signal_density(self, x: Any, p: np.ndarray) -> np.ndarray:
+        if self.model_name in CB_MODELS:
+            return crystalball_bw(
+                x,
+                p[0],
+                p[1],
+                p[2],
+                p[3],
+                n=cast(float, self.cb_n),
+                gamma=cast(float, self.gamma),
+                norm_edges=self._fit_edges(),
+            )
         if self.gamma is None:
             return gaussian(x, p[0], p[1], p[2])
         return p[0] * special.voigt_profile(np.asarray(x, dtype=np.float64) - p[1], p[2], self.gamma)
@@ -513,8 +804,11 @@ class FitResult:
         return self._signal_density(x, self.values)
 
     def background(self, x: Any) -> np.ndarray:
-        """Fitted polynomial background density at ``x`` (events per GeV)."""
-        return polynomial(x, *self.values[3:], x0=self.x0)
+        """Fitted background density (polynomial or exponential) at ``x`` (events per GeV)."""
+        coeffs = self.values[self.n_signal_parameters :]
+        if self.poly_degree is None:
+            return exponential(x, coeffs[0], coeffs[1], x0=self.x0)
+        return polynomial(x, *coeffs, x0=self.x0)
 
     def expected_counts(self) -> np.ndarray:
         """Expected count in each fitted bin from the fitted model (bin-integrated)."""
@@ -540,8 +834,8 @@ class FitResult:
 
         value = integral(self.values)
         grad = np.zeros_like(self.values)
-        for i in range(3):  # the signal depends only on amplitude, mean, sigma
-            h = 1e-4 * self.errors[i] if self.errors[i] > 0 else 1e-6
+        for i in range(self.n_signal_parameters):  # the signal depends only on its own parameters
+            h = _gradient_step(self.values[i], self.errors[i], 1e-4)
             up, down = self.values.copy(), self.values.copy()
             up[i] += h
             down[i] -= h
@@ -554,21 +848,37 @@ class FitResult:
 
         The polynomial integrates analytically: the integral is linear in
         the coefficients, int (x - x0)^k dx = [(x - x0)^(k+1) / (k+1)], so the
-        error propagation is exact.
+        error propagation is exact. The exponential also integrates
+        analytically, c0 (exp(s b) - exp(s a)) / s with a, b the window edges
+        relative to x0; its error uses the analytic derivative in c0 and a
+        numerical one in the slope s.
         """
         lo, hi = self.fit_range
+        k0 = self.n_signal_parameters
+        grad = np.zeros_like(self.values)
+        if self.poly_degree is None:
+            a, b = lo - self.x0, hi - self.x0
+
+            def shape(slope: float) -> float:  # integral of exp(slope * u) over [a, b]
+                return (b - a) if slope == 0 else math.exp(slope * a) * math.expm1(slope * (b - a)) / slope
+
+            c0, slope = float(self.values[k0]), float(self.values[k0 + 1])
+            step = 1e-6 * max(1.0, abs(slope))
+            grad[k0] = shape(slope)
+            grad[k0 + 1] = c0 * (shape(slope + step) - shape(slope - step)) / (2 * step)
+            return c0 * shape(slope), _sym_error(self.covariance, grad)
         k = np.arange(self.poly_degree + 1)
         basis = ((hi - self.x0) ** (k + 1) - (lo - self.x0) ** (k + 1)) / (k + 1)
-        grad = np.zeros_like(self.values)
-        grad[3:] = basis
-        return float(basis @ self.values[3:]), _sym_error(self.covariance, grad)
+        grad[k0:] = basis
+        return float(basis @ self.values[k0:]), _sym_error(self.covariance, grad)
 
     # -- display -------------------------------------------------------------------------
 
     def table(self) -> str:
         """A readable table of parameters, uncertainties and fit quality."""
+        background = "exponential background" if self.poly_degree is None else f"polynomial degree {self.poly_degree}"
         lines = [
-            f"Fit {self.model_name} (polynomial degree {self.poly_degree}) over "
+            f"Fit {self.model_name} ({background}) over "
             f"{self.fit_range[0]:g}-{self.fit_range[1]:g} GeV, {int(self.fit_mask.sum())} bins, "
             f"{self.n_entries:,} entries",
             f"  {'parameter':<12}{'value':>14}{'error':>12}",
@@ -577,6 +887,8 @@ class FitResult:
             lines.append(f"  {name:<12}{v:>14.5g}{e:>12.3g}")
         if self.gamma is not None:
             lines.append(f"  {'gamma':<12}{self.gamma:>14.5g}{'fixed':>12}   (Breit-Wigner half width, GeV)")
+        if self.cb_n is not None:
+            lines.append(f"  {'n':<12}{self.cb_n:>14.5g}{'fixed':>12}   (Crystal Ball tail exponent)")
         lines.append(
             f"  chi2 / ndf = {self.chi2:.2f} / {self.ndf} = {self.chi2_ndf:.3f},  p-value = {self.p_value:.3g}"
         )
@@ -618,12 +930,17 @@ def fit_mass_peak(
     min_significance: float = 5.0,
     bins: int | Sequence[float] = 60,
     hist_range: tuple[float, float] = (60.0, 120.0),
+    cb_n: float | None = None,
 ) -> FitResult:
     """Fit a signal-plus-background model to a dimuon mass histogram.
 
     The model is a peak (``"gauss_poly"``: Gaussian; ``"voigt_poly"``:
     Voigt with the natural width fixed) plus a polynomial background of
-    degree ``poly_degree``. It is fitted with ``scipy.optimize.curve_fit``,
+    degree ``poly_degree``; or, for ``"cb_bw_exp"`` and ``"cb_bw_poly2"``,
+    a Breit-Wigner (natural width fixed) convolved with a Crystal Ball
+    response (:func:`crystalball_bw`: resolution ``sigma``, tail start
+    ``alpha``, fixed tail exponent ``cb_n``) plus a positive exponential or
+    a quadratic background (``poly_degree`` does not apply to them). It is fitted with ``scipy.optimize.curve_fit``,
     minimising chi2 with the Poisson errors sqrt(max(N, 1)) as absolute
     uncertainties (``absolute_sigma=True``: the errors are taken as known,
     not rescaled to make chi2/ndf = 1, so the parameter uncertainties are
@@ -659,7 +976,7 @@ def fit_mass_peak(
     hist_or_values : MassHistogram or array-like
         A histogram, or masses (GeV; jagged awkward arrays are flattened),
         which are histogrammed with ``bins`` and ``hist_range``.
-    model : {"gauss_poly", "voigt_poly"}
+    model : {"gauss_poly", "voigt_poly", "cb_bw_exp", "cb_bw_poly2"}
     fit_range : (float, float)
         Mass window in GeV.
     poly_degree : int
@@ -668,18 +985,27 @@ def fit_mass_peak(
         Starting values by parameter name (``amplitude``, ``mean``,
         ``sigma``, ``c0``, ``c1``, ...), overriding the automatic ones.
     natural_width : float, optional
-        Breit-Wigner FWHM in GeV for ``"voigt_poly"`` (default: the Z width
-        from the ``particle`` package).
+        Breit-Wigner FWHM in GeV for ``"voigt_poly"`` and ``"cb_bw_*"``
+        (default: the Z width from the ``particle`` package).
     min_significance : float
         The fit fails unless amplitude / error >= this (default 5): a
         "peak" that could be a fluctuation has no meaningful position.
+    cb_n : float
+        Crystal Ball tail exponent, required for ``"cb_bw_*"`` and held
+        fixed: n and alpha are so strongly correlated (a slightly later,
+        slightly steeper tail looks almost the same) that fitting both makes
+        the fit unstable and their errors meaningless. It is chosen once per
+        channel on the development data (``ChannelConfig.cb_n``).
 
     Raises
     ------
     FitError
         If there are no entries in the window, too few bins, the fit does
         not converge, the covariance is not finite and positive, a
-        parameter ends on a bound, the peak is not significant, or the
+        parameter ends on a bound or is not constrained by the data (an
+        error of ~0, or more than half its allowed range: for the
+        ``cb_bw_*`` models, data with no radiative tail leave alpha free),
+        the peak is not significant, or the
         model predicts a negative count in a bin. A background *component*
         that is significantly negative (by more than 3 of its own
         propagated errors) while the total stays positive is not an error
@@ -692,6 +1018,10 @@ def fit_mass_peak(
         raise ValueError(f"model must be one of {MODELS}, got {model!r}")
     if not isinstance(poly_degree, (int, np.integer)) or not 0 <= poly_degree <= 5:
         raise ValueError(f"poly_degree must be an integer from 0 to 5, got {poly_degree!r}")
+    is_cb = model in CB_MODELS
+    if is_cb and not (cb_n is not None and np.isfinite(cb_n) and cb_n > 0):
+        raise ValueError(f"model {model!r} needs the fixed Crystal Ball exponent cb_n > 0, got {cb_n!r}")
+    degree: int | None = None if model == "cb_bw_exp" else 2 if model == "cb_bw_poly2" else int(poly_degree)
     h = (
         hist_or_values
         if isinstance(hist_or_values, MassHistogram)
@@ -715,12 +1045,15 @@ def fit_mass_peak(
     x0 = 0.5 * (lo + hi)
 
     gamma = None
-    if model == "voigt_poly":
+    if model == "voigt_poly" or is_cb:
         width = natural_width if natural_width is not None else pdg_mass_width("Z")[2]
         if not (np.isfinite(width) and width > 0):
             raise ValueError(f"natural_width must be a positive number of GeV, got {width!r}")
         gamma = 0.5 * float(width)
-    names = ("amplitude", "mean", "sigma", *(f"c{k}" for k in range(poly_degree + 1)))
+    signal_names = ("amplitude", "mean", "sigma", "alpha") if is_cb else ("amplitude", "mean", "sigma")
+    k0 = len(signal_names)
+    background_names = ("c0", "slope") if degree is None else tuple(f"c{k}" for k in range(degree + 1))
+    names = (*signal_names, *background_names)
     n_par = len(names)
 
     if n_entries == 0:
@@ -743,16 +1076,30 @@ def fit_mass_peak(
     points = centers[:, None] + 0.5 * widths[:, None] * nodes  # (bins, 5)
 
     def expected(p: Sequence[float]) -> np.ndarray:
+        if is_cb:
+            # Signal normalised over the fit bins (amplitude = signal events in the fit range), then the background.
+            shape = _cb_bw_shape(points.ravel(), p[1], p[2], p[3], cast(float, cb_n), cast(float, gamma), (lo, hi))
+            sig = 0.5 * widths * (shape.reshape(points.shape) @ weights)
+            bkg_density = (
+                exponential(points, p[k0], p[k0 + 1], x0=x0) if degree is None else polynomial(points, *p[k0:], x0=x0)
+            )
+            return p[0] * sig / sig.sum() + 0.5 * widths * (bkg_density @ weights)
         return 0.5 * widths * (density(points, p) @ weights)
 
     # -- data-driven starting values --------------------------------------------------
     dens = counts / widths
     n_side = max(2, len(counts) // 6)
     side = np.r_[np.arange(n_side), np.arange(len(counts) - n_side, len(counts))]
-    lin = np.polyfit(centers[side] - x0, dens[side], deg=min(1, poly_degree))[::-1]
-    coeffs0 = np.zeros(poly_degree + 1)
-    coeffs0[: len(lin)] = lin
-    excess = dens - polynomial(centers, *coeffs0, x0=x0)
+    if degree is None:  # exponential: a straight line through the log of the sideband densities
+        floor = 0.5 / float(widths.max())
+        log_line = np.polyfit(centers[side] - x0, np.log(np.maximum(dens[side], floor)), deg=1)
+        coeffs0 = np.array([math.exp(log_line[1]), log_line[0]])
+        excess = dens - exponential(centers, coeffs0[0], coeffs0[1], x0=x0)
+    else:
+        lin = np.polyfit(centers[side] - x0, dens[side], deg=min(1, degree))[::-1]
+        coeffs0 = np.zeros(degree + 1)
+        coeffs0[: len(lin)] = lin
+        excess = dens - polynomial(centers, *coeffs0, x0=x0)
     peak = int(np.argmax(excess))
     above = excess > 0.5 * excess[peak]
     sigma_lo, sigma_hi = 0.25 * float(widths.min()), 0.5 * (hi - lo)
@@ -762,14 +1109,17 @@ def fit_mass_peak(
             np.clip(math.sqrt(max(sigma0**2 - gamma**2, 0.0)) or 0.5 * sigma0, 2 * sigma_lo, 0.25 * (hi - lo))
         )
     amp0 = float(max((excess[excess > 0] * widths[excess > 0]).sum(), 1.0))
-    p0 = np.array([amp0, float(centers[peak]), sigma0, *coeffs0])
+    p0 = np.array([amp0, float(centers[peak]), sigma0, *([1.5] if is_cb else []), *coeffs0])
     for name, value in (initial or {}).items():
         if name not in names:
             raise ValueError(f"unknown parameter {name!r} in initial; parameters are {names}")
         p0[names.index(name)] = float(value)
 
-    lower = np.array([0.0, lo, sigma_lo, *([-np.inf] * (poly_degree + 1))])
-    upper = np.array([np.inf, hi, sigma_hi, *([np.inf] * (poly_degree + 1))])
+    # alpha (cb_bw_*) between 0.1 and 10 sigma; the exponential's c0 >= 0 keeps the background positive.
+    alpha_bounds = ([_CB_ALPHA_MIN], [_CB_ALPHA_MAX]) if is_cb else ([], [])
+    bkg_lower = [0.0, -np.inf] if degree is None else [-np.inf] * (degree + 1)
+    lower = np.array([0.0, lo, sigma_lo, *alpha_bounds[0], *bkg_lower])
+    upper = np.array([np.inf, hi, sigma_hi, *alpha_bounds[1], *([np.inf] * len(background_names))])
     # The trust-region solver needs a start strictly inside the bounds.
     span = np.where(np.isfinite(upper - lower), upper - lower, 1.0)
     p0 = np.clip(p0, lower + 1e-6 * span, upper - 1e-6 * span)
@@ -800,6 +1150,21 @@ def fit_mass_peak(
             f"({', '.join(f'{names[i]}={values[i]:.4g}' for i in stuck)}); there is no well-defined peak to measure"
         )
     errs = np.sqrt(np.diag(cov))
+    # A parameter the data do not constrain (e.g. a Crystal Ball tail when the data show none) has a flat chi2:
+    # curve_fit's pseudo-inverse then reports an error of ~0, or one spanning more than half of the parameter's
+    # allowed range (alpha 0.1-10, sigma, the mean inside the window). Neither is a measurement.
+    free = [
+        i
+        for i in range(n_par)
+        if errs[i] <= 1e-8 * abs(values[i])
+        or (np.isfinite(upper[i] - lower[i]) and errs[i] > 0.5 * (upper[i] - lower[i]))
+    ]
+    if free:
+        raise FitError(
+            f"{model} fit over {lo:g}-{hi:g} GeV: parameter(s) {[names[i] for i in free]} not constrained by the data "
+            f"({', '.join(f'{names[i]}={values[i]:.4g} +- {errs[i]:.2g}' for i in free)})"
+            + ("; the data show no radiative tail for the Crystal Ball to describe" if is_cb and 3 in free else "")
+        )
     significance = values[0] / errs[0]
     if significance < min_significance:
         raise FitError(
@@ -819,9 +1184,12 @@ def fit_mass_peak(
     # split does not. Say so, loudly if the dip is significant (more than 3 of its own errors).
     notes = []
     grid = np.linspace(lo, hi, 401)
-    basis = (grid[:, None] - x0) ** np.arange(poly_degree + 1)
-    bkg = basis @ values[3:]
-    bkg_err = np.sqrt(np.maximum(np.einsum("ij,jk,ik->i", basis, cov[3:, 3:], basis), 0.0))
+    if degree is None:  # the exponential cannot be negative
+        bkg = bkg_err = np.zeros(1)
+    else:
+        basis = (grid[:, None] - x0) ** np.arange(degree + 1)
+        bkg = basis @ values[k0:]
+        bkg_err = np.sqrt(np.maximum(np.einsum("ij,jk,ik->i", basis, cov[k0:, k0:], basis), 0.0))
     if np.any(bkg < 0):
         worst = int(np.argmin(bkg + 3.0 * bkg_err))
         significant = bool(bkg[worst] + 3.0 * bkg_err[worst] < 0)
@@ -861,12 +1229,13 @@ def fit_mass_peak(
         fit_range=(lo, hi),
         histogram=h,
         fit_mask=mask,
-        poly_degree=int(poly_degree),
+        poly_degree=degree,
         x0=x0,
         gamma=gamma,
         n_entries=n_entries,
         warnings=tuple(notes),
         _density=expected,
+        cb_n=float(cast(float, cb_n)) if is_cb else None,
     )
 
 
@@ -989,14 +1358,14 @@ class StabilityResult:
         for r in self.rows:
             lo, hi = r["fit_range"]
             lines.append(
-                f"  {r['model']:<11}{f'{lo:g}-{hi:g}':>10}{r['bin_width']:>6g}{r['poly_degree']:>5}"
+                f"  {r['model']:<11}{f'{lo:g}-{hi:g}':>10}{r['bin_width']:>6g}{_degree_text(r['poly_degree']):>5}"
                 f"{r['mass']:>11.4f}{r['mass_error']:>9.4f}{r['chi2_ndf']:>10.3f}{r['p_value']:>10.3g}"
                 + ("  (negative background)" if r["warnings"] else "")
             )
         for f in self.failed:
             lo, hi = f["fit_range"]
             lines.append(
-                f"  {f['model']:<11}{f'{lo:g}-{hi:g}':>10}{f['bin_width']:>6g}{f['poly_degree']:>5}"
+                f"  {f['model']:<11}{f'{lo:g}-{hi:g}':>10}{f['bin_width']:>6g}{_degree_text(f['poly_degree']):>5}"
                 f"   FAILED: {f['reason']}"
             )
         lines.append(
@@ -1006,14 +1375,19 @@ class StabilityResult:
         return "\n".join(lines)
 
 
+def _degree_text(degree: int | None) -> str:
+    return "exp" if degree is None else str(degree)
+
+
 def fit_stability(
     values: Any,
     fit_ranges: Sequence[tuple[float, float]] = ((70.0, 110.0), (75.0, 105.0), (80.0, 100.0)),
     bin_widths: Sequence[float] = (0.5, 1.0, 2.0),
     poly_degrees: Sequence[int] = (1, 2, 3),
-    models: Sequence[str] = MODELS,
+    models: Sequence[str] = STABILITY_MODELS,
     hist_range: tuple[float, float] = (60.0, 120.0),
     natural_width: float | None = None,
+    cb_n: float | None = None,
 ) -> StabilityResult:
     """Refit the same masses under every combination of reasonable fit choices.
 
@@ -1033,11 +1407,17 @@ def fit_stability(
         Masses in GeV (jagged arrays are flattened).
     fit_ranges, bin_widths, poly_degrees, models : sequences
         The grid; every combination is fitted (default 3 x 3 x 3 x 2 = 54).
+        ``poly_degrees`` applies to the polynomial models only: the
+        ``cb_bw_*`` models have a fixed background (exponential, or
+        quadratic), so they add one fit per range and bin width, recorded
+        with ``poly_degree`` None (exponential) or 2.
     hist_range : (float, float)
         Histogram range in GeV; each bin width must divide it evenly.
     natural_width : float, optional
         Breit-Wigner FWHM in GeV for the Voigt fits (default: the Z width), e.g.
         the J/psi width for a J/psi spectrum.
+    cb_n : float, optional
+        The fixed Crystal Ball exponent, needed if ``models`` has a ``cb_bw_*`` model.
 
     Returns
     -------
@@ -1055,13 +1435,21 @@ def fit_stability(
         hists[w] = make_histogram(data, bins=int(round(n_bins)), range=hist_range)
     rows, failed = [], []
     for model in models:
+        degrees: Sequence[int | None] = (
+            (None,) if model == "cb_bw_exp" else (2,) if model == "cb_bw_poly2" else poly_degrees
+        )
         for fit_range in fit_ranges:
             for w in bin_widths:
-                for degree in poly_degrees:
+                for degree in degrees:
                     config = {"model": model, "fit_range": tuple(fit_range), "bin_width": w, "poly_degree": degree}
                     try:
                         r = fit_mass_peak(
-                            hists[w], model=model, fit_range=fit_range, poly_degree=degree, natural_width=natural_width
+                            hists[w],
+                            model=model,
+                            fit_range=fit_range,
+                            poly_degree=2 if degree is None else degree,
+                            natural_width=natural_width,
+                            cb_n=cb_n,
                         )
                     except FitError as exc:
                         failed.append({**config, "reason": str(exc)})

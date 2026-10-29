@@ -10,6 +10,7 @@ from synthetic import REAL_FILE
 
 import cmsopen
 from cmsopen.fitting import (
+    CB_MODELS,
     MODELS,
     FitError,
     FitResult,
@@ -29,6 +30,9 @@ from cmsopen.fitting import (
 
 TRUE_MEAN, TRUE_SIGMA = 91.0, 2.0
 EDGES = np.linspace(60.0, 120.0, 61)
+
+# The Gaussian and Voigt models with a polynomial background; the cb_bw_* models are tested in test_fitting_cb.py.
+POLY_MODELS = tuple(m for m in MODELS if m not in CB_MODELS)
 
 
 def gauss_exp_toy(rng, n_signal=4000.0, n_background=4000.0, mean=TRUE_MEAN, sigma=TRUE_SIGMA, slope=25.0, edges=EDGES):
@@ -121,7 +125,7 @@ def test_voigt_default_width_is_the_z_width():
 # -- 4. chi2, ndf, p-value, covariance --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("model", MODELS)
+@pytest.mark.parametrize("model", POLY_MODELS)
 def test_chi2_ndf_pvalue_and_covariance(model):
     h = gauss_exp_toy(np.random.default_rng(21), n_signal=8000)
     r = fit_mass_peak(h, model=model, fit_range=(70, 110), poly_degree=2)
@@ -264,7 +268,7 @@ def test_compare_to_pdg_hand_case():
 # -- 7. failures are loud ----------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("model", MODELS)
+@pytest.mark.parametrize("model", POLY_MODELS)
 @pytest.mark.parametrize("seed", [1, 2, 3])
 def test_flat_noise_raises(model, seed):
     flat = MassHistogram(np.random.default_rng(seed).poisson(50.0, 60).astype(float), EDGES)
@@ -272,7 +276,7 @@ def test_flat_noise_raises(model, seed):
         fit_mass_peak(flat, model=model)
 
 
-@pytest.mark.parametrize("model", MODELS)
+@pytest.mark.parametrize("model", POLY_MODELS)
 def test_all_zero_histogram_raises(model):
     with pytest.raises(FitError, match="no entries"):
         fit_mass_peak(MassHistogram(np.zeros(60), EDGES), model=model)
@@ -382,7 +386,7 @@ def test_real_file_z_peak():
     with open_events(REAL_FILE) as ev:
         sel = ev.muons(**ZMUMU_MUON_CUTS).require_trigger(*DIMUON_TRIGGERS_2012).require(2)
     masses = best_pair(opposite_sign_pairs(sel)).mass
-    for model in MODELS:
+    for model in POLY_MODELS:
         r = fit_mass_peak(masses, model=model)
         assert abs(r.peak_position[0] - 91.1876) < 1.0
         assert 0.5 < r.resolution[0] < 4.0
