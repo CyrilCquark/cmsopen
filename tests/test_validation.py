@@ -152,7 +152,7 @@ def test_injected_charge_shifts_are_recovered(charge_result):
 @pytest.mark.slow
 def test_systematics_summary_on_synthetic_data(region_result, charge_result):
     s = region_result.validation.summary
-    assert [m["model"] for m in s.models] == ["voigt_poly", "cb_bw_exp", "cb_bw_poly2"]
+    assert [m["model"] for m in s.models] == ["voigt_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2"]
     assert all(isinstance(m["eligible"], bool) for m in s.models)
     assert len(s.fit_choice_rows) + len(s.fit_choice_failed) == 9
     expected = REGION_SHIFT[2] - REGION_SHIFT[0]

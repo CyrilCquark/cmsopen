@@ -113,7 +113,7 @@ WORKING_POINTS: tuple[tuple[str, float], ...] = tuple(
     (qid, iso) for qid in ("medium", "tight") for iso in (0.08, 0.12, 0.20)
 )
 """(quality_id, max_rel_iso) samples; overlapping, not a partition."""
-COMPARED_MODELS: tuple[str, ...] = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2")
+COMPARED_MODELS: tuple[str, ...] = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2")
 PAIR_FIELDS: tuple[str, ...] = ("mass", "eta_plus", "eta_minus", "phi_plus", "phi_minus", "pt_sublead", "npv")
 
 
@@ -295,7 +295,7 @@ class SystematicsSummary:
     pdg_offset, pdg_offset_error : float
         Inclusive position - PDG mass (GeV) and the statistical error.
     models : tuple of dict
-        voigt_poly, cb_bw_exp and cb_bw_poly2 on the inclusive sample:
+        voigt_poly, cb_bw_exp, cb_bw_poly2, cb2_bw_exp and cb2_bw_poly2 on the inclusive sample:
         position, error, chi2/ndf, and ``eligible`` by the model-choice
         criteria (converged, no parameter on a bound, background positive).
     model_spread : float or None
@@ -424,8 +424,8 @@ def systematics_summary(
     ``masses`` are all chosen-pair masses (the inclusive sample), ``inclusive``
     its fit with ``model``, ``entries`` the category, bin and working-point
     entries from :func:`run_validation`. The fit-choice part refits the
-    inclusive masses: the three models of the model-choice rule (eligibility
-    as there), the channel's fit-range x bin-width grid with ``model``, and
+    inclusive masses: the models of the model-choice rule and its Amendment 2
+    mixtures (eligibility as there), the channel's fit-range x bin-width grid with ``model``, and
     ``model`` with the other background (cb_bw_exp <-> cb_bw_poly2; one
     polynomial degree more for the polynomial models).
     """
