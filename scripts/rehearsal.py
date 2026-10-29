@@ -14,9 +14,13 @@ Stage ``confirm`` (writes build/rehearsal/):
   - the confirmation table of the headline fits. Exit 3 (stop) if a fit
     failed, a parameter is on a bound, the background is not positive or
     chi2/ndf > 2.0.
-Stage ``rest`` (after ``confirm`` passed): the statistics-scaling table
-(cumulative 1, 2, 4, 6 files), the validation tables and figures, and the
-per-file and per-run consistency.
+Stage ``rest`` (after ``confirm``; information only, nothing refitted with
+another model): the statistics-scaling table (cumulative 1, 2, 4, 6 files),
+the validation tables and figures with the per-category chi2/ndf, the
+per-file and per-run consistency, the structure of the headline fit's
+residuals (pulls per bin, |pull| > 3, lag-1 autocorrelation, runs test,
+chi2 by region, chi2/ndf over the fit-range x bin-width grid), and the
+validation entries that reach the 5,000-pair threshold only on the 6 files.
 
 Peak memory is the largest resident set size of this process and of its
 (finished) worker processes, from getrusage.
@@ -194,51 +198,123 @@ def _weighted(values: list[float], errors: list[float]) -> tuple[float, float, f
     return mean, float(1.0 / math.sqrt(w.sum())), chi2, len(values) - 1
 
 
+def pull_structure(fit: Any) -> dict[str, Any]:
+    """Pulls per fitted bin and the statistics that separate structured misfit from scatter.
+
+    pull = (N - mu) / sqrt(max(N, 1)), the fit's own chi2 terms (their squares
+    sum to chi2). Regions: "core" is within 2 x the reported resolution of the
+    fitted position (FWHM/2.355 for the mixtures), "left" and "right" are the
+    bins below and above it. Lag-1 autocorrelation r1 = sum (p_i - pbar)(p_i+1 -
+    pbar) / sum (p_i - pbar)^2 (about 0 +- 1/sqrt(n) for independent pulls).
+    Wald-Wolfowitz runs test on the signs of the pulls: z = (R - E[R]) / sd(R),
+    two-sided normal p-value.
+    """
+    h = fit.histogram
+    mask = fit.fit_mask
+    lo, hi = h.edges[:-1][mask], h.edges[1:][mask]
+    centers = 0.5 * (lo + hi)
+    counts = h.counts[mask]
+    mu = fit.expected_counts()
+    pulls = (counts - mu) / h.fit_errors[mask]
+    pos, res = fit.peak_position[0], fit.resolution[0]
+    region = np.where(centers < pos - 2 * res, "left", np.where(centers > pos + 2 * res, "right", "core"))
+    p = pulls - pulls.mean()
+    r1 = float(np.sum(p[:-1] * p[1:]) / np.sum(p * p))
+    signs = np.sign(pulls[pulls != 0])
+    n_plus, n_minus = int(np.sum(signs > 0)), int(np.sum(signs < 0))
+    n = n_plus + n_minus
+    runs = int(1 + np.sum(signs[1:] != signs[:-1]))
+    expected = 2 * n_plus * n_minus / n + 1
+    variance = 2 * n_plus * n_minus * (2 * n_plus * n_minus - n) / (n * n * (n - 1))
+    z = (runs - expected) / math.sqrt(variance)
+    regions = {}
+    for name in ("left", "core", "right"):
+        sel = region == name
+        regions[name] = {"bins": int(sel.sum()), "chi2": float(np.sum(pulls[sel] ** 2)),
+                         "range": (float(lo[sel].min()), float(hi[sel].max())) if sel.any() else None}
+    return {
+        "table": [{"lo": float(a), "hi": float(b), "data": float(c), "fit": float(m), "pull": float(q),
+                   "region": str(g)} for a, b, c, m, q, g in zip(lo, hi, counts, mu, pulls, region, strict=True)],
+        "big": [(float(a), float(b), float(q)) for a, b, q in zip(lo, hi, pulls, strict=True) if abs(q) > 3],
+        "r1": r1, "n": len(pulls), "runs": runs, "runs_expected": expected, "runs_z": z,
+        "runs_p": float(2 * stats.norm.sf(abs(z))), "n_plus": n_plus, "n_minus": n_minus, "regions": regions,
+        "chi2": fit.chi2, "ndf": fit.ndf,
+    }
+
+
+def pulls_figure(structure: dict[str, Any], channel: str, fit: Any) -> Any:
+    """The pulls per bin of the 6-file headline fit, with the core region shaded."""
+    from matplotlib.figure import Figure
+
+    from cmsopen.plotting import MIN_FONT_SIZE, OKABE_ITO, paper_style
+
+    rows = structure["table"]
+    x = np.array([0.5 * (r["lo"] + r["hi"]) for r in rows])
+    q = np.array([r["pull"] for r in rows])
+    core = [r for r in rows if r["region"] == "core"]
+    with paper_style():
+        fig = Figure(figsize=(5.0, 3.0), layout="constrained")
+        ax = fig.subplots()
+        ax.axvspan(core[0]["lo"], core[-1]["hi"], color=OKABE_ITO["sky_blue"], alpha=0.3, lw=0,
+                   label="core (within 2 x resolution)")
+        for level in (-3, 3):
+            ax.axhline(level, color="0.5", ls=":", lw=0.8)
+        ax.axhline(0, color="black", lw=0.6)
+        ax.plot(x, q, "o", color="black", ms=3.5, label="pull per bin")
+        ax.set_xlabel(r"$m_{\mu\mu}$ [GeV]")
+        ax.set_ylabel(r"(data $-$ fit) / $\sigma$")
+        ax.set_ylim(-max(4.0, float(np.abs(q).max()) + 1), max(4.0, float(np.abs(q).max()) + 1))
+        ax.legend(loc="upper right", fontsize=MIN_FONT_SIZE, frameon=False, ncol=2)
+        ax.set_title(f"CMS Open Data, {channel} ({fit.model_name}): pulls, 6-file development set",
+                     loc="left", fontsize=9)
+    return fig
+
+
+def _structure_lines(s: dict[str, Any]) -> list[str]:
+    reg = s["regions"]
+    lines = [f"  chi2 {s['chi2']:.1f} / ndf {s['ndf']} over {s['n']} bins"]
+    for name in ("left", "core", "right"):
+        r = reg[name]
+        rng = "-" if r["range"] is None else f"{r['range'][0]:g}-{r['range'][1]:g} GeV"
+        lines.append(f"  chi2 {name:<5} ({rng}, {r['bins']} bins): {r['chi2']:.1f}"
+                     + (f" ({r['chi2'] / r['bins']:.2f} per bin)" if r["bins"] else ""))
+    lines.append("  bins with |pull| > 3: "
+                 + (", ".join(f"{a:g}-{b:g} GeV ({q:+.2f})" for a, b, q in s["big"]) or "none"))
+    lines.append(f"  lag-1 autocorrelation of the pulls: {s['r1']:+.3f} (1/sqrt(n) = {1 / math.sqrt(s['n']):.3f})")
+    lines.append(f"  runs test on the pull signs: {s['runs']} runs ({s['n_plus']} +, {s['n_minus']} -), expected "
+                 f"{s['runs_expected']:.1f}, z = {s['runs_z']:+.2f}, p = {s['runs_p']:.3g}")
+    return lines
+
+
 def rest() -> int:
-    """Stage 2: scaling, validation tables and figures, per-file and per-run consistency."""
+    """Stage 2: scaling, validation tables, consistency, misfit structure and newly sufficient entries."""
     sys.path.insert(0, str(REPO / "scripts"))
     from run_validation import entries_figure
 
+    from cmsopen.fitting import fit_stability
     from cmsopen.plotting import save_figure
+    from cmsopen.validation import MIN_PAIRS
 
-    log = json.loads((OUT / "confirm.json").read_text())
     files = development_files()
     out: list[str] = [f"Rehearsal tables ({LABEL})", ""]
+    log: dict[str, Any] = {"label": LABEL}
     for channel in CHANNEL_NAMES:
+        cfg = CHANNELS[channel]
         with open(OUT / f"{channel}_result.pkl", "rb") as fh:
             saved = pickle.load(fh)
         masses = saved["masses"]
-        out += [f"== {channel} (headline model {CHANNELS[channel].model}) ==", "",
-                "Statistics scaling (cumulative, fixed order):",
-                f"  {'files':>5} {'pairs in fit range':>19} {'chi2/ndf':>9} {'p-value':>9} {'pole/peak [GeV]':>24}"]
+        out += [f"== {channel} (headline model {cfg.model}) ==", "",
+                "1. Statistics scaling (cumulative, fixed order: the original file, then the new files by index):",
+                f"  {'files':>5} {'pairs in fit range':>19} {'chi2/ndf':>9} {'ndf':>4} {'p-value':>9} "
+                f"{'pole/peak [GeV]':>24}"]
         for k in (1, 2, 4, 6):
             try:
                 fit = fit_masses(np.concatenate(masses[:k]), channel)
                 pos, err = fit.peak_position
-                out.append(f"  {k:>5} {fit.n_entries:>19,} {fit.chi2_ndf:>9.3f} {fit.p_value:>9.3g} "
+                out.append(f"  {k:>5} {fit.n_entries:>19,} {fit.chi2_ndf:>9.3f} {fit.ndf:>4} {fit.p_value:>9.3g} "
                            f"{f'{pos:.4f} +- {err:.4f}':>24}")
             except FitError as exc:
                 out.append(f"  {k:>5} fit failed: {exc}")
-        out += ["", "Per file (headline model; information only, previewing T6):"]
-        values, errors = [], []
-        for (run, p), row in zip(files, log["per_file"][channel], strict=True):
-            out.append(f"  {p.name} ({run}): {row['position']:.4f} +- {row['error']:.4f} GeV, "
-                       f"chi2/ndf {row['chi2_ndf']:.3f}, {row['n_entries']:,} pairs")
-            values.append(row["position"])
-            errors.append(row["error"])
-        mean, mean_err, chi2, ndf = _weighted(values, errors)
-        out.append(f"  weighted mean {mean:.4f} +- {mean_err:.4f} GeV; chi2 of consistency {chi2:.2f} / {ndf} "
-                   f"(p = {stats.chi2.sf(chi2, ndf):.3g})")
-        by_run = {}
-        for run in ("2012C", "2012B"):
-            sel = [m for (r, _), m in zip(files, masses, strict=True) if r == run]
-            fit = fit_masses(np.concatenate(sel), channel)
-            by_run[run] = fit.peak_position
-            out.append(f"  {run} ({len(sel)} files, fitted together): {fit.peak_position[0]:.4f} +- "
-                       f"{fit.peak_position[1]:.4f} GeV, chi2/ndf {fit.chi2_ndf:.3f}")
-        (c, ce), (b, be) = by_run["2012C"], by_run["2012B"]
-        diff, diff_err = c - b, math.hypot(ce, be)
-        out += [f"  2012C - 2012B: {diff:+.4f} +- {diff_err:.4f} GeV = {diff / diff_err:+.2f} sigma (stat.)", ""]
 
         v = saved["validation"]
         table = v.table()
@@ -248,11 +324,83 @@ def rest() -> int:
                               loc="left")
         save_figure(fig, OUT / channel / "validation_entries")
         flagged = [e for e in (v.inclusive, *v.entries) if e.status != "fitted"]
-        out += ["Validation (validation model " + v.model + "):", table, "",
-                f"Flagged entries ({len(flagged)}): "
+        out += ["", f"2. Validation (validation model {v.model}, headline model {v.headline_model}; at least "
+                    f"{MIN_PAIRS:,} pairs per entry):", table, "",
+                "  per category (validation model): " + "; ".join(
+                    f"{e.label} {e.n_pairs:,} pairs, " + (f"chi2/ndf {e.chi2_ndf:.3f}" if e.fitted else e.status_text)
+                    for e in v.study("region")),
+                f"  flagged entries ({len(flagged)}): "
                 + ("; ".join(f"{e.study} {e.label}: {e.status_text}" for e in flagged) or "none"), ""]
+
+        out.append("3. Per file (headline model, each file fitted on its own):")
+        values, errors = [], []
+        for (run, p), m in zip(files, masses, strict=True):
+            try:
+                fit = fit_masses(m, channel)
+            except FitError as exc:
+                out.append(f"  {p.name} ({run}): fit failed: {exc}")
+                continue
+            (pos, err), (res, rerr) = fit.peak_position, fit.resolution
+            out.append(f"  {p.name} ({run}): chi2/ndf {fit.chi2_ndf:.3f} (ndf {fit.ndf}), {pos:.4f} +- {err:.4f} GeV, "
+                       f"resolution {res:.4f} +- {rerr:.4f} GeV, {fit.n_entries:,} pairs")
+            values.append(pos)
+            errors.append(err)
+        mean, mean_err, chi2, ndf = _weighted(values, errors)
+        out.append(f"  weighted mean {mean:.4f} +- {mean_err:.4f} GeV; chi2 of consistency of the {len(values)} "
+                   f"positions {chi2:.2f} / {ndf} (p = {stats.chi2.sf(chi2, ndf):.3g})")
+        by_run = {}
+        for run in ("2012C", "2012B"):
+            sel = [m for (r, _), m in zip(files, masses, strict=True) if r == run]
+            fit = fit_masses(np.concatenate(sel), channel)
+            by_run[run] = fit.peak_position
+            run_values = [v_ for (r, _), v_ in zip(files, values, strict=True) if r == run]
+            run_errors = [e_ for (r, _), e_ in zip(files, errors, strict=True) if r == run]
+            wm, wme, _, _ = _weighted(run_values, run_errors)
+            out.append(f"  {run} ({len(sel)} files): fitted together {fit.peak_position[0]:.4f} +- "
+                       f"{fit.peak_position[1]:.4f} GeV (chi2/ndf {fit.chi2_ndf:.3f}); weighted mean of the files "
+                       f"{wm:.4f} +- {wme:.4f} GeV")
+        (c, ce), (b, be) = by_run["2012C"], by_run["2012B"]
+        diff, diff_err = c - b, math.hypot(ce, be)
+        out += [f"  2012C - 2012B (fitted together): {diff:+.4f} +- {diff_err:.4f} GeV = {diff / diff_err:+.2f} "
+                "sigma (stat.)", ""]
+
+        full = fit_masses(np.concatenate(masses), channel)
+        s = pull_structure(full)
+        with open(OUT / channel / "pulls.csv", "w") as fh:
+            fh.write("lo_gev,hi_gev,data,fit,pull,region\n")
+            fh.writelines(f"{r['lo']:.4f},{r['hi']:.4f},{r['data']:.0f},{r['fit']:.2f},{r['pull']:.4f},{r['region']}\n"
+                          for r in s["table"])
+        save_figure(pulls_figure(s, channel, full), OUT / channel / "pulls")
+        out += [f"4. Structure of the headline fit's residuals on the 6 files ({full.model_name}; pulls in "
+                f"build/rehearsal/{channel}/pulls.csv and pulls.png):", *_structure_lines(s)]
+        stab = fit_stability(np.concatenate(masses), fit_ranges=cfg.stability_fit_ranges,
+                             bin_widths=cfg.stability_bin_widths, poly_degrees=(cfg.poly_degree,),
+                             models=(cfg.model,), hist_range=cfg.mass_range,
+                             natural_width=pdg_mass_width(cfg.resonance)[2], cb_n=cfg.cb_n)
+        out.append("  chi2/ndf over the fit-range x bin-width grid (report only):")
+        for r in sorted(stab.rows, key=lambda r: (r["fit_range"], r["bin_width"])):
+            out.append(f"    {r['fit_range'][0]:g}-{r['fit_range'][1]:g} GeV, bins {r['bin_width']:g} GeV: "
+                       f"chi2/ndf {r['chi2_ndf']:.3f}, p {r['p_value']:.3g}, position {r['mass']:.4f} GeV")
+        for f in stab.failed:
+            out.append(f"    {f.get('fit_range')}, bins {f.get('bin_width')}: fit failed: {f.get('reason', f)}")
+        out.append("")
+
+        single = json.loads((REPO / "build" / "validation" / channel / "summary.json").read_text())["validation"]
+        before = {(e["study"], e["label"]): e for e in single["entries"]}
+        newly = [e for e in v.entries if e.n_pairs >= MIN_PAIRS
+                 and before.get((e.study, e.label), {}).get("status") == "insufficient"]
+        out += [f"6. Entries at or above {MIN_PAIRS:,} pairs on the 6 files that were insufficient on the original "
+                f"file (build/validation/{channel}/summary.json): {len(newly)}"]
+        out += [f"  {e.study} {e.label}: {before[(e.study, e.label)]['n_pairs']:,} -> {e.n_pairs:,} pairs, "
+                + (f"now fitted ({e.position:.4f} +- {e.error:.4f} GeV, chi2/ndf {e.chi2_ndf:.3f})" if e.fitted
+                   else e.status_text) for e in newly]
+        still = [e for e in v.entries if e.status == "insufficient"]
+        out += ["  still insufficient on the 6 files: "
+                + ("; ".join(f"{e.study} {e.label} ({e.n_pairs:,})" for e in still) or "none"), ""]
+        log[channel] = {"structure": {k: x for k, x in s.items() if k != "table"}}
     text = "\n".join(out)
     (OUT / "tables.txt").write_text(text + "\n")
+    (OUT / "rest.json").write_text(json.dumps(log, indent=2, default=float) + "\n")
     print(text)
     return 0
 
