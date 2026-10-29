@@ -13,10 +13,13 @@ from pathlib import Path
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The argparse parser for the cmsopen command and its subcommands."""
     from cmsopen.fitting import MODELS
     from cmsopen.pipeline import CHANNELS
 
-    parser = argparse.ArgumentParser(prog="cmsopen", description="Dimuon resonance analysis of CMS Open Data NanoAOD files.")
+    parser = argparse.ArgumentParser(
+        prog="cmsopen", description="Dimuon resonance analysis of CMS Open Data NanoAOD files."
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     a = sub.add_parser("analyze", help="select muons, pair them, fit the resonance peak, write figures and summaries")
     a.add_argument("files", nargs="+", help="NanoAOD ROOT files or https:// URLs")
@@ -25,8 +28,13 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--n-events", type=int, default=None, help="process at most this many events in total")
     a.add_argument("--model", default="voigt_poly", choices=MODELS, help="primary peak model")
     a.add_argument("--chunk-size", type=int, default=100_000, help="events per chunk (memory bound)")
-    a.add_argument("--workers", type=int, default=None, metavar="N",
-                   help="process chunks in N worker processes (identical results to serial)")
+    a.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        metavar="N",
+        help="process chunks in N worker processes (identical results to serial)",
+    )
     a.add_argument("--no-stability", action="store_true", help="skip the fit-choice stability scan")
     a.add_argument("--quiet", action="store_true", help="do not print the summary")
     f = sub.add_parser("fetch", help="download the development data file (resumable, size and adler32 verified)")
@@ -51,16 +59,24 @@ def _fetch(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     from cmsopen.pipeline import AnalysisError, analyze
 
     args = build_parser().parse_args(argv)
     if args.command == "fetch":
         return _fetch(args)
     try:
-        result = analyze(args.files if len(args.files) > 1 else args.files[0], channel=args.channel,
-                         n_events=args.n_events, chunk_size=args.chunk_size, model=args.model,
-                         outdir=args.outdir, verbose=not args.quiet, stability=not args.no_stability,
-                         n_workers=args.workers)
+        result = analyze(
+            args.files if len(args.files) > 1 else args.files[0],
+            channel=args.channel,
+            n_events=args.n_events,
+            chunk_size=args.chunk_size,
+            model=args.model,
+            outdir=args.outdir,
+            verbose=not args.quiet,
+            stability=not args.no_stability,
+            n_workers=args.workers,
+        )
     except (AnalysisError, ValueError, TypeError, OSError, KeyError) as exc:
         message = exc.args[0] if isinstance(exc, KeyError) and exc.args else exc
         print(f"error: {message}", file=sys.stderr)

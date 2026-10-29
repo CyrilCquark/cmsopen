@@ -63,7 +63,12 @@ def random_muons(n_events=300, seed=1) -> Muon:
         return ak.unflatten(x, counts)
 
     return Muon(
-        FourMomentum(jag(rng.uniform(5, 80, n)), jag(rng.uniform(-2.4, 2.4, n)), jag(rng.uniform(-np.pi, np.pi, n)), jag(np.full(n, M_MU))),
+        FourMomentum(
+            jag(rng.uniform(5, 80, n)),
+            jag(rng.uniform(-2.4, 2.4, n)),
+            jag(rng.uniform(-np.pi, np.pi, n)),
+            jag(np.full(n, M_MU)),
+        ),
         jag(rng.choice([-1, 1], n)),
         {"uid": jag(np.arange(n))},
     )
@@ -72,7 +77,7 @@ def random_muons(n_events=300, seed=1) -> Muon:
 def pair_set(pairs: MuonPairs, event: int) -> list[tuple[int, int, float]]:
     """Sorted (uid of one leg, uid of the other, mass) for one event: order-independent."""
     u1, u2, m = (ak.to_list(x[event]) for x in (pairs.leg1._extra("uid"), pairs.leg2._extra("uid"), pairs.mass))
-    return sorted((min(a, b), max(a, b), round(mm, 9)) for a, b, mm in zip(u1, u2, m))
+    return sorted((min(a, b), max(a, b), round(mm, 9)) for a, b, mm in zip(u1, u2, m, strict=False))
 
 
 # -- 1. exact pairs on hand-built events -------------------------------------------------------------
@@ -140,7 +145,9 @@ def test_charge_products_no_self_pairs_no_duplicates():
     for pairs in (os_pairs, ss_pairs, every):
         assert not ak.any(pairs.index1 == pairs.index2)
         # an unordered pair as one key; no key appears twice in an event
-        key = ak.where(pairs.index1 < pairs.index2, pairs.index1 * 100 + pairs.index2, pairs.index2 * 100 + pairs.index1)
+        key = ak.where(
+            pairs.index1 < pairs.index2, pairs.index1 * 100 + pairs.index2, pairs.index2 * 100 + pairs.index1
+        )
         key = ak.sort(key, axis=1)
         assert not ak.any(key[:, 1:] == key[:, :-1])
     assert ak.all(every.charge_product == ak.values_astype(every.leg1.charge * every.leg2.charge, np.int64))
@@ -156,7 +163,9 @@ def test_leg1_has_higher_pt():
 
 
 def test_equal_pt_keeps_input_order():
-    muons = make_muons({"pt": [[30.0, 30.0]], "eta": [[0.0, 1.0]], "phi": [[0.0, 2.0]], "mass": [[M_MU] * 2], "charge": [[1, -1]]})
+    muons = make_muons(
+        {"pt": [[30.0, 30.0]], "eta": [[0.0, 1.0]], "phi": [[0.0, 2.0]], "mass": [[M_MU] * 2], "charge": [[1, -1]]}
+    )
     pairs = all_pairs(muons)
     assert pairs.index1.tolist() == [[0]] and pairs.index2.tolist() == [[1]]
 
@@ -182,14 +191,22 @@ def test_shuffled_input_gives_same_pairs(charge):
 def test_pair_kinematics_equal_layer5_on_legs():
     pairs = all_pairs(random_muons())
     p1, p2 = pairs.leg1.p4, pairs.leg2.p4
-    for prop, func in (("mass", invariant_mass), ("pt", pair_pt), ("eta", pair_eta), ("phi", pair_phi),
-                       ("rapidity", pair_rapidity), ("delta_r", delta_r)):
+    for prop, func in (
+        ("mass", invariant_mass),
+        ("pt", pair_pt),
+        ("eta", pair_eta),
+        ("phi", pair_phi),
+        ("rapidity", pair_rapidity),
+        ("delta_r", delta_r),
+    ):
         assert ak.all(getattr(pairs, prop) == func(p1, p2)), prop
 
 
 def test_z_at_rest_gives_pdg_mass():
     p = math.sqrt((Z_MASS / 2) ** 2 - M_MU**2)  # each muon's momentum in the Z rest frame
-    muons = make_muons({"pt": [[p, p]], "eta": [[0.0, 0.0]], "phi": [[0.0, math.pi]], "mass": [[M_MU, M_MU]], "charge": [[-1, 1]]})
+    muons = make_muons(
+        {"pt": [[p, p]], "eta": [[0.0, 0.0]], "phi": [[0.0, math.pi]], "mass": [[M_MU, M_MU]], "charge": [[-1, 1]]}
+    )
     pairs = opposite_sign_pairs(muons)
     assert pairs.num.tolist() == [1]
     assert pairs.mass[0, 0] == pytest.approx(Z_MASS, abs=1e-9)
@@ -224,8 +241,15 @@ def _mass(i, j):
 
 def test_best_pair_strategies_pick_the_right_pair():
     os_pairs = opposite_sign_pairs(BEST)
-    assert sorted(zip(os_pairs.index1[0].tolist(), os_pairs.index2[0].tolist())) == [(0, 2), (0, 3), (1, 2), (1, 3)]
-    for i, j, m in zip(os_pairs.index1[0].tolist(), os_pairs.index2[0].tolist(), os_pairs.mass[0].tolist()):
+    assert sorted(zip(os_pairs.index1[0].tolist(), os_pairs.index2[0].tolist(), strict=False)) == [
+        (0, 2),
+        (0, 3),
+        (1, 2),
+        (1, 3),
+    ]
+    for i, j, m in zip(
+        os_pairs.index1[0].tolist(), os_pairs.index2[0].tolist(), os_pairs.mass[0].tolist(), strict=False
+    ):
         assert m == pytest.approx(_mass(i, j), rel=1e-12)
 
     hp = best_pair(os_pairs)  # default = highest_pt_sum
@@ -265,8 +289,10 @@ def test_best_pair_at_most_one_per_event(strategy, kw):
     np.testing.assert_array_equal(ak.to_numpy(best.num == 1), ak.to_numpy(pairs.num >= 1))
     np.testing.assert_array_equal(best.event_index, pairs.event_index)
     if strategy == "highest_pt_sum":
-        assert ak.all(ak.max(pairs.leg1.p4.pt + pairs.leg2.p4.pt, axis=1)[pairs.num > 0]
-                      == ak.flatten(best.leg1.p4.pt + best.leg2.p4.pt))
+        assert ak.all(
+            ak.max(pairs.leg1.p4.pt + pairs.leg2.p4.pt, axis=1)[pairs.num > 0]
+            == ak.flatten(best.leg1.p4.pt + best.leg2.p4.pt)
+        )
     if strategy == "closest_to":
         assert ak.all(ak.min(abs(pairs.mass - Z_MASS), axis=1)[pairs.num > 0] == ak.flatten(abs(best.mass - Z_MASS)))
 
@@ -311,7 +337,7 @@ def test_event_index_carried_through_selection():
     assert pairs.leg1.p4.pt.tolist() == selected[pairs.index1].tolist()
     assert pairs.leg2.p4.pt.tolist() == selected[pairs.index2].tolist()
     # and through to the file's arrays, event by event
-    for row, pts in zip(pairs.event_index, pairs.leg1.p4.pt.tolist()):
+    for row, pts in zip(pairs.event_index, pairs.leg1.p4.pt.tolist(), strict=False):
         assert set(pts) <= set(HAND["pt"][row])
     assert not pairs.event_index.flags.writeable
 
@@ -343,7 +369,20 @@ def test_indexing_returns_muonpairs():
 def test_to_awkward():
     pairs = all_pairs(make_muons())
     rec = pairs.to_awkward()
-    assert {"leg1", "leg2", "index1", "index2", "charge_product", "mass", "pt", "eta", "phi", "rapidity", "delta_r", "event_index"} <= set(rec.fields)
+    assert {
+        "leg1",
+        "leg2",
+        "index1",
+        "index2",
+        "charge_product",
+        "mass",
+        "pt",
+        "eta",
+        "phi",
+        "rapidity",
+        "delta_r",
+        "event_index",
+    } <= set(rec.fields)
     assert rec.mass.tolist() == pairs.mass.tolist()
     assert rec.leg1.pt.tolist() == pairs.leg1.p4.pt.tolist()
     assert rec.event_index.tolist() == [[i] * n for i, n in enumerate(pairs.num.tolist())]
@@ -354,7 +393,15 @@ def test_to_awkward():
 
 
 def test_events_with_fewer_than_two_muons():
-    muons = make_muons({"pt": [[], [10.0], []], "eta": [[], [0.0], []], "phi": [[], [0.0], []], "mass": [[], [M_MU], []], "charge": [[], [1], []]})
+    muons = make_muons(
+        {
+            "pt": [[], [10.0], []],
+            "eta": [[], [0.0], []],
+            "phi": [[], [0.0], []],
+            "mass": [[], [M_MU], []],
+            "charge": [[], [1], []],
+        }
+    )
     for charge in ("opposite", "same", "any"):
         pairs = make_pairs(muons, charge)
         assert len(pairs) == 3 and pairs.num.tolist() == [0, 0, 0]
@@ -364,7 +411,9 @@ def test_events_with_fewer_than_two_muons():
 
 
 def test_empty_and_untyped_input():
-    empty = make_muons({k: ak.Array([[0.0]])[0:0] for k in ("pt", "eta", "phi", "mass")} | {"charge": ak.Array([[1]])[0:0]})
+    empty = make_muons(
+        {k: ak.Array([[0.0]])[0:0] for k in ("pt", "eta", "phi", "mass")} | {"charge": ak.Array([[1]])[0:0]}
+    )
     untyped = Muon(FourMomentum([[], []], [[], []], [[], []], [[], []]), [[], []])
     for muons, n in ((empty, 0), (untyped, 2)):
         for charge in ("opposite", "same", "any"):
@@ -400,7 +449,15 @@ def test_bad_inputs():
 
 
 def test_package_exports():
-    for name in ("make_pairs", "opposite_sign_pairs", "same_sign_pairs", "all_pairs", "best_pair", "multiplicity", "MuonPairs"):
+    for name in (
+        "make_pairs",
+        "opposite_sign_pairs",
+        "same_sign_pairs",
+        "all_pairs",
+        "best_pair",
+        "multiplicity",
+        "MuonPairs",
+    ):
         assert getattr(cmsopen, name) is not None and name in cmsopen.__all__
 
 

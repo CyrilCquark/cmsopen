@@ -138,7 +138,9 @@ def test_mismatched_counts_raise():
 def test_collection_mask_indexes_all_fields():
     p4 = FourMomentum.from_arrays([[30.0, 5.0], [], [12.0]], [[0.1, 0.2], [], [1.5]], [[0.0, 1.0], [], [2.0]],
                                   [[MUON_MASS] * 2, [], [MUON_MASS]])
-    mu = Muon(p4, [[1, -1], [], [1]], {"tightId": [[True, False], [], [True]], "pfRelIso04_all": [[0.05, 0.9], [], [0.1]]})
+    mu = Muon(
+        p4, [[1, -1], [], [1]], {"tightId": [[True, False], [], [True]], "pfRelIso04_all": [[0.05, 0.9], [], [0.1]]}
+    )
     tight = mu[mu.tightId]
     assert isinstance(tight, Muon)
     assert tight.num.tolist() == [1, 0, 1]
@@ -146,7 +148,7 @@ def test_collection_mask_indexes_all_fields():
     assert tight.iso.tolist() == [[0.05], [], [0.1]]
     assert tight.p4.pt.tolist() == [[30.0], [], [12.0]]
     with pytest.raises(AttributeError, match="mediumId"):
-        mu.mediumId
+        _ = mu.mediumId
 
 
 # -- 5. dtype -------------------------------------------------------------------
@@ -199,10 +201,16 @@ def test_to_awkward_round_trip(full_nano_file: Path):
         mu = Muon.from_events(events)
     rec = mu.to_awkward()
     assert ak.fields(rec) == list(MUON_BRANCHES_DEFAULT)
-    assert str(ak.type(rec)).startswith(f"{N_EVENTS} * var * {{pt: float64, eta: float64, phi: float64, mass: float64, charge: int32")
+    assert str(ak.type(rec)).startswith(
+        f"{N_EVENTS} * var * {{pt: float64, eta: float64, phi: float64, mass: float64, charge: int32"
+    )
     back = Muon.from_record(rec)
     assert ak.array_equal(back.to_awkward(), rec)
     assert ak.fields(Electron.from_record(Electron(mu.p4, mu.charge).to_awkward()).to_awkward()) == [
-        "pt", "eta", "phi", "mass", "charge"
+        "pt",
+        "eta",
+        "phi",
+        "mass",
+        "charge",
     ]
     assert set(ELECTRON_BRANCHES_DEFAULT) >= {"cutBased", "pfRelIso03_all"}

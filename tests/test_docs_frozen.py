@@ -17,14 +17,23 @@ def git(repo, *args):
 
 
 def check(repo, rev):
-    return subprocess.run([sys.executable, str(SCRIPT), "--since", rev], cwd=repo, env=ENV, capture_output=True, text=True)
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--since", rev], cwd=repo, env=ENV, capture_output=True, text=True
+    )
 
 
 @pytest.fixture
 def repo(tmp_path):
     git(tmp_path, "init", "-q", "-b", "main")
-    files = {"README.md": "readme\n", "DATA.md": "data\n", "LICENSE": "mit\n", "docs/figures/a.png": "png\n",
-             "notebooks/n.ipynb": "{}\n", "src/code.py": "x = 1\n", ".gitignore": "build/\n"}
+    files = {
+        "README.md": "readme\n",
+        "DATA.md": "data\n",
+        "LICENSE": "mit\n",
+        "docs/figures/a.png": "png\n",
+        "notebooks/n.ipynb": "{}\n",
+        "src/code.py": "x = 1\n",
+        ".gitignore": "build/\n",
+    }
     for name, text in files.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text(text)

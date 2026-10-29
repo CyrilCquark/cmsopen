@@ -369,7 +369,7 @@ class EventCollection:
                 f"and cannot be zipped into the {prefix!r} collection"
             )
         raw = self._tree.arrays(names, entry_start=entry_start, entry_stop=entry_stop, library="ak")
-        return ak.zip({f: raw[n] for f, n in zip(fields, names)})
+        return ak.zip({f: raw[n] for f, n in zip(fields, names, strict=False)})
 
     def muons(
         self,

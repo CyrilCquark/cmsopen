@@ -79,7 +79,9 @@ def test_block_must_equal_rendered_text(tmp_path):
     assert bad.returncode == 1 and "differs" in bad.stdout and "91.188" in bad.stdout
 
 
-@pytest.mark.parametrize("text", [f"{BEGIN}\nx\n", f"x\n{END}\n", f"{END}\nx\n{BEGIN}\n", f"{BEGIN}\n{BEGIN}\nx\n{END}\n"])
+@pytest.mark.parametrize(
+    "text", [f"{BEGIN}\nx\n", f"x\n{END}\n", f"{END}\nx\n{BEGIN}\n", f"{BEGIN}\n{BEGIN}\nx\n{END}\n"]
+)
 def test_malformed_markers_fail(tmp_path, text):
     out = check(tmp_path, text)
     assert out.returncode == 1 and "malformed" in out.stdout

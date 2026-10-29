@@ -41,11 +41,13 @@ class Checks:
         self.failures = []
 
     def check(self, name, ok, detail):
+        """Print one OK or FAIL line and remember failures."""
         print(f"{'OK' if ok else 'FAIL'}: {name} ({detail})")
         if not ok:
             self.failures.append(name)
 
     def skip(self, name, reason):
+        """Print one SKIP line (a check that cannot run here)."""
         print(f"SKIP: {name} ({reason})")'''
 
 FINISH = '''\
@@ -114,7 +116,9 @@ def layer1() -> nbformat.NotebookNode:
             '    checks.skip("first-event muon pts", reason)\n'
             '    checks.skip("dimuon trigger fraction", reason)\n'
             "else:\n"
-            '    checks.check("event count", len(events) == KNOWN_N_EVENTS, f"{len(events):,}, expected {KNOWN_N_EVENTS:,}")\n'
+            "    checks.check(\n"
+            '        "event count", len(events) == KNOWN_N_EVENTS, f"{len(events):,}, expected {KNOWN_N_EVENTS:,}"\n'
+            "    )\n"
             "    pts = muons.pt[0].to_numpy().astype(float)\n"
             "    checks.check(\n"
             '        "first-event muon pts",\n'
@@ -154,7 +158,8 @@ def layer2() -> nbformat.NotebookNode:
             "except ImportError:\n"
             "    vector = None\n\n"
             'print(f"cmsopen imported from: {cmsopen.__file__}")\n'
-            "print(f\"vector library: {vector.__version__ if vector else 'not installed (pip install vector to enable the cross-check)'}\")"
+            'status = vector.__version__ if vector else "not installed"\n'
+            'print(f"vector library: {status} (pip install vector to enable the cross-check)")'
         ),
         new_markdown_cell("## Load the first 100,000 events as a `Muon` collection"),
         new_code_cell(
@@ -180,7 +185,8 @@ def layer2() -> nbformat.NotebookNode:
             'print("  #  " + "".join(f"{name:>11}" for name in columns))\n'
             "for j in range(int(muons.num[0])):\n"
             "    cells = \"\".join(\n"
-            '        f"{int(v[j]):>11d}" if name == "charge" else f"{float(v[j]):>11.5f}" for name, v in columns.items()\n'
+            '        f"{int(v[j]):>11d}" if name == "charge" else f"{float(v[j]):>11.5f}"'
+            ' for name, v in columns.items()\n'
             "    )\n"
             '    print(f"  {j:<3}{cells}")'
         ),
@@ -199,6 +205,7 @@ def layer2() -> nbformat.NotebookNode:
             "KNOWN_FIRST_PTS = [71.24144, 25.51886, 3.74997]\n"
             "SHELL_TOLERANCE = 16 * np.finfo(np.float64).eps\n\n\n"
             "def flat(x):\n"
+            '    """Flatten a jagged awkward array into a 1-D numpy array."""\n'
             "    return ak.to_numpy(ak.flatten(x, axis=None))\n\n\n"
             "checks = Checks()\n\n"
             "px, py, pz, e = (flat(c) for c in p4.as_cartesian())\n"
@@ -308,7 +315,9 @@ def layer3() -> nbformat.NotebookNode:
             "sel_pt, sel_eta = ak.flatten(sel.p4.pt), ak.flatten(sel.p4.eta)\n"
             'print(f"  {\'\':12}{\'muons\':>12}{\'max |eta|\':>12}{\'max pt [GeV]\':>15}{\'min pt [GeV]\':>15}")\n'
             'for label, pt, eta in (("before", raw_pt, raw_eta), ("after", sel_pt, sel_eta)):\n'
-            '    print(f"  {label:12}{len(pt):>12,}{float(ak.max(abs(eta))):>12.4f}{float(ak.max(pt)):>15.1f}{float(ak.min(pt)):>15.4f}")'
+            '    row = f"{len(pt):>12,}{float(ak.max(abs(eta))):>12.4f}"'
+            ' f"{float(ak.max(pt)):>15.1f}{float(ak.min(pt)):>15.4f}"\n'
+            '    print(f"  {label:12}{row}")'
         ),
         new_markdown_cell(
             "## Dimuon mass: full selection vs the crude layer 5 selection\n\n"
@@ -356,14 +365,17 @@ def layer3() -> nbformat.NotebookNode:
             "fig, (ax, rax) = plt.subplots(\n"
             "    2, 1, figsize=(7.5, 6.5), sharex=True, gridspec_kw={\"height_ratios\": [3, 1], \"hspace\": 0.05}\n"
             ")\n"
-            'ax.stairs(c_counts, edges, linewidth=1.5, color="tab:gray", label=f"crude layer 5 selection ({int(c_counts.sum()):,} pairs)")\n'
-            'ax.stairs(s_counts, edges, linewidth=1.8, color="tab:blue", label=f"full layer 3 selection ({int(s_counts.sum()):,} pairs)")\n'
+            'ax.stairs(c_counts, edges, linewidth=1.5, color="tab:gray",\n'
+            '          label=f"crude layer 5 selection ({int(c_counts.sum()):,} pairs)")\n'
+            'ax.stairs(s_counts, edges, linewidth=1.8, color="tab:blue",\n'
+            '          label=f"full layer 3 selection ({int(s_counts.sum()):,} pairs)")\n'
             'ax.axvline(91.1876, color="tab:red", linestyle="--", linewidth=1, label="PDG Z mass 91.1876 GeV")\n'
             'ax.set_ylabel("Opposite-charge pairs / 2 GeV")\n'
             "ax.set_xlim(edges[0], edges[-1])\n"
             "ax.set_ylim(0, 1.3 * max(c_counts.max(), s_counts.max()))\n"
             'ax.legend(loc="upper right", fontsize=9, frameon=False)\n'
-            'ax.text(0.99, 1.01, "CMS Open Data, 2012C DoubleMuParked, 8 TeV", transform=ax.transAxes, ha="right", va="bottom", fontsize=9)\n'
+            'ax.text(0.99, 1.01, "CMS Open Data, 2012C DoubleMuParked, 8 TeV", transform=ax.transAxes,\n'
+            '        ha="right", va="bottom", fontsize=9)\n'
             "with np.errstate(divide=\"ignore\", invalid=\"ignore\"):\n"
             "    ratio = np.where(c_counts > 0, s_counts / c_counts, np.nan)\n"
             'rax.stairs(ratio, edges, baseline=None, color="tab:blue", linewidth=1.5)\n'
@@ -418,6 +430,7 @@ def layer3() -> nbformat.NotebookNode:
             "        row(m_iso, two),\n"
             "    ]\n\n\n"
             "def fraction_in(mass, inner, outer):\n"
+            '    """Fraction of masses in the outer window that also lie in the inner window, with both counts."""\n'
             "    n_outer = int(np.sum((mass >= outer[0]) & (mass < outer[1])))\n"
             "    n_inner = int(np.sum((mass >= inner[0]) & (mass < inner[1])))\n"
             '    return (n_inner / n_outer if n_outer else float("nan")), n_inner, n_outer\n\n\n'
@@ -428,12 +441,13 @@ def layer3() -> nbformat.NotebookNode:
             "checks.check(\n"
             '    "cutflow is monotonically non-increasing in particles, events with >= 1 particle and events",\n'
             "    not increases,\n"
-            '    f"{len(cutflow)} rows; increases found: {increases}" if increases else f"{len(cutflow)} rows x 3 columns",\n'
+            '    f"{len(cutflow)} rows; increases found: {increases}" if increases'
+            ' else f"{len(cutflow)} rows x 3 columns",\n'
             ")\n\n"
             "ours = [tuple(d[c][i] for c in columns) for i in range(len(cutflow))]\n"
             "theirs = independent_cutflow(DATA_FILE)\n"
             "pairs = \"; \".join(f\"{d['cut'][i]}: {o[0]:,}/{o[1]:,}/{o[2]:,} vs {t[0]:,}/{t[1]:,}/{t[2]:,}\"\n"
-            "                  for i, (o, t) in enumerate(zip(ours, theirs)))\n"
+            "                  for i, (o, t) in enumerate(zip(ours, theirs, strict=False)))\n"
             "checks.check(\n"
             '    "cutflow agrees with an independent uproot + plain awkward recomputation",\n'
             "    ours == theirs,\n"
@@ -457,7 +471,8 @@ def layer3() -> nbformat.NotebookNode:
             "f_sel, n_core_s, n_wide_s = fraction_in(selected, CORE, WIDE)\n"
             "f_crude, n_core_c, n_wide_c = fraction_in(crude, CORE, WIDE)\n"
             "checks.check(\n"
-            '    f"peak fraction: fraction of {WIDE[0]:.0f}-{WIDE[1]:.0f} GeV pairs inside {CORE[0]:.0f}-{CORE[1]:.0f} GeV "\n'
+            '    f"peak fraction: fraction of {WIDE[0]:.0f}-{WIDE[1]:.0f} GeV pairs inside"'
+            ' f" {CORE[0]:.0f}-{CORE[1]:.0f} GeV "\n'
             '    "is higher after the full selection than for the crude selection",\n'
             "    f_sel > f_crude,\n"
             '    f"full {f_sel:.4f} ({n_core_s:,}/{n_wide_s:,}) vs crude {f_crude:.4f} ({n_core_c:,}/{n_wide_c:,})",\n'
@@ -467,7 +482,8 @@ def layer3() -> nbformat.NotebookNode:
     return _notebook(cells)
 
 
-LAYER4_CHECKS = '''\
+LAYER4_CHECKS = (
+    '''\
 PEAK_SEARCH = (70.0, 110.0)
 PEAK_WINDOW = (88.0, 94.0)
 SS_MAX_FRACTION = 0.10
@@ -490,6 +506,7 @@ def independent_pair_counts(path):
 
 
 def in_window(mass, window):
+    """Number of masses in the half-open window [low, high)."""
     return int(np.sum((mass >= window[0]) & (mass < window[1])))
 
 
@@ -557,7 +574,9 @@ checks.check(
     f"SS {ss_win:,} vs OS {os_win:,} (limit {SS_MAX_FRACTION * os_win:,.1f})",
 )
 
-''' + FINISH
+'''
+    + FINISH
+)
 
 
 def layer4() -> nbformat.NotebookNode:
@@ -570,7 +589,8 @@ def layer4() -> nbformat.NotebookNode:
             "A **same-sign (SS)** pair has total charge $\\pm 2$ and cannot come from a Z. SS pairs come from "
             "the backgrounds, such as two unrelated muons in one collision or a misidentified hadron, which give "
             "OS and SS pairs at similar rates. The SS spectrum therefore estimates the combinatorial background "
-            "under the OS spectrum, and a peak in OS with none in SS shows that the peak is a real neutral particle.\n\n"
+            "under the OS spectrum, and a peak in OS with none in SS shows that the peak is a real neutral "
+            "particle.\n\n"
             "An event with $n$ muons has $n(n-1)/2$ pairs; with $n_+$ positive and $n_-$ negative muons, "
             "$n_+ n_-$ of them are OS and $n_+(n_+-1)/2 + n_-(n_--1)/2$ are SS. Each pair is ordered so that "
             "`leg1` is the higher-$p_T$ muon (a convention: the mass does not depend on it)."
@@ -609,7 +629,8 @@ def layer4() -> nbformat.NotebookNode:
             "os_pairs, ss_pairs, every = opposite_sign_pairs(sel), same_sign_pairs(sel), all_pairs(sel)\n"
             'best = best_pair(os_pairs, "highest_pt_sum")\n'
             "n_muons = ak.to_numpy(sel.particles.num)\n"
-            'print("Selected muons per event:  " + ", ".join(f"{k}: {c:,}" for k, c in enumerate(np.bincount(n_muons)) if c))'
+            'print("Selected muons per event:  "'
+            ' + ", ".join(f"{k}: {c:,}" for k, c in enumerate(np.bincount(n_muons)) if c))'
         ),
         new_markdown_cell(
             "## How many candidates per event?\n\n"
@@ -627,8 +648,7 @@ def layer4() -> nbformat.NotebookNode:
             '      f"best_pair(OS, highest_pt_sum) keeps {best.n_pairs:,}")'
         ),
         new_markdown_cell(
-            "## Mass spectra, 60 to 120 GeV\n\n"
-            "OS pairs (all candidates and one per event) and SS pairs, in 2 GeV bins."
+            "## Mass spectra, 60 to 120 GeV\n\nOS pairs (all candidates and one per event) and SS pairs, in 2 GeV bins."
         ),
         new_code_cell(
             "m_os = ak.to_numpy(ak.flatten(os_pairs.mass))\n"
@@ -639,7 +659,7 @@ def layer4() -> nbformat.NotebookNode:
             "best_counts, _ = np.histogram(m_best, bins=BINS)\n"
             "ss_counts, _ = np.histogram(m_ss, bins=BINS)\n"
             'print(f"  {\'GeV\':11}{\'OS all\':>10}{\'OS best\':>10}{\'SS\':>6}")\n'
-            "for lo, hi, a, b, s in zip(edges[:-1], edges[1:], os_counts, best_counts, ss_counts):\n"
+            "for lo, hi, a, b, s in zip(edges[:-1], edges[1:], os_counts, best_counts, ss_counts, strict=False):\n"
             '    print(f"  {lo:5.0f}-{hi:<5.0f}{a:>10,}{b:>10,}{s:>6,}")\n'
             'print(f"  {\'total\':11}{os_counts.sum():>10,}{best_counts.sum():>10,}{ss_counts.sum():>6,}")'
         ),
@@ -651,8 +671,10 @@ def layer4() -> nbformat.NotebookNode:
         ),
         new_code_cell(
             "fig, ax = plt.subplots(figsize=(7.5, 5.0))\n"
-            'ax.stairs(os_counts, edges, linewidth=1.8, color="tab:blue", label=f"opposite-sign pairs ({int(os_counts.sum()):,})")\n'
-            'ax.stairs(ss_counts, edges, linewidth=1.8, color="tab:orange", label=f"same-sign pairs ({int(ss_counts.sum()):,})")\n'
+            'ax.stairs(os_counts, edges, linewidth=1.8, color="tab:blue",\n'
+            '          label=f"opposite-sign pairs ({int(os_counts.sum()):,})")\n'
+            'ax.stairs(ss_counts, edges, linewidth=1.8, color="tab:orange",\n'
+            '          label=f"same-sign pairs ({int(ss_counts.sum()):,})")\n'
             'ax.axvline(91.1876, color="tab:red", linestyle="--", linewidth=1, label="PDG Z mass 91.1876 GeV")\n'
             'ax.set_yscale("log")\n'
             "ax.set_ylim(0.5, 30 * max(os_counts.max(), 1))\n"
@@ -660,7 +682,8 @@ def layer4() -> nbformat.NotebookNode:
             'ax.set_xlabel("Dimuon invariant mass $M_{\\\\mu\\\\mu}$ [GeV]")\n'
             'ax.set_ylabel("Muon pairs / 2 GeV")\n'
             'ax.legend(loc="upper right", fontsize=9, frameon=False)\n'
-            'ax.text(0.99, 1.01, "CMS Open Data, 2012C DoubleMuParked, 8 TeV", transform=ax.transAxes, ha="right", va="bottom", fontsize=9)\n'
+            'ax.text(0.99, 1.01, "CMS Open Data, 2012C DoubleMuParked, 8 TeV", transform=ax.transAxes,\n'
+            '        ha="right", va="bottom", fontsize=9)\n'
             "plt.show()"
         ),
         new_markdown_cell(
@@ -706,7 +729,8 @@ def layer5() -> nbformat.NotebookNode:
             "except ImportError:\n"
             "    vector = None\n\n"
             'print(f"cmsopen imported from: {cmsopen.__file__}")\n'
-            "print(f\"vector library: {vector.__version__ if vector else 'not installed (pip install vector to enable the cross-check)'}\")"
+            'status = vector.__version__ if vector else "not installed"\n'
+            'print(f"vector library: {status} (pip install vector to enable the cross-check)")'
         ),
         new_markdown_cell("## Select the leading muon pair in each event"),
         new_code_cell(
@@ -736,7 +760,7 @@ def layer5() -> nbformat.NotebookNode:
             'print(f"pairs with 60 <= M < 120 GeV: {int(counts.sum()):,}")\n'
             'print("Dimuon invariant mass (GeV), 2 GeV bins:")\n'
             "scale = 50 / counts.max() if counts.max() else 0\n"
-            "for lo, hi, n in zip(edges[:-1], edges[1:], counts):\n"
+            "for lo, hi, n in zip(edges[:-1], edges[1:], counts, strict=False):\n"
             "    print(f\"  {lo:5.0f}-{hi:<5.0f} {n:7d} {'#' * int(round(n * scale))}\")"
         ),
         new_markdown_cell(
@@ -771,7 +795,8 @@ def layer5() -> nbformat.NotebookNode:
             "checks.check(\n"
             '    "all masses finite and non-negative",\n'
             "    bool(np.all(np.isfinite(mass)) and np.all(mass >= 0)),\n"
-            '    f"{len(mass):,} masses, min {mass.min():.4g} GeV, max {mass.max():.4g} GeV" if len(mass) else "no pairs",\n'
+            '    f"{len(mass):,} masses, min {mass.min():.4g} GeV, max {mass.max():.4g} GeV"'
+            ' if len(mass) else "no pairs",\n'
             ")\n\n"
             "in_search = (edges[:-1] >= PEAK_SEARCH[0]) & (edges[1:] <= PEAK_SEARCH[1])\n"
             "peak = int(np.flatnonzero(in_search)[np.argmax(counts[in_search])])\n"
@@ -794,7 +819,8 @@ def layer5() -> nbformat.NotebookNode:
             "if vector is None:\n"
             '    checks.skip("agreement with vector library on the real pairs", "vector is not installed")\n'
             "else:\n"
-            '    v1, v2 = (vector.zip({"pt": q.pt, "eta": q.eta, "phi": q.phi, "mass": q.mass}) for q in (lead.p4, sub.p4))\n'
+            '    v1, v2 = (vector.zip({"pt": q.pt, "eta": q.eta, "phi": q.phi, "mass": q.mass})'
+            ' for q in (lead.p4, sub.p4))\n'
             "    theirs = ak.to_numpy((v1 + v2).mass)\n"
             "    rel = np.abs(mass - theirs) / np.maximum(theirs, 1e-300)\n"
             "    checks.check(\n"
@@ -807,7 +833,8 @@ def layer5() -> nbformat.NotebookNode:
     return _notebook(cells)
 
 
-LAYER6_CHECKS = r'''checks = Checks()
+LAYER6_CHECKS = (
+    r'''checks = Checks()
 fits = {m: r for m, r in results.items() if not isinstance(r, Exception)}
 finite = {m: bool(np.all(np.isfinite(r.errors)) and np.all(r.errors > 0)) for m, r in fits.items()}
 checks.check(
@@ -855,7 +882,9 @@ checks.check(
     f"{len(pulls.pulls)} toys, mean {pulls.mean:+.3f}, std {pulls.std:.3f}",
 )
 
-''' + FINISH
+'''
+    + FINISH
+)
 
 
 def layer6() -> nbformat.NotebookNode:
@@ -1002,6 +1031,7 @@ do not test the polynomial in the fit. This is not a pass/fail check."""
         ),
         new_code_cell(
             r"""def count_in(mass, window):
+    '''Number of masses in the half-open window [low, high).'''
     return int(np.sum((mass >= window[0]) & (mass < window[1])))
 
 
@@ -1050,7 +1080,8 @@ print(f"{pulls.n_toys} toys, {pulls.n_failed} failed; pull mean {pulls.mean:+.3f
     return _notebook(cells)
 
 
-LAYER7_CHECKS = r"""import re
+LAYER7_CHECKS = (
+    r"""import re
 import struct
 
 from cmsopen.plotting import LAYOUT_DPI, layout_overlaps
@@ -1059,11 +1090,13 @@ MIN_BYTES = 20_000
 
 
 def png_size(path):
+    '''Width and height in pixels, read from the PNG header.'''
     data = path.read_bytes()[:24]
     return struct.unpack(">II", data[16:24])
 
 
 def annotated_peak(fig):
+    '''The peak position and error printed in the figure's annotation, as text (None if absent).'''
     for text in fig.axes[0].texts:
         if text.get_gid() == "annotation":
             m = re.search(r"m_\{\\mathrm\{peak\}\}\$ = ([0-9.]+) \$\\pm\$ ([0-9.]+) GeV", text.get_text())
@@ -1120,7 +1153,9 @@ checks.check(
     f"{len(pairs) - len(differ)} of {len(pairs)} files identical" + (f"; differ: {differ}" if differ else ""),
 )
 
-""" + FINISH
+"""
+    + FINISH
+)
 
 
 def layer7() -> nbformat.NotebookNode:

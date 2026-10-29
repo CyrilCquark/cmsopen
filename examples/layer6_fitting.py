@@ -56,15 +56,18 @@ class Checks:
         self.failures: list[str] = []
 
     def check(self, name: str, ok: bool, detail: str) -> None:
+        """Print one OK or FAIL line and remember failures."""
         print(f"{'OK' if ok else 'FAIL'}: {name} ({detail})")
         if not ok:
             self.failures.append(name)
 
     def skip(self, name: str, reason: str) -> None:
+        """Print one SKIP line (a check that cannot run here)."""
         print(f"SKIP: {name} ({reason})")
 
 
 def default_file() -> Path:
+    """The first ROOT file in the repository's data/ directory (exits with a message if there is none)."""
     data_dir = Path(__file__).resolve().parents[1] / "data"
     files = sorted(data_dir.glob("*.root"))
     if not files:
@@ -73,6 +76,7 @@ def default_file() -> Path:
 
 
 def count_in(mass: np.ndarray, window: tuple[float, float]) -> int:
+    """Number of masses in the half-open window [low, high)."""
     return int(np.sum((mass >= window[0]) & (mass < window[1])))
 
 
@@ -93,7 +97,9 @@ def sideband_cross_check(path: Path) -> None:
         print(f"  {label:<16}{n_os:>15,}{n_ss:>12,}{ratio:>10}")
     os_side = sum(count_in(m_os, w) for w in SIDEBANDS)
     ss_side = sum(count_in(m_ss, w) for w in SIDEBANDS)
-    print(f"  {'both sidebands':<16}{os_side:>15,}{ss_side:>12,}{(ss_side / os_side if os_side else float('nan')):>10.3f}")
+    print(
+        f"  {'both sidebands':<16}{os_side:>15,}{ss_side:>12,}{(ss_side / os_side if os_side else float('nan')):>10.3f}"
+    )
     print(
         "  What this shows: same-sign pairs cannot come from a Z, so their rate in the sidebands measures the\n"
         "  combinatorial and misidentified-muon background there. The SS/OS ratio says what fraction of the\n"
@@ -107,6 +113,7 @@ def sideband_cross_check(path: Path) -> None:
 
 
 def main() -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=None, help="NanoAOD ROOT file (default: first data/*.root)")
     path = parser.parse_args().file or default_file()
@@ -115,8 +122,10 @@ def main() -> int:
 
     print(f"cmsopen imported from: {cmsopen.__file__}")
     pdg_mass, pdg_mass_err, pdg_width, pdg_width_err = pdg_mass_width("Z")
-    print(f"PDG Z (from the particle package): mass {pdg_mass:.4f} +- {pdg_mass_err:.4f} GeV, "
-          f"width {pdg_width:.4f} +- {pdg_width_err:.4f} GeV")
+    print(
+        f"PDG Z (from the particle package): mass {pdg_mass:.4f} +- {pdg_mass_err:.4f} GeV, "
+        f"width {pdg_width:.4f} +- {pdg_width_err:.4f} GeV"
+    )
     print()
 
     with open_events(path) as events:
@@ -152,8 +161,10 @@ def main() -> int:
     sideband_cross_check(path)
 
     pulls = pull_test(n_toys=1000)
-    print(f"Toy pull test: {pulls.n_toys} toys (Gaussian peak at {pulls.true_mean} GeV on a falling exponential), "
-          f"{pulls.n_failed} failed; pull mean {pulls.mean:+.3f}, std {pulls.std:.3f}")
+    print(
+        f"Toy pull test: {pulls.n_toys} toys (Gaussian peak at {pulls.true_mean} GeV on a falling exponential), "
+        f"{pulls.n_failed} failed; pull mean {pulls.mean:+.3f}, std {pulls.std:.3f}"
+    )
     print()
 
     checks = Checks()
@@ -163,8 +174,12 @@ def main() -> int:
         "both fits converge with finite uncertainties",
         len(fits) == len(MODELS) and all(finite.values()),
         "; ".join(
-            f"{m}: " + (f"{len(r.errors)} parameters, max relative error {np.max(r.errors / np.abs(r.values)):.3g}"
-                        if m in fits else f"FitError ({r})")
+            f"{m}: "
+            + (
+                f"{len(r.errors)} parameters, max relative error {np.max(r.errors / np.abs(r.values)):.3g}"
+                if m in fits
+                else f"FitError ({r})"
+            )
             for m, r in results.items()
         ),
     )

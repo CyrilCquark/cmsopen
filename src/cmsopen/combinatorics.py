@@ -169,7 +169,9 @@ class MuonPairs:
         event_index: Any,
     ) -> None:
         if not isinstance(leg1, Muon) or not isinstance(leg2, Muon):
-            raise TypeError(f"leg1 and leg2 must be Muon collections, got {type(leg1).__name__} and {type(leg2).__name__}")
+            raise TypeError(
+                f"leg1 and leg2 must be Muon collections, got {type(leg1).__name__} and {type(leg2).__name__}"
+            )
         self.leg1: Muon = leg1
         """The higher-pT muon of each pair (jagged: one entry per pair)."""
         self.leg2: Muon = leg2
@@ -185,13 +187,18 @@ class MuonPairs:
         self._event_index = _readonly(event_index)
         ref = ak.num(self.index1, axis=1)
         for name, arr in (
-            ("leg1", leg1.p4.pt), ("leg2", leg2.p4.pt), ("index2", self.index2),
-            ("rank1", self.rank1), ("rank2", self.rank2),
+            ("leg1", leg1.p4.pt),
+            ("leg2", leg2.p4.pt),
+            ("index2", self.index2),
+            ("rank1", self.rank1),
+            ("rank2", self.rank2),
         ):
             if arr.ndim != 2 or len(arr) != len(ref) or not ak.all(ak.num(arr, axis=1) == ref):
                 raise ValueError(f"{name!r} does not have the same jagged structure as 'index1'")
         if self._event_index.shape != (len(ref),):
-            raise ValueError(f"event_index has shape {self._event_index.shape}, expected ({len(ref)},): one row per event")
+            raise ValueError(
+                f"event_index has shape {self._event_index.shape}, expected ({len(ref)},): one row per event"
+            )
 
     # -- bookkeeping ---------------------------------------------------------------
 
@@ -274,9 +281,12 @@ class MuonPairs:
         else:
             event_index = self._event_index[where]
         return MuonPairs(
-            self.leg1[where], self.leg2[where],
-            self.index1[where], self.index2[where],
-            self.rank1[where], self.rank2[where],
+            self.leg1[where],
+            self.leg2[where],
+            self.index1[where],
+            self.index2[where],
+            self.rank1[where],
+            self.rank2[where],
             event_index,
         )
 

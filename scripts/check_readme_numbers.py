@@ -43,6 +43,7 @@ def extract_block(text: str) -> str | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--readme", type=Path, default=Path("README.md"))
     parser.add_argument("--production", type=Path, default=Path("results/production.json"))

@@ -159,7 +159,13 @@ def test_electron_cuts():
     assert max_rel_iso(el, 0.25, cone=0.3).tolist() == [[True, False], [], [True]]
     with pytest.raises(ValueError, match=r"cone 0.4 not available for Electron; use one of \[0.3\]"):
         max_rel_iso(el, 0.2, cone=0.4)
-    for cut in (lambda: quality_id(el, "tight"), lambda: global_muon(el), lambda: max_abs_dxy(el, 1), lambda: max_abs_dz(el, 1)):
+    cuts = (
+        lambda: quality_id(el, "tight"),
+        lambda: global_muon(el),
+        lambda: max_abs_dxy(el, 1),
+        lambda: max_abs_dz(el, 1),
+    )
+    for cut in cuts:
         with pytest.raises(TypeError, match="needs a Muon collection, got Electron"):
             cut()
     sel = Selection(el).apply(min_pt=12, max_rel_iso=0.25)
@@ -177,7 +183,12 @@ def test_cutflow_hand_computed(muons: Muon):
     assert isinstance(cf, CutFlow) and len(cf) == 6
     d = cf.to_dict()
     assert d["cut"] == [
-        "all events", "min_pt(20)", "max_eta(2.4)", "quality_id(tight)", "max_rel_iso(0.12, cone=0.4)", "require(>= 1)"
+        "all events",
+        "min_pt(20)",
+        "max_eta(2.4)",
+        "quality_id(tight)",
+        "max_rel_iso(0.12, cone=0.4)",
+        "require(>= 1)",
     ]
     assert d["level"] == ["start", "particle", "particle", "particle", "particle", "event"]
     assert d["n_particles"] == [6, 4, 2, 2, 1, 1]
@@ -353,7 +364,7 @@ def test_require_rejects_bad_n(muons: Muon):
 
 # -- 5. triggers on a synthetic ROOT file ----------------------------------------------------
 
-FIRED = [a or b for a, b in zip(HLT_A, HLT_B)]  # [T, F, T, T, F, F]
+FIRED = [a or b for a, b in zip(HLT_A, HLT_B, strict=False)]  # [T, F, T, T, F, F]
 COUNTS = [len(x) for x in MUON_PT]  # [2, 0, 1, 3, 0, 2]
 
 
@@ -474,7 +485,10 @@ def test_zmumu_cuts_constant(full_events):
         ZMUMU_MUON_CUTS["min_pt"] = 10  # read-only
     sel = full_events.muons(**ZMUMU_MUON_CUTS)
     assert [s.label for s in sel.history][1:] == [
-        "min_pt(20)", "max_eta(2.4)", "quality_id(tight)", "max_rel_iso(0.12, cone=0.4)"
+        "min_pt(20)",
+        "max_eta(2.4)",
+        "quality_id(tight)",
+        "max_rel_iso(0.12, cone=0.4)",
     ]
 
 
@@ -490,8 +504,19 @@ def test_events_electrons_with_cuts(full_events):
 
 def test_package_exports():
     for name in (
-        "Selection", "CutFlow", "MissingFieldError", "ZMUMU_MUON_CUTS", "select_muons", "select_electrons",
-        "min_pt", "max_eta", "max_rel_iso", "quality_id", "max_abs_dxy", "max_abs_dz", "global_muon",
+        "Selection",
+        "CutFlow",
+        "MissingFieldError",
+        "ZMUMU_MUON_CUTS",
+        "select_muons",
+        "select_electrons",
+        "min_pt",
+        "max_eta",
+        "max_rel_iso",
+        "quality_id",
+        "max_abs_dxy",
+        "max_abs_dz",
+        "global_muon",
     ):
         assert getattr(cmsopen, name) is getattr(cmsopen.selection, name)
         assert name in cmsopen.__all__

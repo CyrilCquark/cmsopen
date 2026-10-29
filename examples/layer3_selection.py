@@ -51,15 +51,18 @@ class Checks:
         self.failures: list[str] = []
 
     def check(self, name: str, ok: bool, detail: str) -> None:
+        """Print one OK or FAIL line and remember failures."""
         print(f"{'OK' if ok else 'FAIL'}: {name} ({detail})")
         if not ok:
             self.failures.append(name)
 
     def skip(self, name: str, reason: str) -> None:
+        """Print one SKIP line (a check that cannot run here)."""
         print(f"SKIP: {name} ({reason})")
 
 
 def default_file() -> Path:
+    """The first ROOT file in the repository's data/ directory (exits with a message if there is none)."""
     data_dir = Path(__file__).resolve().parents[1] / "data"
     files = sorted(data_dir.glob("*.root"))
     if not files:
@@ -123,22 +126,25 @@ def independent_cutflow(path: Path) -> list[tuple[int, int, int]]:
 
 
 def text_histograms(crude: np.ndarray, selected: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Print the mass spectra as a text histogram and return the bin counts."""
     c_counts, edges = np.histogram(crude, bins=BINS)
     s_counts, _ = np.histogram(selected, bins=BINS)
     print("Dimuon invariant mass (GeV), 2 GeV bins:  crude (layer 5) vs full selection   [# = selected]")
     scale = 40 / s_counts.max() if s_counts.max() else 0
-    for lo, hi, c, s in zip(edges[:-1], edges[1:], c_counts, s_counts):
+    for lo, hi, c, s in zip(edges[:-1], edges[1:], c_counts, s_counts, strict=False):
         print(f"  {lo:5.0f}-{hi:<5.0f} {c:7d} {s:7d}  {'#' * int(round(s * scale))}")
     return c_counts, s_counts, edges
 
 
 def fraction_in(mass: np.ndarray, inner: tuple[float, float], outer: tuple[float, float]) -> tuple[float, int, int]:
+    """Fraction of masses in the outer window that also lie in the inner window, with both counts."""
     n_outer = int(np.sum((mass >= outer[0]) & (mass < outer[1])))
     n_inner = int(np.sum((mass >= inner[0]) & (mass < inner[1])))
     return (n_inner / n_outer if n_outer else float("nan")), n_inner, n_outer
 
 
 def main() -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=None, help="NanoAOD ROOT file (default: first data/*.root)")
     path = parser.parse_args().file or default_file()
@@ -171,14 +177,17 @@ def main() -> int:
     print("Junk removed (all muons in the file vs muons after the full selection):")
     print(f"  {'':12}{'muons':>12}{'max |eta|':>12}{'max pt [GeV]':>15}{'min pt [GeV]':>15}")
     for label, pt, eta in (("before", raw_pt, raw_eta), ("after", sel_pt, sel_eta)):
-        print(f"  {label:12}{len(pt):>12,}{float(ak.max(abs(eta))):>12.4f}{float(ak.max(pt)):>15.1f}{float(ak.min(pt)):>15.4f}")
+        row = f"{len(pt):>12,}{float(ak.max(abs(eta))):>12.4f}{float(ak.max(pt)):>15.1f}{float(ak.min(pt)):>15.4f}"
+        print(f"  {label:12}{row}")
     print()
 
     crude = crude_layer5_mass(raw)
     selected = leading_pair_mass(sel)
     print(f"crude layer 5 selection:   {len(crude):,} opposite-charge leading pairs")
-    print(f"full layer 3 selection:    {len(selected):,} opposite-charge leading pairs "
-          f"(of {final.n_events:,} events with >= 2 selected muons)")
+    print(
+        f"full layer 3 selection:    {len(selected):,} opposite-charge leading pairs "
+        f"(of {final.n_events:,} events with >= 2 selected muons)"
+    )
     c_counts, s_counts, edges = text_histograms(crude, selected)
     print()
 
@@ -194,8 +203,10 @@ def main() -> int:
 
     ours = [tuple(d[c][i] for c in columns) for i in range(len(cutflow))]
     theirs = independent_cutflow(path)
-    pairs = "; ".join(f"{d['cut'][i]}: {o[0]:,}/{o[1]:,}/{o[2]:,} vs {t[0]:,}/{t[1]:,}/{t[2]:,}"
-                      for i, (o, t) in enumerate(zip(ours, theirs)))
+    pairs = "; ".join(
+        f"{d['cut'][i]}: {o[0]:,}/{o[1]:,}/{o[2]:,} vs {t[0]:,}/{t[1]:,}/{t[2]:,}"
+        for i, (o, t) in enumerate(zip(ours, theirs, strict=False))
+    )
     checks.check(
         "cutflow agrees with an independent uproot + plain awkward recomputation",
         ours == theirs,

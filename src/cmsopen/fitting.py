@@ -107,6 +107,7 @@ class FitWarning(str):
     details: Mapping[str, Any]
 
     def __new__(cls, code: str, message: str, **details: Any) -> FitWarning:
+        """Create the warning: ``message`` is its text, ``code`` and ``details`` its machine-readable parts."""
         obj = super().__new__(cls, message)
         obj.code = code
         obj.details = MappingProxyType(dict(details))
@@ -222,7 +223,9 @@ class MassHistogram:
         """Return the same histogram as a :class:`hist.Hist` (with a ``mass`` axis)."""
         widths = self.widths
         if np.allclose(widths, widths[0]):
-            axis = hist.axis.Regular(len(self.counts), self.edges[0], self.edges[-1], name="mass", label="Dimuon mass [GeV]")
+            axis = hist.axis.Regular(
+                len(self.counts), self.edges[0], self.edges[-1], name="mass", label="Dimuon mass [GeV]"
+            )
         else:
             axis = hist.axis.Variable(self.edges, name="mass", label="Dimuon mass [GeV]")
         h = hist.Hist(axis, storage=hist.storage.Double())
@@ -244,7 +247,9 @@ def _flat_values(values: Any) -> np.ndarray:
     return arr.ravel()
 
 
-def make_histogram(values: Any, bins: int | Sequence[float] = 60, range: tuple[float, float] = (60.0, 120.0)) -> MassHistogram:
+def make_histogram(
+    values: Any, bins: int | Sequence[float] = 60, range: tuple[float, float] = (60.0, 120.0)
+) -> MassHistogram:
     """Histogram masses (GeV) with the ``hist`` library and return a :class:`MassHistogram`.
 
     A histogram turns a list of masses into counts per mass interval. The
@@ -324,7 +329,9 @@ def polynomial(x: Any, *coeffs: float, x0: float = 0.0) -> np.ndarray:
     return out
 
 
-def gaussian_plus_polynomial(x: Any, amplitude: float, mean: float, sigma: float, *coeffs: float, x0: float = 0.0) -> np.ndarray:
+def gaussian_plus_polynomial(
+    x: Any, amplitude: float, mean: float, sigma: float, *coeffs: float, x0: float = 0.0
+) -> np.ndarray:
     """Signal-plus-background density: :func:`gaussian` + :func:`polynomial` (events per GeV).
 
     Parameters are those of the two parts: ``amplitude`` (signal events),
@@ -435,7 +442,9 @@ class FitResult:
     @property
     def parameters(self) -> dict[str, tuple[float, float]]:
         """``{name: (value, uncertainty)}`` for every free parameter."""
-        return {n: (float(v), float(e)) for n, v, e in zip(self.parameter_names, self.values, self.errors)}
+        return {
+            n: (float(v), float(e)) for n, v, e in zip(self.parameter_names, self.values, self.errors, strict=False)
+        }
 
     @property
     def correlation(self) -> np.ndarray:
@@ -557,14 +566,20 @@ class FitResult:
             lines.append(f"  {name:<12}{v:>14.5g}{e:>12.3g}")
         if self.gamma is not None:
             lines.append(f"  {'gamma':<12}{self.gamma:>14.5g}{'fixed':>12}   (Breit-Wigner half width, GeV)")
-        lines.append(f"  chi2 / ndf = {self.chi2:.2f} / {self.ndf} = {self.chi2_ndf:.3f},  p-value = {self.p_value:.3g}")
+        lines.append(
+            f"  chi2 / ndf = {self.chi2:.2f} / {self.ndf} = {self.chi2_ndf:.3f},  p-value = {self.p_value:.3g}"
+        )
         m, me = self.peak_position
         s, se = self.resolution
         f, fe = self.fwhm
         sy, sye = self.signal_yield
         by, bye = self.background_yield
-        lines.append(f"  peak position {m:.4f} +- {me:.4f} GeV,  sigma {s:.4f} +- {se:.4f} GeV,  FWHM {f:.3f} +- {fe:.3f} GeV")
-        lines.append(f"  signal yield {sy:,.0f} +- {sye:,.0f},  background yield {by:,.0f} +- {bye:,.0f}  (in the fit range)")
+        lines.append(
+            f"  peak position {m:.4f} +- {me:.4f} GeV,  sigma {s:.4f} +- {se:.4f} GeV,  FWHM {f:.3f} +- {fe:.3f} GeV"
+        )
+        lines.append(
+            f"  signal yield {sy:,.0f} +- {sye:,.0f},  background yield {by:,.0f} +- {bye:,.0f}  (in the fit range)"
+        )
         lines.extend(f"  WARNING: {w}" for w in self.warnings)
         return "\n".join(lines)
 
@@ -574,7 +589,7 @@ class FitResult:
 
 def _bounds_hit(values: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> list[int]:
     hit = []
-    for i, (v, lo, hi) in enumerate(zip(values, lower, upper)):
+    for i, (v, lo, hi) in enumerate(zip(values, lower, upper, strict=False)):
         for b in (lo, hi):
             if np.isfinite(b) and abs(v - b) <= 1e-6 * max(1.0, abs(b)):
                 hit.append(i)
@@ -666,14 +681,20 @@ def fit_mass_peak(
         raise ValueError(f"model must be one of {MODELS}, got {model!r}")
     if not isinstance(poly_degree, (int, np.integer)) or not 0 <= poly_degree <= 5:
         raise ValueError(f"poly_degree must be an integer from 0 to 5, got {poly_degree!r}")
-    h = hist_or_values if isinstance(hist_or_values, MassHistogram) else make_histogram(hist_or_values, bins, hist_range)
+    h = (
+        hist_or_values
+        if isinstance(hist_or_values, MassHistogram)
+        else make_histogram(hist_or_values, bins, hist_range)
+    )
     lo_req, hi_req = float(fit_range[0]), float(fit_range[1])
     if not hi_req > lo_req:
         raise ValueError(f"fit_range must be (low, high) with high > low, got {fit_range}")
     eps = 1e-9 * max(1.0, abs(hi_req))
     mask = (h.edges[:-1] >= lo_req - eps) & (h.edges[1:] <= hi_req + eps)
     if not mask.any():
-        raise ValueError(f"no bin of the histogram ({h.edges[0]:g}-{h.edges[-1]:g} GeV) lies inside fit_range {fit_range}")
+        raise ValueError(
+            f"no bin of the histogram ({h.edges[0]:g}-{h.edges[-1]:g} GeV) lies inside fit_range {fit_range}"
+        )
     edges_lo, edges_hi = h.edges[:-1][mask], h.edges[1:][mask]
     lo, hi = float(edges_lo[0]), float(edges_hi[-1])
     counts, widths = h.counts[mask], edges_hi - edges_lo
@@ -694,7 +715,10 @@ def fit_mass_peak(
     if n_entries == 0:
         raise FitError(f"no entries in the fit range {lo:g}-{hi:g} GeV; there is nothing to fit")
     if len(counts) <= n_par:
-        raise FitError(f"{len(counts)} bins in {lo:g}-{hi:g} GeV cannot constrain {n_par} parameters; use finer bins or a wider range")
+        raise FitError(
+            f"{len(counts)} bins in {lo:g}-{hi:g} GeV cannot constrain {n_par} parameters; "
+            "use finer bins or a wider range"
+        )
 
     def density(x: np.ndarray, p: Sequence[float]) -> np.ndarray:
         if gamma is None:
@@ -723,7 +747,9 @@ def fit_mass_peak(
     sigma_lo, sigma_hi = 0.25 * float(widths.min()), 0.5 * (hi - lo)
     sigma0 = float(np.clip(widths[above].sum() / _FWHM_PER_SIGMA, 2 * sigma_lo, 0.25 * (hi - lo)))
     if gamma is not None:
-        sigma0 = float(np.clip(math.sqrt(max(sigma0**2 - gamma**2, 0.0)) or 0.5 * sigma0, 2 * sigma_lo, 0.25 * (hi - lo)))
+        sigma0 = float(
+            np.clip(math.sqrt(max(sigma0**2 - gamma**2, 0.0)) or 0.5 * sigma0, 2 * sigma_lo, 0.25 * (hi - lo))
+        )
     amp0 = float(max((excess[excess > 0] * widths[excess > 0]).sum(), 1.0))
     p0 = np.array([amp0, float(centers[peak]), sigma0, *coeffs0])
     for name, value in (initial or {}).items():
@@ -742,8 +768,14 @@ def fit_mass_peak(
             warnings.simplefilter("error", optimize.OptimizeWarning)
             values, cov = optimize.curve_fit(
                 lambda _x, *p: expected(p),
-                centers, counts, p0=p0, sigma=errors, absolute_sigma=True,
-                bounds=(lower, upper), method="trf", max_nfev=20000,
+                centers,
+                counts,
+                p0=p0,
+                sigma=errors,
+                absolute_sigma=True,
+                bounds=(lower, upper),
+                method="trf",
+                max_nfev=20000,
             )
     except (RuntimeError, optimize.OptimizeWarning, ValueError) as exc:
         raise FitError(f"{model} fit over {lo:g}-{hi:g} GeV did not converge: {exc}") from exc
@@ -784,8 +816,12 @@ def fit_mass_peak(
         significant = bool(bkg[worst] + 3.0 * bkg_err[worst] < 0)
         if not significant:
             worst = int(np.argmin(bkg))
-        details = {"min_density": float(bkg[worst]), "error": float(bkg_err[worst]),
-                   "at_mass": float(grid[worst]), "significant": significant}
+        details = {
+            "min_density": float(bkg[worst]),
+            "error": float(bkg_err[worst]),
+            "at_mass": float(grid[worst]),
+            "significant": significant,
+        }
         if significant:
             message = (
                 f"the fitted background is significantly negative ({bkg[worst]:.3g} +- {bkg_err[worst]:.2g} "
@@ -936,7 +972,9 @@ class StabilityResult:
         return self.max - self.min
 
     def __str__(self) -> str:
-        lines = [f"  {'model':<11}{'range':>10}{'bin':>6}{'deg':>5}{'mass':>11}{'error':>9}{'chi2/ndf':>10}{'p-value':>10}"]
+        lines = [
+            f"  {'model':<11}{'range':>10}{'bin':>6}{'deg':>5}{'mass':>11}{'error':>9}{'chi2/ndf':>10}{'p-value':>10}"
+        ]
         for r in self.rows:
             lo, hi = r["fit_range"]
             lines.append(
@@ -946,7 +984,10 @@ class StabilityResult:
             )
         for f in self.failed:
             lo, hi = f["fit_range"]
-            lines.append(f"  {f['model']:<11}{f'{lo:g}-{hi:g}':>10}{f['bin_width']:>6g}{f['poly_degree']:>5}   FAILED: {f['reason']}")
+            lines.append(
+                f"  {f['model']:<11}{f'{lo:g}-{hi:g}':>10}{f['bin_width']:>6g}{f['poly_degree']:>5}"
+                f"   FAILED: {f['reason']}"
+            )
         lines.append(
             f"  {len(self.rows)} of {self.n_fits} fits converged; fitted mass mean {self.mean:.4f} GeV, "
             f"std {self.std:.4f} GeV, range {self.min:.4f}-{self.max:.4f} GeV ({self.range:.4f} GeV)"
@@ -1008,20 +1049,32 @@ def fit_stability(
                 for degree in poly_degrees:
                     config = {"model": model, "fit_range": tuple(fit_range), "bin_width": w, "poly_degree": degree}
                     try:
-                        r = fit_mass_peak(hists[w], model=model, fit_range=fit_range, poly_degree=degree,
-                                          natural_width=natural_width)
+                        r = fit_mass_peak(
+                            hists[w], model=model, fit_range=fit_range, poly_degree=degree, natural_width=natural_width
+                        )
                     except FitError as exc:
                         failed.append({**config, "reason": str(exc)})
                         continue
                     m, me = r.peak_position
-                    rows.append({**config, "fit_range": r.fit_range, "mass": m, "mass_error": me,
-                                 "chi2_ndf": r.chi2_ndf, "p_value": r.p_value, "warnings": r.warnings})
+                    rows.append(
+                        {
+                            **config,
+                            "fit_range": r.fit_range,
+                            "mass": m,
+                            "mass_error": me,
+                            "chi2_ndf": r.chi2_ndf,
+                            "p_value": r.p_value,
+                            "warnings": r.warnings,
+                        }
+                    )
     masses = np.array([r["mass"] for r in rows])
     if masses.size == 0:
         nan = float("nan")
         return StabilityResult((), tuple(failed), nan, nan, nan, nan)
     std = float(np.std(masses, ddof=1)) if masses.size > 1 else 0.0
-    return StabilityResult(tuple(rows), tuple(failed), float(masses.mean()), std, float(masses.min()), float(masses.max()))
+    return StabilityResult(
+        tuple(rows), tuple(failed), float(masses.mean()), std, float(masses.min()), float(masses.max())
+    )
 
 
 # -- toys and the pull test ------------------------------------------------------------------

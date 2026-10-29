@@ -95,6 +95,7 @@ def render_results_block(production_json: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     args = sys.argv[1:] if argv is None else argv
     path = Path(args[0] if args else "results/production.json")
     if not path.exists():

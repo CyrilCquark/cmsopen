@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from scipy import integrate
 
-from cmsopen import Muon, FourMomentum
+from cmsopen import FourMomentum, Muon
 from cmsopen.fitting import MassHistogram, fit_mass_peak, toy_histogram, voigt_plus_polynomial
 from cmsopen.plotting import (
     FOOTNOTE,
@@ -86,7 +86,9 @@ def independent_overlaps(fig, ax, dpi=300, pad=1.0):
                        & (px[:, 1] > bb.y0 - radius - pad) & (px[:, 1] < bb.y1 + radius + pad))
                 if hit.any():
                     x, y = ax.transData.inverted().transform(px[np.argmax(hit)])
-                    problems.append(f"{bname} {bb.bounds} overlaps {ename}: {hit.sum()} points, e.g. ({x:.2f}, {y:.1f})")
+                    problems.append(
+                        f"{bname} {bb.bounds} overlaps {ename}: {hit.sum()} points, e.g. ({x:.2f}, {y:.1f})"
+                    )
         if "annotation" in boxes and boxes["legend"].overlaps(boxes["annotation"]):
             problems.append(f"legend {boxes['legend'].bounds} overlaps annotation {boxes['annotation'].bounds}")
         return problems
@@ -185,7 +187,9 @@ def test_linear_y_starts_at_zero_and_pulls_are_right():
     assert ax.get_ylim()[0] == 0.0
     (pulls,) = by_gid(rax, "pulls")
     inside = (h.edges[:-1] >= 70) & (h.edges[1:] <= 110)
-    expected = np.array([integrate.quad(fit.model, a, b)[0] for a, b in zip(h.edges[:-1][inside], h.edges[1:][inside])])
+    expected = np.array(
+        [integrate.quad(fit.model, a, b)[0] for a, b in zip(h.edges[:-1][inside], h.edges[1:][inside], strict=False)]
+    )
     independent = (h.counts[inside] - expected) / np.sqrt(np.maximum(h.counts[inside], 1.0))
     np.testing.assert_allclose(pulls.get_xdata(), h.centers[inside])
     np.testing.assert_allclose(pulls.get_ydata(), independent, rtol=1e-6, atol=1e-9)
@@ -201,7 +205,7 @@ def test_log_scale_lower_limit_is_positive():
     assert ax.get_yscale() == "log" and ax.get_ylim()[0] > 0
 
 
-# -- 4. yields shown only when reliable ------------------------------------------------------------------------------------
+# -- 4. yields shown only when reliable --------------------------------------------------------------------------------
 
 
 def test_annotation_hides_yields_when_background_negative():
@@ -237,7 +241,7 @@ def test_annotation_contents_match_the_fit():
     assert "sigma_{\\mathrm{res}}" in text and "Gamma_Z" in text
 
 
-# -- 5. style ---------------------------------------------------------------------------------------------------------------
+# -- 5. style ----------------------------------------------------------------------------------------------------------
 
 
 def test_paper_style_restores_rcparams():
@@ -291,7 +295,7 @@ def test_layout_on_log_axes_uses_the_log_transform():
     assert np.allclose(np.median(obstacles["ss"][:, 1]), expected_y, atol=1.0)
 
 
-# -- 6. saving --------------------------------------------------------------------------------------------------------------
+# -- 6. saving ---------------------------------------------------------------------------------------------------------
 
 
 def _png_size(path):
@@ -311,7 +315,7 @@ def test_save_figure_files_size_and_determinism(tmp_path):
     assert (w, hgt) == (round(fw * 300), round(fh * 300))
 
     again = save_figure(fig, tmp_path / "again" / "z_peak")
-    for a, b in zip(written, again):
+    for a, b in zip(written, again, strict=False):
         assert a.read_bytes() == b.read_bytes(), f"{a.name} is not deterministic"
 
     pdf = written[1].read_bytes()
@@ -331,7 +335,7 @@ def test_save_figure_replaces_suffix_and_custom_formats(tmp_path):
     assert (w, h) == tuple(round(v * 100) for v in fig.get_size_inches())
 
 
-# -- 7. pT, eta, cutflow, OS vs SS -----------------------------------------------------------------------------------------
+# -- 7. pT, eta, cutflow, OS vs SS -------------------------------------------------------------------------------------
 
 
 def _muons(n_events=2000, seed=0, spread=1.0):
@@ -341,8 +345,12 @@ def _muons(n_events=2000, seed=0, spread=1.0):
     import awkward as ak
 
     jag = lambda x: ak.unflatten(x, counts)  # noqa: E731
-    p4 = FourMomentum(jag(rng.exponential(25.0, n)), jag(rng.normal(0, 2.0 * spread, n)), jag(rng.uniform(-3, 3, n)),
-                      jag(np.full(n, 0.1057)))
+    p4 = FourMomentum(
+        jag(rng.exponential(25.0, n)),
+        jag(rng.normal(0, 2.0 * spread, n)),
+        jag(rng.uniform(-3, 3, n)),
+        jag(np.full(n, 0.1057)),
+    )
     return Muon(p4, jag(rng.choice([-1, 1], n)))
 
 
@@ -401,7 +409,7 @@ def test_long_label_does_not_collide_with_footnote():
     assert layout_overlaps(fig) == []
 
 
-# -- 8. headless and lazy -----------------------------------------------------------------------------------------------------
+# -- 8. headless and lazy ----------------------------------------------------------------------------------------------
 
 
 def test_import_is_lazy_and_plotting_is_headless(tmp_path):
@@ -428,8 +436,17 @@ def test_import_is_lazy_and_plotting_is_headless(tmp_path):
 def test_exports():
     import cmsopen
 
-    for name in ("paper_style", "apply_paper_style", "plot_mass_spectrum", "plot_pt_distribution", "plot_eta_distribution",
-                 "plot_cutflow", "plot_os_vs_ss", "save_figure", "layout_overlaps"):
+    for name in (
+        "paper_style",
+        "apply_paper_style",
+        "plot_mass_spectrum",
+        "plot_pt_distribution",
+        "plot_eta_distribution",
+        "plot_cutflow",
+        "plot_os_vs_ss",
+        "save_figure",
+        "layout_overlaps",
+    ):
         assert name in cmsopen.__all__ and callable(getattr(cmsopen, name))
 
 

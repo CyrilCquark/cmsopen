@@ -15,6 +15,7 @@ from cmsopen.ingestion import (
     open_events,
 )
 
+
 def test_package_exports():
     assert cmsopen.open_events is open_events
     assert cmsopen.EventCollection is EventCollection
@@ -108,7 +109,7 @@ def test_trigger_any_of(events: EventCollection):
     assert isinstance(a, np.ndarray) and a.dtype == bool
     assert a.tolist() == HLT_A
     both = events.trigger(*DIMUON_TRIGGERS_2012)
-    assert both.tolist() == [x or y for x, y in zip(HLT_A, HLT_B)]
+    assert both.tolist() == [x or y for x, y in zip(HLT_A, HLT_B, strict=False)]
     assert events.trigger(*DIMUON_TRIGGERS_2012, entry_start=2, entry_stop=4).tolist() == [True, True]
     assert not events.trigger("HLT_IsoMu24").any()
 

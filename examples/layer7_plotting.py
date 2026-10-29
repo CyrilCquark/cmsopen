@@ -40,11 +40,13 @@ class Checks:
         self.failures: list[str] = []
 
     def check(self, name: str, ok: bool, detail: str) -> None:
+        """Print one OK or FAIL line and remember failures."""
         print(f"{'OK' if ok else 'FAIL'}: {name} ({detail})")
         if not ok:
             self.failures.append(name)
 
     def skip(self, name: str, reason: str) -> None:
+        """Print one SKIP line (a check that cannot run here)."""
         print(f"SKIP: {name} ({reason})")
 
 
@@ -57,6 +59,7 @@ def png_size(path: Path) -> tuple[int, int]:
 
 
 def annotated_peak(fig) -> tuple[str, str] | None:
+    """The peak position and error printed in the figure's annotation, as text (None if absent)."""
     for text in fig.axes[0].texts:
         if text.get_gid() == "annotation":
             m = re.search(r"m_\{\\mathrm\{peak\}\}\$ = ([0-9.]+) \$\\pm\$ ([0-9.]+) GeV", text.get_text())
@@ -65,6 +68,7 @@ def annotated_peak(fig) -> tuple[str, str] | None:
 
 
 def main() -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=None, help="NanoAOD ROOT file (default: first data/*.root)")
     path = (parser.parse_args().file or make_figures.default_file()).resolve()

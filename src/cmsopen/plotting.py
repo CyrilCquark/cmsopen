@@ -242,7 +242,8 @@ def _clip_segments(xy: np.ndarray, box: tuple[float, float, float, float]) -> np
     x0, y0, x1, y1 = box
     t0, t1 = np.zeros(len(d)), np.ones(len(d))
     keep = np.ones(len(d), dtype=bool)
-    for p, q in ((-d[:, 0], p0[:, 0] - x0), (d[:, 0], x1 - p0[:, 0]), (-d[:, 1], p0[:, 1] - y0), (d[:, 1], y1 - p0[:, 1])):
+    edges = ((-d[:, 0], p0[:, 0] - x0), (d[:, 0], x1 - p0[:, 0]), (-d[:, 1], p0[:, 1] - y0), (d[:, 1], y1 - p0[:, 1]))
+    for p, q in edges:
         parallel = p == 0
         keep &= ~(parallel & (q < 0))
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -298,8 +299,13 @@ def _obstacles(ax: Axes) -> list[tuple[str, np.ndarray, float]]:
             inside = (xy[:, 0] >= box[0]) & (xy[:, 0] <= box[2]) & (xy[:, 1] >= box[1]) & (xy[:, 1] <= box[3])
             out.append((f"{name} markers", xy[inside], radius))
         if line.get_linestyle() not in ("None", "", " ", None):
-            out.append((name, _path_points([line.get_path()], line.get_transform(), box),
-                        0.5 * line.get_linewidth() * px_per_pt))
+            out.append(
+                (
+                    name,
+                    _path_points([line.get_path()], line.get_transform(), box),
+                    0.5 * line.get_linewidth() * px_per_pt,
+                )
+            )
     for coll in ax.collections:
         if not coll.get_visible():
             continue
@@ -314,8 +320,13 @@ def _obstacles(ax: Axes) -> list[tuple[str, np.ndarray, float]]:
         if not patch.get_visible():
             continue
         name = patch.get_gid() or patch.get_label() or type(patch).__name__
-        out.append((name, _path_points([patch.get_path()], patch.get_transform(), box),
-                    0.5 * patch.get_linewidth() * px_per_pt))
+        out.append(
+            (
+                name,
+                _path_points([patch.get_path()], patch.get_transform(), box),
+                0.5 * patch.get_linewidth() * px_per_pt,
+            )
+        )
     return out
 
 
@@ -348,7 +359,9 @@ def _box_hits(bb: Any, obstacles: list, pad: float, opaque: bool) -> list[tuple[
         if opaque and name in REFERENCE_GIDS:
             continue
         r = radius + pad
-        inside = (pts[:, 0] >= bb.x0 - r) & (pts[:, 0] <= bb.x1 + r) & (pts[:, 1] >= bb.y0 - r) & (pts[:, 1] <= bb.y1 + r)
+        inside = (
+            (pts[:, 0] >= bb.x0 - r) & (pts[:, 0] <= bb.x1 + r) & (pts[:, 1] >= bb.y0 - r) & (pts[:, 1] <= bb.y1 + r)
+        )
         if inside.any():
             hits.append((name, pts[inside]))
     return hits
@@ -454,7 +467,9 @@ def _candidate_box(loc: str, axbb: Any, width: float, height: float, pad: float)
 
     vert, horiz = loc.split(" ")
     x0 = axbb.x0 + pad if horiz == "left" else axbb.x1 - pad - width
-    y0 = {"upper": axbb.y1 - pad - height, "center": axbb.y0 + 0.5 * (axbb.height - height), "lower": axbb.y0 + pad}[vert]
+    y0 = {"upper": axbb.y1 - pad - height, "center": axbb.y0 + 0.5 * (axbb.height - height), "lower": axbb.y0 + pad}[
+        vert
+    ]
     return Bbox.from_bounds(x0, y0, width, height)
 
 
@@ -585,8 +600,10 @@ _MODEL_LABELS = {"gauss_poly": "Gaussian", "voigt_poly": "Voigt"}
 
 
 def _fit_annotation(fit: FitResult) -> str:
-    lines = [f"{_MODEL_LABELS.get(fit.model_name, fit.model_name)} + pol{fit.poly_degree} fit, "
-             f"{fit.fit_range[0]:g}$-${fit.fit_range[1]:g} GeV"]
+    lines = [
+        f"{_MODEL_LABELS.get(fit.model_name, fit.model_name)} + pol{fit.poly_degree} fit, "
+        f"{fit.fit_range[0]:g}$-${fit.fit_range[1]:g} GeV"
+    ]
     m, me = _fmt_pm(*fit.peak_position)
     lines.append(rf"$m_{{\mathrm{{peak}}}}$ = {m} $\pm$ {me} GeV (stat.)")
     s, se = _fmt_pm(*fit.resolution)
@@ -599,7 +616,10 @@ def _fit_annotation(fit: FitResult) -> str:
     if fit.yields_reliable:
         sy, sye = fit.signal_yield
         by, bye = fit.background_yield
-        lines.append(rf"$N_{{\mathrm{{sig}}}}$ = {sy:,.0f} $\pm$ {sye:,.0f},  $N_{{\mathrm{{bkg}}}}$ = {by:,.0f} $\pm$ {bye:,.0f}")
+        lines.append(
+            rf"$N_{{\mathrm{{sig}}}}$ = {sy:,.0f} $\pm$ {sye:,.0f},  "
+            rf"$N_{{\mathrm{{bkg}}}}$ = {by:,.0f} $\pm$ {bye:,.0f}"
+        )
     else:
         lines.append("yields not shown: background not positive")
     lines.append(DATA_SOURCE)
@@ -699,28 +719,73 @@ def plot_mass_spectrum(
         centers, counts = masshist.centers, masshist.counts
         ymax = float(np.max(counts + masshist.errors)) if counts.size else 1.0
         if same_sign is not None:
-            ax.stairs(same_sign.counts, same_sign.edges, color=OKABE_ITO["orange"], linestyle="-.", linewidth=1.2,
-                      baseline=None if logy else 0.0, label="Same-sign pairs", gid="same-sign")
+            ax.stairs(
+                same_sign.counts,
+                same_sign.edges,
+                color=OKABE_ITO["orange"],
+                linestyle="-.",
+                linewidth=1.2,
+                baseline=None if logy else 0.0,
+                label="Same-sign pairs",
+                gid="same-sign",
+            )
         if fit is not None:
             lo, hi = fit.fit_range
             x = np.linspace(lo, hi, 1000)
             total, bkg = fit.model(x) * width, fit.background(x) * width
-            ax.fill_between(x, bkg, total, color=OKABE_ITO["sky_blue"], alpha=0.35, linewidth=0,
-                            label=f"Signal ({_MODEL_LABELS.get(fit.model_name, fit.model_name)})", gid="fit-signal")
-            ax.plot(x, bkg, color=OKABE_ITO["vermillion"], linestyle="--", linewidth=1.2,
-                    label=f"Background (pol{fit.poly_degree})", gid="fit-background")
-            ax.plot(x, total, color=OKABE_ITO["blue"], linestyle="-", linewidth=1.4, label="Fit: signal + background",
-                    gid="fit-total")
+            ax.fill_between(
+                x,
+                bkg,
+                total,
+                color=OKABE_ITO["sky_blue"],
+                alpha=0.35,
+                linewidth=0,
+                label=f"Signal ({_MODEL_LABELS.get(fit.model_name, fit.model_name)})",
+                gid="fit-signal",
+            )
+            ax.plot(
+                x,
+                bkg,
+                color=OKABE_ITO["vermillion"],
+                linestyle="--",
+                linewidth=1.2,
+                label=f"Background (pol{fit.poly_degree})",
+                gid="fit-background",
+            )
+            ax.plot(
+                x,
+                total,
+                color=OKABE_ITO["blue"],
+                linestyle="-",
+                linewidth=1.4,
+                label="Fit: signal + background",
+                gid="fit-total",
+            )
             ymax = max(ymax, float(np.max(total)))
-        data = ax.errorbar(centers, counts, yerr=masshist.errors, fmt="o", color="black", markersize=3.2,
-                           elinewidth=0.8, label="Data", zorder=5)
+        data = ax.errorbar(
+            centers,
+            counts,
+            yerr=masshist.errors,
+            fmt="o",
+            color="black",
+            markersize=3.2,
+            elinewidth=0.8,
+            label="Data",
+            zorder=5,
+        )
         data.lines[0].set_gid("data")
         for coll in data.lines[2]:
             coll.set_gid("data-errors")
         if pdg:
             mass = pdg_mass_width("Z")[0]
-            ax.axvline(mass, color=OKABE_ITO["green"], linestyle=":", linewidth=1.3,
-                       label=rf"PDG $m_Z$ = {mass:.4f} GeV", gid="pdg")
+            ax.axvline(
+                mass,
+                color=OKABE_ITO["green"],
+                linestyle=":",
+                linewidth=1.3,
+                label=rf"PDG $m_Z$ = {mass:.4f} GeV",
+                gid="pdg",
+            )
 
         ax.set_xlim(masshist.edges[0], masshist.edges[-1])
         if logy:
@@ -753,8 +818,17 @@ def plot_mass_spectrum(
 
         annotation = None
         if annotate and fit is not None:
-            annotation = ax.text(0.03, 0.97, _fit_annotation(fit), transform=ax.transAxes, fontsize=8.5,
-                                 linespacing=1.45, ha="left", va="top", gid=_ANNOTATION_GID)
+            annotation = ax.text(
+                0.03,
+                0.97,
+                _fit_annotation(fit),
+                transform=ax.transAxes,
+                fontsize=8.5,
+                linespacing=1.45,
+                ha="left",
+                va="top",
+                gid=_ANNOTATION_GID,
+            )
         _place_boxes(ax, annotation, logy, {})
         _separate_titles(ax)
     return fig, axes
@@ -763,9 +837,19 @@ def plot_mass_spectrum(
 # -- other figures -------------------------------------------------------------------------------------
 
 
-def _distribution(values: Any, before: Any, bins: np.ndarray, attr: str, xlabel: str, ylabel: str,
-                  logy: bool, label: str, fig: Figure | None, acceptance: float | None,
-                  outside_text: Any) -> tuple[Figure, Axes]:
+def _distribution(
+    values: Any,
+    before: Any,
+    bins: np.ndarray,
+    attr: str,
+    xlabel: str,
+    ylabel: str,
+    logy: bool,
+    label: str,
+    fig: Figure | None,
+    acceptance: float | None,
+    outside_text: Any,
+) -> tuple[Figure, Axes]:
     after = _flat(values, attr)
     with paper_style():
         fig = _prepare_figure(fig, (WIDTH, 3.8))
@@ -776,20 +860,40 @@ def _distribution(values: Any, before: Any, bins: np.ndarray, attr: str, xlabel:
             raw = _flat(before, attr)
             counts, _ = np.histogram(raw, bins=bins)
             outside = int(np.sum((raw < lo) | (raw >= hi)))
-            ax.stairs(counts, bins, color=OKABE_ITO["vermillion"], linestyle="--", linewidth=1.2,
-                      baseline=None if logy else 0.0, gid="before",
-                      label=f"All muons ({raw.size:,}" + (f"; {outside:,} {outside_text})" if outside else ")"))
+            ax.stairs(
+                counts,
+                bins,
+                color=OKABE_ITO["vermillion"],
+                linestyle="--",
+                linewidth=1.2,
+                baseline=None if logy else 0.0,
+                gid="before",
+                label=f"All muons ({raw.size:,}" + (f"; {outside:,} {outside_text})" if outside else ")"),
+            )
             peak = max(peak, float(counts.max(initial=0)))
         counts, _ = np.histogram(after, bins=bins)
         outside = int(np.sum((after < lo) | (after >= hi)))
-        ax.stairs(counts, bins, color=OKABE_ITO["blue"], linestyle="-", linewidth=1.4,
-                  baseline=None if logy else 0.0, gid="after",
-                  label=f"Selected muons ({after.size:,}" + (f"; {outside:,} {outside_text})" if outside else ")"))
+        ax.stairs(
+            counts,
+            bins,
+            color=OKABE_ITO["blue"],
+            linestyle="-",
+            linewidth=1.4,
+            baseline=None if logy else 0.0,
+            gid="after",
+            label=f"Selected muons ({after.size:,}" + (f"; {outside:,} {outside_text})" if outside else ")"),
+        )
         peak = max(peak, float(counts.max(initial=0)), 1.0)
         if acceptance is not None:
             for edge in (-acceptance, acceptance):
-                ax.axvline(edge, color="0.3", linestyle="-.", linewidth=0.9, gid="acceptance",
-                           label=rf"$|\eta|$ = {acceptance:g} (acceptance)" if edge > 0 else "_nolegend_")
+                ax.axvline(
+                    edge,
+                    color="0.3",
+                    linestyle="-.",
+                    linewidth=0.9,
+                    gid="acceptance",
+                    label=rf"$|\eta|$ = {acceptance:g} (acceptance)" if edge > 0 else "_nolegend_",
+                )
         ax.set_xlim(lo, hi)
         if logy:
             ax.set_yscale("log", nonpositive="mask")
@@ -834,8 +938,19 @@ def plot_pt_distribution(
     edges = np.asarray(bins if bins is not None else np.arange(0.0, 202.0, 2.0), dtype=float)
     width = np.diff(edges)
     ylabel = f"Muons / {width[0]:g} GeV" if np.allclose(width, width[0]) else "Muons / bin"
-    return _distribution(muons_or_selection, before, edges, "pt", r"Muon $p_{\mathrm{T}}$ [GeV]", ylabel,
-                         logy, label, fig, None, f"outside {edges[0]:g}-{edges[-1]:g} GeV")
+    return _distribution(
+        muons_or_selection,
+        before,
+        edges,
+        "pt",
+        r"Muon $p_{\mathrm{T}}$ [GeV]",
+        ylabel,
+        logy,
+        label,
+        fig,
+        None,
+        f"outside {edges[0]:g}-{edges[-1]:g} GeV",
+    )
 
 
 def plot_eta_distribution(
@@ -858,11 +973,24 @@ def plot_eta_distribution(
     edges = np.asarray(bins if bins is not None else np.linspace(-12.0, 12.0, 97), dtype=float)
     width = np.diff(edges)
     ylabel = f"Muons / {width[0]:g}" if np.allclose(width, width[0]) else "Muons / bin"
-    return _distribution(muons_or_selection, before, edges, "eta", r"Muon $\eta$", ylabel, logy, label, fig,
-                         acceptance, f"outside {edges[0]:g} to {edges[-1]:g}")
+    return _distribution(
+        muons_or_selection,
+        before,
+        edges,
+        "eta",
+        r"Muon $\eta$",
+        ylabel,
+        logy,
+        label,
+        fig,
+        acceptance,
+        f"outside {edges[0]:g} to {edges[-1]:g}",
+    )
 
 
-def plot_cutflow(cutflow: CutFlow | Selection, label: str = "CMS Open Data", fig: Figure | None = None) -> tuple[Figure, Axes]:
+def plot_cutflow(
+    cutflow: CutFlow | Selection, label: str = "CMS Open Data", fig: Figure | None = None
+) -> tuple[Figure, Axes]:
     """Horizontal bars: events left after each selection step, with counts and percent of all events.
 
     The first bar is every event in the file. Each later bar is the number of
@@ -879,8 +1007,9 @@ def plot_cutflow(cutflow: CutFlow | Selection, label: str = "CMS Open Data", fig
         cutflow = cutflow.cutflow()
     rows = cutflow.to_records()
     names = [textwrap.fill(r["cut"], width=26, break_long_words=False) for r in rows]
-    values = np.array([r["n_events"] if r["level"] in ("start", "event") else r["n_events_with_particles"]
-                       for r in rows], dtype=float)
+    values = np.array(
+        [r["n_events"] if r["level"] in ("start", "event") else r["n_events_with_particles"] for r in rows], dtype=float
+    )
     start = rows[0]["n_events"]
     with paper_style():
         fig = _prepare_figure(fig, (WIDTH, 0.38 * len(rows) + 1.3))
@@ -888,8 +1017,18 @@ def plot_cutflow(cutflow: CutFlow | Selection, label: str = "CMS Open Data", fig
         y = np.arange(len(rows))[::-1]
         thousands = values / 1000.0
         ax.barh(y, thousands, height=0.62, color=OKABE_ITO["blue"], alpha=0.85, gid="bars")
-        texts = [ax.text(v + 0.012 * thousands.max(), yi, f"{n:,.0f} ({100 * n / start:.1f} %)", va="center",
-                         ha="left", fontsize=8.5, gid="bar-label") for yi, v, n in zip(y, thousands, values)]
+        texts = [
+            ax.text(
+                v + 0.012 * thousands.max(),
+                yi,
+                f"{n:,.0f} ({100 * n / start:.1f} %)",
+                va="center",
+                ha="left",
+                fontsize=8.5,
+                gid="bar-label",
+            )
+            for yi, v, n in zip(y, thousands, values, strict=False)
+        ]
         ax.set_yticks(y, names, fontsize=8.5)
         ax.tick_params(axis="y", which="both", left=False, right=False)
         ax.minorticks_off()
@@ -911,9 +1050,15 @@ def plot_cutflow(cutflow: CutFlow | Selection, label: str = "CMS Open Data", fig
     return fig, ax
 
 
-def plot_os_vs_ss(masshist_os: MassHistogram, masshist_ss: MassHistogram, logy: bool = True, pdg: bool = True,
-                  label: str = "CMS Open Data", selection: str | None = None,
-                  fig: Figure | None = None) -> tuple[Figure, Axes]:
+def plot_os_vs_ss(
+    masshist_os: MassHistogram,
+    masshist_ss: MassHistogram,
+    logy: bool = True,
+    pdg: bool = True,
+    label: str = "CMS Open Data",
+    selection: str | None = None,
+    fig: Figure | None = None,
+) -> tuple[Figure, Axes]:
     """Opposite-sign and same-sign dimuon mass spectra on one log-scale axis.
 
     The Z is neutral, so it decays only to opposite-sign pairs; same-sign
@@ -931,14 +1076,36 @@ def plot_os_vs_ss(masshist_os: MassHistogram, masshist_ss: MassHistogram, logy: 
         fig = _prepare_figure(fig, (WIDTH, 3.8))
         ax = fig.subplots()
         base = None if logy else 0.0
-        ax.stairs(masshist_os.counts, masshist_os.edges, color=OKABE_ITO["blue"], linestyle="-", linewidth=1.4,
-                  baseline=base, label=f"Opposite-sign pairs ({masshist_os.n_entries:,})", gid="os")
-        ax.stairs(masshist_ss.counts, masshist_ss.edges, color=OKABE_ITO["orange"], linestyle="--", linewidth=1.4,
-                  baseline=base, label=f"Same-sign pairs ({masshist_ss.n_entries:,})", gid="ss")
+        ax.stairs(
+            masshist_os.counts,
+            masshist_os.edges,
+            color=OKABE_ITO["blue"],
+            linestyle="-",
+            linewidth=1.4,
+            baseline=base,
+            label=f"Opposite-sign pairs ({masshist_os.n_entries:,})",
+            gid="os",
+        )
+        ax.stairs(
+            masshist_ss.counts,
+            masshist_ss.edges,
+            color=OKABE_ITO["orange"],
+            linestyle="--",
+            linewidth=1.4,
+            baseline=base,
+            label=f"Same-sign pairs ({masshist_ss.n_entries:,})",
+            gid="ss",
+        )
         if pdg:
             mass = pdg_mass_width("Z")[0]
-            ax.axvline(mass, color=OKABE_ITO["green"], linestyle=":", linewidth=1.3,
-                       label=rf"PDG $m_Z$ = {mass:.4f} GeV", gid="pdg")
+            ax.axvline(
+                mass,
+                color=OKABE_ITO["green"],
+                linestyle=":",
+                linewidth=1.3,
+                label=rf"PDG $m_Z$ = {mass:.4f} GeV",
+                gid="pdg",
+            )
         top = max(float(masshist_os.counts.max(initial=0)), float(masshist_ss.counts.max(initial=0)), 1.0)
         ax.set_xlim(masshist_os.edges[0], masshist_os.edges[-1])
         if logy:

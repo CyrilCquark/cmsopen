@@ -164,7 +164,9 @@ class ChannelConfig:
         lo, hi = self.mass_range
         flo, fhi = self.fit_range
         if not (lo < hi and lo <= flo < fhi <= hi):
-            raise ValueError(f"need mass_range low < high containing fit_range; got {self.mass_range}, {self.fit_range}")
+            raise ValueError(
+                f"need mass_range low < high containing fit_range; got {self.mass_range}, {self.fit_range}"
+            )
         if self.bins < 1 or self.poly_degree < 0:
             raise ValueError("bins must be >= 1 and poly_degree >= 0")
 
@@ -192,35 +194,39 @@ def register_channel(config: ChannelConfig, replace: bool = False) -> ChannelCon
     return config
 
 
-register_channel(ChannelConfig(
-    name="Z_mumu",
-    description="Z -> mu+ mu-: tight isolated muons, dimuon trigger, 60-120 GeV",
-    muon_cuts=ZMUMU_MUON_CUTS,
-    triggers=DIMUON_TRIGGERS_2012,
-    mass_range=(60.0, 120.0),
-    bins=60,
-    fit_range=(70.0, 110.0),
-    poly_degree=2,
-    resonance="Z",
-    candidate_strategy="highest_pt_sum",
-    stability_fit_ranges=((70.0, 110.0), (75.0, 105.0), (80.0, 100.0)),
-    stability_bin_widths=(0.5, 1.0, 2.0),
-))
+register_channel(
+    ChannelConfig(
+        name="Z_mumu",
+        description="Z -> mu+ mu-: tight isolated muons, dimuon trigger, 60-120 GeV",
+        muon_cuts=ZMUMU_MUON_CUTS,
+        triggers=DIMUON_TRIGGERS_2012,
+        mass_range=(60.0, 120.0),
+        bins=60,
+        fit_range=(70.0, 110.0),
+        poly_degree=2,
+        resonance="Z",
+        candidate_strategy="highest_pt_sum",
+        stability_fit_ranges=((70.0, 110.0), (75.0, 105.0), (80.0, 100.0)),
+        stability_bin_widths=(0.5, 1.0, 2.0),
+    )
+)
 
-register_channel(ChannelConfig(
-    name="Jpsi_mumu",
-    description="J/psi -> mu+ mu-: soft-ID muons above 3 GeV, J/psi dimuon triggers, 2.6-3.6 GeV",
-    muon_cuts={"min_pt": 3.0, "max_eta": 2.4, "quality_id": "soft"},
-    triggers=("HLT_Dimuon8_Jpsi", "HLT_Dimuon10_Jpsi"),
-    mass_range=(2.6, 3.6),
-    bins=50,
-    fit_range=(2.8, 3.4),
-    poly_degree=2,
-    resonance="J/psi",
-    candidate_strategy="highest_pt_sum",
-    stability_fit_ranges=((2.8, 3.4), (2.85, 3.35), (2.9, 3.3)),
-    stability_bin_widths=(0.01, 0.02, 0.04),
-))
+register_channel(
+    ChannelConfig(
+        name="Jpsi_mumu",
+        description="J/psi -> mu+ mu-: soft-ID muons above 3 GeV, J/psi dimuon triggers, 2.6-3.6 GeV",
+        muon_cuts={"min_pt": 3.0, "max_eta": 2.4, "quality_id": "soft"},
+        triggers=("HLT_Dimuon8_Jpsi", "HLT_Dimuon10_Jpsi"),
+        mass_range=(2.6, 3.6),
+        bins=50,
+        fit_range=(2.8, 3.4),
+        poly_degree=2,
+        resonance="J/psi",
+        candidate_strategy="highest_pt_sum",
+        stability_fit_ranges=((2.8, 3.4), (2.85, 3.35), (2.9, 3.3)),
+        stability_bin_widths=(0.01, 0.02, 0.04),
+    )
+)
 
 
 def _channel(channel: str, config: ChannelConfig | None) -> ChannelConfig:
@@ -323,11 +329,18 @@ def _fit_dict(fit: FitResult | None) -> dict[str, Any] | None:
 def _pdg_dict(c: PdgComparison | None) -> dict[str, Any] | None:
     if c is None:
         return None
-    return _jsonable({
-        "particle": c.particle, "pdg_mass_gev": c.pdg_mass, "pdg_mass_error_gev": c.pdg_mass_error,
-        "fitted_gev": c.fitted, "fitted_stat_error_gev": c.fitted_error, "offset_gev": c.difference,
-        "offset_percent": 100 * c.relative_difference, "pull_statistical_error_only": c.pull,
-    })
+    return _jsonable(
+        {
+            "particle": c.particle,
+            "pdg_mass_gev": c.pdg_mass,
+            "pdg_mass_error_gev": c.pdg_mass_error,
+            "fitted_gev": c.fitted,
+            "fitted_stat_error_gev": c.fitted_error,
+            "offset_gev": c.difference,
+            "offset_percent": 100 * c.relative_difference,
+            "pull_statistical_error_only": c.pull,
+        }
+    )
 
 
 @dataclass
@@ -396,12 +409,14 @@ class AnalysisResult:
                 yields = f"signal {sy:,.0f} +- {sye:,.0f}, background {by:,.0f} +- {bye:,.0f}"
             else:
                 yields = "yields not shown: background not positive"
-            rows.append(f"  {fit.model_name:<12}{f'{m:.4f} +- {me:.4f}':>22}{f'{s:.4f} +- {se:.4f}':>22}"
-                        f"{f'{fit.chi2:.1f}/{fit.ndf} = {fit.chi2_ndf:.2f}':>22}{fit.p_value:>10.3g}  {yields}")
+            rows.append(
+                f"  {fit.model_name:<12}{f'{m:.4f} +- {me:.4f}':>22}{f'{s:.4f} +- {se:.4f}':>22}"
+                f"{f'{fit.chi2:.1f}/{fit.ndf} = {fit.chi2_ndf:.2f}':>22}{fit.p_value:>10.3g}  {yields}"
+            )
         return rows
 
     def summary(self) -> str:
-        """The printed report: inputs, cutflow, pairs, both fits, the PDG offset with its caveat, stability, warnings."""
+        """The printed report: inputs, cutflow, pairs, fits, the PDG offset with its caveat, stability, warnings."""
         lines = [f"cmsopen analysis: {self.config.name} ({self.config.description})"]
         lines.append(f"Files ({len(self.files)}):")
         lines += [f"  {f}" for f in self.files]
@@ -410,8 +425,10 @@ class AnalysisResult:
         lines.append("Cutflow:")
         lines.append(str(self.cutflow))
         lines.append("")
-        lines.append(f"Opposite-sign pair candidates: {self.n_os_pairs:,}; one per event ({self.config.candidate_strategy}): "
-                     f"{len(self.masses):,}; same-sign pairs: {len(self.same_sign_masses):,}")
+        lines.append(
+            f"Opposite-sign pair candidates: {self.n_os_pairs:,}; one per event ({self.config.candidate_strategy}): "
+            f"{len(self.masses):,}; same-sign pairs: {len(self.same_sign_masses):,}"
+        )
         lo, hi = self.fit.fit_range
         lines.append(f"Histogram: {self.histogram!r}; fit range {lo:g}-{hi:g} GeV, {self.fit.n_entries:,} entries")
         lines.append("")
@@ -422,19 +439,27 @@ class AnalysisResult:
         m, me = self.fit.peak_position
         s, se = self.fit.resolution
         lines.append(f"Peak position ({self.fit.model_name}): {m:.4f} +- {me:.4f} GeV (statistical error only)")
-        lines.append(f"Resolution: {s:.4f} +- {se:.4f} GeV; chi2/ndf = {self.fit.chi2:.1f}/{self.fit.ndf} = {self.fit.chi2_ndf:.2f}")
+        lines.append(
+            f"Resolution: {s:.4f} +- {se:.4f} GeV; "
+            f"chi2/ndf = {self.fit.chi2:.1f}/{self.fit.ndf} = {self.fit.chi2_ndf:.2f}"
+        )
         lines.append(f"PDG {c.particle} mass (particle package): {c.pdg_mass:.4f} GeV")
         for fit in (self.fit, self.alternate_fit):
             if fit is None:
                 continue
             cc = self.pdg[fit.model_name]
-            lines.append(f"Offset from PDG ({fit.model_name}): {cc.difference:+.4f} GeV ({100 * cc.relative_difference:+.3f} %), "
-                         f"pull {cc.pull:+.1f} (statistical error only)")
+            lines.append(
+                f"Offset from PDG ({fit.model_name}): {cc.difference:+.4f} GeV "
+                f"({100 * cc.relative_difference:+.3f} %), "
+                f"pull {cc.pull:+.1f} (statistical error only)"
+            )
         lines.append(SYSTEMATICS_SENTENCE)
         if self.stability is not None:
             st = self.stability
-            lines.append(f"Stability over {st.n_fits} fit choices ({len(st.failed)} failed): peak mean {st.mean:.4f} GeV, "
-                         f"spread {st.std:.4f} GeV (std), range {st.min:.4f}-{st.max:.4f} GeV (fit-choice spread only)")
+            lines.append(
+                f"Stability over {st.n_fits} fit choices ({len(st.failed)} failed): peak mean {st.mean:.4f} GeV, "
+                f"spread {st.std:.4f} GeV (std), range {st.min:.4f}-{st.max:.4f} GeV (fit-choice spread only)"
+            )
         if self.warnings:
             lines.append("")
             lines.append("Warnings:")
@@ -444,31 +469,59 @@ class AnalysisResult:
     def to_dict(self) -> dict[str, Any]:
         """A JSON-serializable summary (no Figure objects, no per-pair arrays)."""
         st = self.stability
-        return _jsonable({
-            "schema": "cmsopen.AnalysisResult/1",
-            "channel": self.config.to_dict(),
-            "files": list(self.files),
-            "n_events": self.n_events,
-            "cutflow": [{k: r[k] for k in ("step", "cut", "name", "params", "level", "n_particles",
-                                           "n_events_with_particles", "n_events")} for r in self.cutflow.to_records()],
-            "n_os_pairs": self.n_os_pairs,
-            "n_chosen_pairs": len(self.masses),
-            "n_same_sign_pairs": len(self.same_sign_masses),
-            "histogram": {"edges_gev": self.histogram.edges, "counts": self.histogram.counts,
-                          "underflow": self.histogram.underflow, "overflow": self.histogram.overflow},
-            "fit": _fit_dict(self.fit),
-            "alternate_fit": _fit_dict(self.alternate_fit),
-            "pdg_comparison": {name: _pdg_dict(c) for name, c in self.pdg.items()},
-            "systematics_note": SYSTEMATICS_SENTENCE,
-            "stability": None if st is None else {
-                "rows": [{k: v for k, v in r.items() if k != "warnings"} | {"warnings": [str(w) for w in r["warnings"]]}
-                         for r in st.rows],
-                "failed": st.failed, "mean_gev": st.mean, "std_gev": st.std, "min_gev": st.min, "max_gev": st.max,
-                "label": "fit-choice spread only",
-            },
-            "warnings": list(self.warnings),
-            "versions": dict(self.versions),
-        })
+        return _jsonable(
+            {
+                "schema": "cmsopen.AnalysisResult/1",
+                "channel": self.config.to_dict(),
+                "files": list(self.files),
+                "n_events": self.n_events,
+                "cutflow": [
+                    {
+                        k: r[k]
+                        for k in (
+                            "step",
+                            "cut",
+                            "name",
+                            "params",
+                            "level",
+                            "n_particles",
+                            "n_events_with_particles",
+                            "n_events",
+                        )
+                    }
+                    for r in self.cutflow.to_records()
+                ],
+                "n_os_pairs": self.n_os_pairs,
+                "n_chosen_pairs": len(self.masses),
+                "n_same_sign_pairs": len(self.same_sign_masses),
+                "histogram": {
+                    "edges_gev": self.histogram.edges,
+                    "counts": self.histogram.counts,
+                    "underflow": self.histogram.underflow,
+                    "overflow": self.histogram.overflow,
+                },
+                "fit": _fit_dict(self.fit),
+                "alternate_fit": _fit_dict(self.alternate_fit),
+                "pdg_comparison": {name: _pdg_dict(c) for name, c in self.pdg.items()},
+                "systematics_note": SYSTEMATICS_SENTENCE,
+                "stability": None
+                if st is None
+                else {
+                    "rows": [
+                        {k: v for k, v in r.items() if k != "warnings"} | {"warnings": [str(w) for w in r["warnings"]]}
+                        for r in st.rows
+                    ],
+                    "failed": st.failed,
+                    "mean_gev": st.mean,
+                    "std_gev": st.std,
+                    "min_gev": st.min,
+                    "max_gev": st.max,
+                    "label": "fit-choice spread only",
+                },
+                "warnings": list(self.warnings),
+                "versions": dict(self.versions),
+            }
+        )
 
     def save(self, directory: str | Path) -> list[Path]:
         """Write figures (png and pdf), summary.txt and summary.json into ``directory``; return the paths.
@@ -534,7 +587,7 @@ def _check_survivors(cutflow: CutFlow) -> None:
     if _survivors(steps[-1]) > 0:
         return
     last_ok = None
-    for prev, step in zip(steps, steps[1:]):
+    for prev, step in zip(steps, steps[1:], strict=False):
         if _survivors(prev) > 0 and _survivors(step) == 0:
             last_ok, killer = prev, step
             break
@@ -579,8 +632,9 @@ def _open(path: str) -> Any:
         raise AnalysisError(f"cannot open {path}: {exc}") from None
 
 
-def _plan(files: Sequence[str], config: ChannelConfig, n_events: int | None, chunk_size: int,
-          fields: tuple[str, ...]) -> tuple[list[_Unit], int]:
+def _plan(
+    files: Sequence[str], config: ChannelConfig, n_events: int | None, chunk_size: int, fields: tuple[str, ...]
+) -> tuple[list[_Unit], int]:
     """Split the input into chunks, file by file, after checking every file can be analysed."""
     units: list[_Unit] = []
     n_done = 0
@@ -600,8 +654,15 @@ def _plan(files: Sequence[str], config: ChannelConfig, n_events: int | None, chu
     return units, n_done
 
 
-def _run_chunk(events: Any, triggers: tuple[str, ...], cuts: Mapping[str, Any], strategy: str,
-               fields: tuple[str, ...], start: int, stop: int) -> _ChunkResult:
+def _run_chunk(
+    events: Any,
+    triggers: tuple[str, ...],
+    cuts: Mapping[str, Any],
+    strategy: str,
+    fields: tuple[str, ...],
+    start: int,
+    stop: int,
+) -> _ChunkResult:
     """Selection, trigger, pairing and masses for one event range of an open file (the unit of work)."""
     sel = select_muons(events, fields=fields, entry_start=start, entry_stop=stop)
     if triggers:
@@ -621,8 +682,15 @@ _WORKER_FILE: dict[str, Any] = {}
 """In a worker process: the file it has open (opening a NanoAOD file reads all its branch metadata)."""
 
 
-def _chunk_worker(path: str, triggers: tuple[str, ...], cuts: dict[str, Any], strategy: str,
-                  fields: tuple[str, ...], start: int, stop: int) -> _ChunkResult:
+def _chunk_worker(
+    path: str,
+    triggers: tuple[str, ...],
+    cuts: dict[str, Any],
+    strategy: str,
+    fields: tuple[str, ...],
+    start: int,
+    stop: int,
+) -> _ChunkResult:
     """Process-pool entry point: process one chunk, keeping the worker's current file open between chunks.
 
     Opening a file costs a noticeable fraction of a chunk's processing time,
@@ -639,8 +707,9 @@ def _chunk_worker(path: str, triggers: tuple[str, ...], cuts: dict[str, Any], st
     return _run_chunk(events, triggers, cuts, strategy, fields, start, stop)
 
 
-def _execute(units: list[_Unit], config: ChannelConfig, fields: tuple[str, ...],
-             n_workers: int | None) -> list[_ChunkResult]:
+def _execute(
+    units: list[_Unit], config: ChannelConfig, fields: tuple[str, ...], n_workers: int | None
+) -> list[_ChunkResult]:
     """Process every unit, serially or in a process pool, and return the results in unit order.
 
     Results are collected in the fixed order of the units (files in the
@@ -669,7 +738,7 @@ def _execute(units: list[_Unit], config: ChannelConfig, fields: tuple[str, ...],
 
     with ProcessPoolExecutor(max_workers=min(n_workers, len(units))) as pool:
         futures = [pool.submit(_chunk_worker, u.path, triggers, cuts, strategy, fields, u.start, u.stop) for u in units]
-        for unit, future in zip(units, futures):
+        for unit, future in zip(units, futures, strict=False):
             try:
                 results.append(future.result())
             except Exception as exc:
@@ -761,8 +830,9 @@ def analyze(
         raise ValueError(f"model must be one of {MODELS}, got {model!r}")
     if not isinstance(chunk_size, (int, np.integer)) or chunk_size < 1:
         raise ValueError(f"chunk_size must be a positive integer, got {chunk_size!r}")
-    if n_workers is not None and (isinstance(n_workers, bool) or not isinstance(n_workers, (int, np.integer))
-                                  or n_workers < 1):
+    if n_workers is not None and (
+        isinstance(n_workers, bool) or not isinstance(n_workers, (int, np.integer)) or n_workers < 1
+    ):
         raise ValueError(f"n_workers must be a positive integer or None, got {n_workers!r}")
     if n_events is not None and (not isinstance(n_events, (int, np.integer)) or n_events < 1):
         raise ValueError(f"n_events must be a positive integer or None, got {n_events!r}")
@@ -798,8 +868,9 @@ def analyze(
         raise AnalysisError(f"the {model} fit failed: {exc}") from None
     other = next(m for m in MODELS if m != model)
     try:
-        alternate: FitResult | None = fit_mass_peak(hist, model=other, fit_range=fit_range,
-                                                    poly_degree=cfg.poly_degree, natural_width=width)
+        alternate: FitResult | None = fit_mass_peak(
+            hist, model=other, fit_range=fit_range, poly_degree=cfg.poly_degree, natural_width=width
+        )
     except FitError as exc:
         alternate = None
         warnings.append(f"the alternate {other} fit failed: {exc}")
@@ -810,11 +881,17 @@ def analyze(
 
     stab = None
     if stability:
-        stab = fit_stability(masses, fit_ranges=cfg.stability_fit_ranges or (fit_range,),
-                             bin_widths=cfg.stability_bin_widths or ((cfg.mass_range[1] - cfg.mass_range[0]) / n_bins,),
-                             hist_range=cfg.mass_range, natural_width=width)
+        stab = fit_stability(
+            masses,
+            fit_ranges=cfg.stability_fit_ranges or (fit_range,),
+            bin_widths=cfg.stability_bin_widths or ((cfg.mass_range[1] - cfg.mass_range[0]) / n_bins,),
+            hist_range=cfg.mass_range,
+            natural_width=width,
+        )
         if stab.failed:
-            warnings.append(f"{len(stab.failed)} of {stab.n_fits} stability fits failed (listed in the stability table)")
+            warnings.append(
+                f"{len(stab.failed)} of {stab.n_fits} stability fits failed (listed in the stability table)"
+            )
 
     figures: dict[str, Any] = {}
     figures["mass_fit"], _ = plot_mass_spectrum(hist, fit, label="CMS Open Data")
@@ -823,9 +900,21 @@ def analyze(
     figures["cutflow"], _ = plot_cutflow(cutflow)
 
     result = AnalysisResult(
-        config=cfg, files=files, n_events=n_done, cutflow=cutflow, masses=masses, same_sign_masses=ss_masses,
-        n_os_pairs=n_os, histogram=hist, fit=fit, alternate_fit=alternate, pdg=pdg, stability=stab,
-        figures=figures, warnings=warnings, versions=_versions(),
+        config=cfg,
+        files=files,
+        n_events=n_done,
+        cutflow=cutflow,
+        masses=masses,
+        same_sign_masses=ss_masses,
+        n_os_pairs=n_os,
+        histogram=hist,
+        fit=fit,
+        alternate_fit=alternate,
+        pdg=pdg,
+        stability=stab,
+        figures=figures,
+        warnings=warnings,
+        versions=_versions(),
     )
     if verbose:
         print(result.summary())

@@ -31,7 +31,9 @@ def _p4(pt, eta, phi, mass) -> FourMomentum:
     return FourMomentum.from_arrays(*(ak.Array(x) for x in (pt, eta, phi, mass)))
 
 
-def decay_at_rest(parent_mass: float, theta: float, phi: float, m: float = MU_MASS) -> tuple[FourMomentum, FourMomentum]:
+def decay_at_rest(
+    parent_mass: float, theta: float, phi: float, m: float = MU_MASS
+) -> tuple[FourMomentum, FourMomentum]:
     """Two-body decay of a parent at rest: back-to-back legs with p = sqrt((M/2)^2 - m^2)."""
     p = np.sqrt((parent_mass / 2) ** 2 - m**2)
     legs = []
@@ -92,7 +94,7 @@ def test_parent_at_rest(parent, theta, phi):
 
 def test_parent_at_rest_random_directions():
     rng = np.random.default_rng(1876)
-    for theta, phi in zip(np.arccos(rng.uniform(-0.95, 0.95, 20)), rng.uniform(-np.pi, np.pi, 20)):
+    for theta, phi in zip(np.arccos(rng.uniform(-0.95, 0.95, 20)), rng.uniform(-np.pi, np.pi, 20), strict=False):
         p1, p2 = decay_at_rest(Z_MASS, theta, phi)
         assert _flat(invariant_mass(p1, p2))[0] == pytest.approx(Z_MASS, rel=1e-9)
 
@@ -154,7 +156,9 @@ def test_delta_phi_wrapping():
 
 
 def test_delta_r_hand_cases():
-    assert _flat(delta_r(_p4([[10.0]], [[0.0]], [[0.0]], [[0.0]]), _p4([[10.0]], [[0.3]], [[0.4]], [[0.0]])))[0] == pytest.approx(0.5)
+    assert _flat(delta_r(_p4([[10.0]], [[0.0]], [[0.0]], [[0.0]]), _p4([[10.0]], [[0.3]], [[0.4]], [[0.0]])))[
+        0
+    ] == pytest.approx(0.5)
     across_seam = delta_r(_p4([[10.0]], [[1.0]], [[3.0]], [[0.0]]), _p4([[10.0]], [[1.0]], [[-3.0]], [[0.0]]))
     assert _flat(across_seam)[0] == pytest.approx(2 * np.pi - 6.0)
     assert delta_eta(1.5, -0.5) == pytest.approx(2.0)
@@ -220,8 +224,12 @@ def test_mismatched_structure_raises(random_pairs):
 
 def test_float32_input_gives_float64_output():
     f32 = ak.values_astype(ak.Array([[45.0, 40.0], []]), np.float32)
-    p1 = FourMomentum.from_arrays(f32, f32 * 0 + np.float32(0.3), f32 * 0 + np.float32(1.0), f32 * 0 + np.float32(MU_MASS))
-    p2 = FourMomentum.from_arrays(f32, f32 * 0 - np.float32(0.4), f32 * 0 - np.float32(2.0), f32 * 0 + np.float32(MU_MASS))
+    p1 = FourMomentum.from_arrays(
+        f32, f32 * 0 + np.float32(0.3), f32 * 0 + np.float32(1.0), f32 * 0 + np.float32(MU_MASS)
+    )
+    p2 = FourMomentum.from_arrays(
+        f32, f32 * 0 - np.float32(0.4), f32 * 0 - np.float32(2.0), f32 * 0 + np.float32(MU_MASS)
+    )
     s = pair_summary(p1, p2)
     for field in ak.fields(s):
         assert ak.type(s[field]).content.content.primitive == "float64"

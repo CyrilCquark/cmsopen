@@ -85,6 +85,7 @@ class Figures:
 
 
 def default_file() -> Path:
+    """The first ROOT file in the repository's data/ directory (exits with a message if there is none)."""
     files = sorted((REPO / "data").glob("*.root"))
     if not files:
         sys.exit(f"error: no .root file in {REPO / 'data'}; download one (see DATA.md) or pass --file PATH")
@@ -140,6 +141,7 @@ def _yields_sentence(fits: dict[str, Any]) -> str:
 
 
 def caption(fits: dict[str, Any]) -> str:
+    """The caption of z_peak_fit: the figure, both fits and the caveats."""
     main, other = fits[MAIN_MODEL], fits[OTHER_MODEL]
     return f"""# z_peak_fit
 
@@ -160,7 +162,18 @@ Data.
 """
 
 
+_ROW_FIT = (
+    "| `z_peak_fit.png`, `z_peak_fit.pdf` | Dimuon mass spectrum with the Voigt + quadratic fit, background, "
+    "signal band, PDG Z mass and pull panel. Caption: [`z_peak_fit_caption.md`](z_peak_fit_caption.md). |"
+)
+_ROW_OS_SS = (
+    "| `z_os_vs_ss.png` | Opposite- vs same-sign pair masses (all candidates) for a loose selection (pT > 20 GeV, "
+    "abs(eta) < 2.4, dimuon trigger, no ID or isolation), log scale: the peak is opposite-sign only. |"
+)
+
+
 def readme(fits: dict[str, Any], data_file: Path) -> str:
+    """The README of the figures directory: what each figure is, how to regenerate it, data and versions."""
     try:
         commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"], capture_output=True,
                                 text=True, check=True).stdout.strip()
@@ -174,8 +187,8 @@ Data: these are not CMS results.
 
 | file | content |
 |---|---|
-| `z_peak_fit.png`, `z_peak_fit.pdf` | Dimuon mass spectrum with the Voigt + quadratic fit, background, signal band, PDG Z mass and pull panel. Caption: [`z_peak_fit_caption.md`](z_peak_fit_caption.md). |
-| `z_os_vs_ss.png` | Opposite- vs same-sign pair masses (all candidates) for a loose selection (pT > 20 GeV, abs(eta) < 2.4, dimuon trigger, no ID or isolation), log scale: the peak is opposite-sign only. |
+{_ROW_FIT}
+{_ROW_OS_SS}
 | `muon_pt.png` | Muon pT: every muon in the file vs the muons passing the full selection. |
 | `muon_eta.png` | Muon eta: every muon vs the selected muons, with the abs(eta) = 2.4 acceptance edges. |
 | `cutflow.png` | Events left after each step of the selection, with the percentage of all events. |
@@ -225,24 +238,32 @@ def _inside(path: Path, directory: Path) -> bool:
 
 def _working_tree_clean() -> tuple[bool, str]:
     try:
-        out = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain"], capture_output=True, text=True,
-                             check=True).stdout
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "status", "--porcelain"], capture_output=True, text=True, check=True
+        ).stdout
     except (OSError, subprocess.CalledProcessError) as exc:
         return False, f"cannot run git status: {exc}"
     return not out.strip(), out
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=None, help="NanoAOD ROOT file (default: first data/*.root)")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--outdir", type=Path, default=None, help=f"output directory (default {DEFAULT_OUTDIR})")
-    group.add_argument("--production", action="store_true",
-                       help=f"write into {PRODUCTION_OUTDIR} (protected documentation; clean working tree required)")
+    group.add_argument(
+        "--production",
+        action="store_true",
+        help=f"write into {PRODUCTION_OUTDIR} (protected documentation; clean working tree required)",
+    )
     args = parser.parse_args(argv)
     if args.production:
-        print(f"{BOLD}WARNING: --production OVERWRITES PROTECTED DOCUMENTATION in {PRODUCTION_OUTDIR}. "
-              f"Run it only for the final production run, on explicit instruction.{RESET}", file=sys.stderr)
+        print(
+            f"{BOLD}WARNING: --production OVERWRITES PROTECTED DOCUMENTATION in {PRODUCTION_OUTDIR}. "
+            f"Run it only for the final production run, on explicit instruction.{RESET}",
+            file=sys.stderr,
+        )
         clean, detail = _working_tree_clean()
         if not clean:
             print(f"error: refusing --production: the git working tree is not clean:\n{detail}", file=sys.stderr)
@@ -251,8 +272,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         args.outdir = args.outdir or DEFAULT_OUTDIR
         if _inside(args.outdir, REPO / "docs"):
-            print(f"error: {args.outdir} is protected documentation; use --production for that "
-                  f"(see CLAUDE.md, Documentation freeze)", file=sys.stderr)
+            print(
+                f"error: {args.outdir} is protected documentation; use --production for that "
+                f"(see CLAUDE.md, Documentation freeze)",
+                file=sys.stderr,
+            )
             return 1
     path = (args.file or default_file()).resolve()
     figs = write(build(path), args.outdir)

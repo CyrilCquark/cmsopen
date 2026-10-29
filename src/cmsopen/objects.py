@@ -127,7 +127,7 @@ class FourMomentum:
     """
 
     def __init__(self, pt: Any, eta: Any, phi: Any, mass: Any) -> None:
-        arrays = {name: _to_float64(v) for name, v in zip(_KINEMATICS, (pt, eta, phi, mass))}
+        arrays = {name: _to_float64(v) for name, v in zip(_KINEMATICS, (pt, eta, phi, mass), strict=False)}
         _check_same_structure(arrays)
         self.pt: ak.Array = arrays["pt"]
         """Transverse momentum (GeV): momentum perpendicular to the beam axis."""

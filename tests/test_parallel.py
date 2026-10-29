@@ -68,11 +68,41 @@ def test_invalid_worker_counts(files, bad):
 
 
 def test_cli_workers(tmp_path, files):
-    out = subprocess.run([sys.executable, "-m", "cmsopen", "analyze", str(files[0]), "--workers", "2", "--chunk-size", "50",
-                          "--no-stability", "--outdir", str(tmp_path / "w")], capture_output=True, text=True)
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cmsopen",
+            "analyze",
+            str(files[0]),
+            "--workers",
+            "2",
+            "--chunk-size",
+            "50",
+            "--no-stability",
+            "--outdir",
+            str(tmp_path / "w"),
+        ],
+        capture_output=True,
+        text=True,
+    )
     assert out.returncode == 0, out.stderr
-    serial = subprocess.run([sys.executable, "-m", "cmsopen", "analyze", str(files[0]), "--chunk-size", "50",
-                             "--no-stability", "--outdir", str(tmp_path / "s")], capture_output=True, text=True)
+    serial = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cmsopen",
+            "analyze",
+            str(files[0]),
+            "--chunk-size",
+            "50",
+            "--no-stability",
+            "--outdir",
+            str(tmp_path / "s"),
+        ],
+        capture_output=True,
+        text=True,
+    )
     assert serial.returncode == 0
     assert (tmp_path / "w" / "summary.json").read_bytes() == (tmp_path / "s" / "summary.json").read_bytes()
     assert out.stdout.replace(str(tmp_path / "w"), "") == serial.stdout.replace(str(tmp_path / "s"), "")

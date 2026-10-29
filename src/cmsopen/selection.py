@@ -292,7 +292,9 @@ def max_rel_iso(particles: ParticleCollection, value: float, cone: float | None 
     if cone is None:
         cone = max(cones)
     if cone not in cones:
-        raise ValueError(f"max_rel_iso(): cone {cone!r} not available for {type(particles).__name__}; use one of {sorted(cones)}")
+        raise ValueError(
+            f"max_rel_iso(): cone {cone!r} not available for {type(particles).__name__}; use one of {sorted(cones)}"
+        )
     return _field(particles, cones[cone], "max_rel_iso") < _threshold(value, "max_rel_iso")
 
 
@@ -549,7 +551,8 @@ class CutFlow:
         first = cutflows[0]
         for other in cutflows[1:]:
             mismatch = len(other) != len(first) or any(
-                (a.name, dict(a.params), a.level) != (b.name, dict(b.params), b.level) for a, b in zip(first, other)
+                (a.name, dict(a.params), a.level) != (b.name, dict(b.params), b.level)
+                for a, b in zip(first, other, strict=False)
             )
             if mismatch:
                 raise ValueError(
@@ -558,7 +561,9 @@ class CutFlow:
                 )
         steps = [
             CutStep(
-                step.name, dict(step.params), step.level,
+                step.name,
+                dict(step.params),
+                step.level,
                 sum(cf.steps[i].n_particles for cf in cutflows),
                 sum(cf.steps[i].n_events_with_particles for cf in cutflows),
                 sum(cf.steps[i].n_events for cf in cutflows),
@@ -619,7 +624,9 @@ class CutFlow:
         groups = (("particles", "n_particles"), ("events >= 1", "n_events_with_particles"), ("events", "n_events"))
         cut_w = max(len("cut"), *(len(r["cut"]) for r in records))
         num_w = {key: max(len(title), *(len(f"{r[key]:,}") for r in records)) for title, key in groups}
-        top = f"{'#':>3}  {'cut':<{cut_w}}" + "".join(f"  {title:>{num_w[key]}} {'prev':>7} {'start':>7}" for title, key in groups)
+        top = f"{'#':>3}  {'cut':<{cut_w}}" + "".join(
+            f"  {title:>{num_w[key]}} {'prev':>7} {'start':>7}" for title, key in groups
+        )
         rule = "-" * len(top)
         lines = [top, rule]
         for r in records:
@@ -686,7 +693,9 @@ class Selection:
         File row of the first event in ``particles`` (default 0).
     """
 
-    def __init__(self, particles: ParticleCollection, events: EventCollection | None = None, entry_start: int = 0) -> None:
+    def __init__(
+        self, particles: ParticleCollection, events: EventCollection | None = None, entry_start: int = 0
+    ) -> None:
         _check_collection(particles, "Selection")
         if particles.p4.pt.ndim != 2:
             raise ValueError("Selection needs a jagged collection with one list of particles per event")
@@ -697,9 +706,7 @@ class Selection:
         self._n_start = n_e
         self._event_index = np.arange(self._entry_start, self._entry_start + n_e, dtype=np.int64)
         self._event_index.flags.writeable = False
-        self._steps: tuple[CutStep, ...] = (
-            CutStep("all events", {}, "start", n_p, n_ne, n_e),
-        )
+        self._steps: tuple[CutStep, ...] = (CutStep("all events", {}, "start", n_p, n_ne, n_e),)
 
     def _derive(self, particles: ParticleCollection, event_index: np.ndarray, step: CutStep) -> Selection:
         new = object.__new__(Selection)
@@ -759,9 +766,7 @@ class Selection:
         allowed = _ELECTRON_CUTS if isinstance(self._particles, Electron) else tuple(_PARTICLE_CUTS)
         unknown = [k for k in cuts if k not in allowed]
         if unknown:
-            raise TypeError(
-                f"unknown {type(self._particles).__name__} cut(s) {unknown}; valid: {', '.join(allowed)}"
-            )
+            raise TypeError(f"unknown {type(self._particles).__name__} cut(s) {unknown}; valid: {', '.join(allowed)}")
         sel = self
         for name, value in cuts.items():
             if value is None or value is False:
@@ -778,7 +783,9 @@ class Selection:
 
     def _event_cut(self, name: str, keep: np.ndarray, params: Mapping[str, Any]) -> Selection:
         particles = self._particles[keep]
-        return self._derive(particles, self._event_index[keep], CutStep(name, dict(params), "event", *_counts(particles)))
+        return self._derive(
+            particles, self._event_index[keep], CutStep(name, dict(params), "event", *_counts(particles))
+        )
 
     def require(self, n: int, exactly: bool = False) -> Selection:
         """Keep events with at least ``n`` (or, with ``exactly=True``, exactly ``n``) particles.

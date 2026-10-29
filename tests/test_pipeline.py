@@ -22,7 +22,6 @@ from cmsopen.pipeline import (
     PROTECTED_FILES,
     AnalysisError,
     AnalysisResult,
-    ChannelConfig,
     analyze,
     register_channel,
 )
@@ -159,7 +158,9 @@ def test_cutflow_combine():
     c = CutFlow.combine([a, b])
     assert [(s.n_particles, s.n_events_with_particles, s.n_events) for s in c] == [(15, 13, 15), (6, 5, 15)]
     assert CutFlow.combine([a]).to_records() == a.to_records()
-    other = CutFlow([CutStep("all events", {}, "start", 1, 1, 1), CutStep("min_pt", {"value": 25.0}, "particle", 1, 1, 1)])
+    other = CutFlow(
+        [CutStep("all events", {}, "start", 1, 1, 1), CutStep("min_pt", {"value": 25.0}, "particle", 1, 1, 1)]
+    )
     with pytest.raises(ValueError, match="different cuts"):
         CutFlow.combine([a, other])
     with pytest.raises(ValueError):
@@ -203,8 +204,11 @@ def test_missing_file_wrong_tree_and_missing_branch(tmp_path, small_files):
 
 def test_no_survivors_names_the_last_cut(small_files):
     cfg = dataclasses.replace(CHANNELS["Z_mumu"], name="tough", muon_cuts={"min_pt": 1000.0})
-    with pytest.raises(AnalysisError, match=r"after 'trigger\(HLT_Mu17_Mu8 OR HLT_Mu17_TkMu8\)' \(the last cut that kept "
-                                            r"events\), 0 after 'min_pt\(1000\)'"):
+    with pytest.raises(
+        AnalysisError,
+        match=r"after 'trigger\(HLT_Mu17_Mu8 OR HLT_Mu17_TkMu8\)' \(the last cut that kept "
+        r"events\), 0 after 'min_pt\(1000\)'",
+    ):
         run(small_files[0], config=cfg)
 
 
@@ -295,26 +299,46 @@ def test_verbose_prints_the_summary(small_files, capsys):
     assert "Cutflow:" in out and "(statistical error only)" in out
 
 
-# -- 6. command line ------------------------------------------------------------------------------------------------------
+# -- 6. command line ---------------------------------------------------------------------------------------------------
 
 
 def test_cli_module(tmp_path, small_files):
-    out = subprocess.run([sys.executable, "-m", "cmsopen", "analyze", str(small_files[0]), "--outdir", str(tmp_path / "o"),
-                          "--no-stability", "--quiet"], capture_output=True, text=True)
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cmsopen",
+            "analyze",
+            str(small_files[0]),
+            "--outdir",
+            str(tmp_path / "o"),
+            "--no-stability",
+            "--quiet",
+        ],
+        capture_output=True,
+        text=True,
+    )
     assert out.returncode == 0, out.stderr
     assert (tmp_path / "o" / "summary.json").exists() and (tmp_path / "o" / "mass_fit.png").exists()
-    verbose = subprocess.run([sys.executable, "-m", "cmsopen", "analyze", str(small_files[0]), "--no-stability",
-                              "--n-events", "500"], capture_output=True, text=True)
+    verbose = subprocess.run(
+        [sys.executable, "-m", "cmsopen", "analyze", str(small_files[0]), "--no-stability", "--n-events", "500"],
+        capture_output=True,
+        text=True,
+    )
     assert verbose.returncode == 0 and "Events processed: 500" in verbose.stdout
 
 
 def test_cli_errors_have_no_traceback(tmp_path, small_files):
-    for args in (["analyze", str(tmp_path / "missing.root")], ["analyze", str(small_files[0]), "--channel", "nope"],
-                 ["analyze", str(small_files[0]), "--outdir", str(tmp_path / "r" / "docs")]):
+    for args in (
+        ["analyze", str(tmp_path / "missing.root")],
+        ["analyze", str(small_files[0]), "--channel", "nope"],
+        ["analyze", str(small_files[0]), "--outdir", str(tmp_path / "r" / "docs")],
+    ):
         if "docs" in args[-1]:
             (tmp_path / "r" / ".git").mkdir(parents=True, exist_ok=True)
-        out = subprocess.run([sys.executable, "-m", "cmsopen", *args, "--quiet", "--no-stability"],
-                             capture_output=True, text=True)
+        out = subprocess.run(
+            [sys.executable, "-m", "cmsopen", *args, "--quiet", "--no-stability"], capture_output=True, text=True
+        )
         assert out.returncode == 1, (args, out.stderr)
         assert out.stderr.startswith("error: ") and "Traceback" not in out.stderr
 
@@ -325,8 +349,11 @@ def test_installed_script(tmp_path, small_files):
         script = shutil.which("cmsopen")
     if not script:
         pytest.skip("the cmsopen console script is not installed in this environment")
-    out = subprocess.run([str(script), "analyze", str(small_files[0]), "--no-stability", "--quiet",
-                          "--outdir", str(tmp_path / "s")], capture_output=True, text=True)
+    out = subprocess.run(
+        [str(script), "analyze", str(small_files[0]), "--no-stability", "--quiet", "--outdir", str(tmp_path / "s")],
+        capture_output=True,
+        text=True,
+    )
     assert out.returncode == 0, out.stderr
     assert (tmp_path / "s" / "summary.txt").exists()
 
@@ -336,7 +363,7 @@ def test_exports():
         assert name in cmsopen.__all__ and getattr(cmsopen, name) is not None
 
 
-# -- 7. real file -----------------------------------------------------------------------------------------------------------
+# -- 7. real file ------------------------------------------------------------------------------------------------------
 
 
 @pytest.mark.skipif(not REAL_FILE.exists(), reason=f"real CMS file not downloaded: {REAL_FILE} (see DATA.md)")

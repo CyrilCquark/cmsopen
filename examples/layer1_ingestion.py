@@ -36,15 +36,18 @@ class Checks:
         self.failures: list[str] = []
 
     def check(self, name: str, ok: bool, detail: str) -> None:
+        """Print one OK or FAIL line and remember failures."""
         print(f"{'OK' if ok else 'FAIL'}: {name} ({detail})")
         if not ok:
             self.failures.append(name)
 
     def skip(self, name: str, reason: str) -> None:
+        """Print one SKIP line (a check that cannot run here)."""
         print(f"SKIP: {name} ({reason})")
 
 
 def default_file() -> Path:
+    """The first ROOT file in the repository's data/ directory (exits with a message if there is none)."""
     data_dir = Path(__file__).resolve().parents[1] / "data"
     files = sorted(data_dir.glob("*.root"))
     if not files:
@@ -53,6 +56,7 @@ def default_file() -> Path:
 
 
 def main() -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=None, help="NanoAOD ROOT file (default: first data/*.root)")
     path = parser.parse_args().file or default_file()
@@ -73,7 +77,10 @@ def main() -> int:
 
         fired = events.trigger(*DIMUON_TRIGGERS_2012, entry_stop=N_TRIGGER_EVENTS)
         fraction = float(fired.mean())
-        print(f"Dimuon trigger ({' OR '.join(DIMUON_TRIGGERS_2012)}) fraction, first {len(fired):,} events: {fraction:.4f}")
+        print(
+            f"Dimuon trigger ({' OR '.join(DIMUON_TRIGGERS_2012)}) fraction, "
+            f"first {len(fired):,} events: {fraction:.4f}"
+        )
         print()
 
         checks = Checks()

@@ -31,6 +31,7 @@ def is_protected(path: str) -> bool:
 
 
 def git(*args: str) -> str:
+    """Run git with these arguments and return its output; raise RuntimeError on failure."""
     result = subprocess.run(["git", *args], capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
@@ -53,8 +54,11 @@ def changed_paths(rev: str) -> list[tuple[str, str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--since", required=True, metavar="REV", help="baseline revision (e.g. the layer's START commit)")
+    parser.add_argument(
+        "--since", required=True, metavar="REV", help="baseline revision (e.g. the layer's START commit)"
+    )
     args = parser.parse_args(argv)
     try:
         git("rev-parse", "--verify", "--quiet", f"{args.since}^{{commit}}")
@@ -62,8 +66,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {args.since!r} is not a commit in this repository", file=sys.stderr)
         return 2
     try:
-        offenders = sorted({(status, path) for status, path in changed_paths(args.since) if is_protected(path)},
-                           key=lambda item: item[1])
+        offenders = sorted(
+            {(status, path) for status, path in changed_paths(args.since) if is_protected(path)},
+            key=lambda item: item[1],
+        )
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

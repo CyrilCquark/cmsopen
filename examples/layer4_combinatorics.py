@@ -50,15 +50,18 @@ class Checks:
         self.failures: list[str] = []
 
     def check(self, name: str, ok: bool, detail: str) -> None:
+        """Print one OK or FAIL line and remember failures."""
         print(f"{'OK' if ok else 'FAIL'}: {name} ({detail})")
         if not ok:
             self.failures.append(name)
 
     def skip(self, name: str, reason: str) -> None:
+        """Print one SKIP line (a check that cannot run here)."""
         print(f"SKIP: {name} ({reason})")
 
 
 def default_file() -> Path:
+    """The first ROOT file in the repository's data/ directory (exits with a message if there is none)."""
     data_dir = Path(__file__).resolve().parents[1] / "data"
     files = sorted(data_dir.glob("*.root"))
     if not files:
@@ -89,13 +92,14 @@ def independent_pair_counts(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndar
 
 
 def text_histograms(spectra: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Print the mass spectra as a text histogram and return the bin counts."""
     counts = {label: np.histogram(m, bins=BINS)[0] for label, m in spectra.items()}
     labels = list(counts)
     print("Dimuon invariant mass (GeV), 2 GeV bins   [# = " + labels[0] + "]")
     print(f"  {'':11}" + "".join(f"{label:>18}" for label in labels))
     first = counts[labels[0]]
     scale = 40 / first.max() if first.max() else 0
-    for i, (lo, hi) in enumerate(zip(BINS[:-1], BINS[1:])):
+    for i, (lo, hi) in enumerate(zip(BINS[:-1], BINS[1:], strict=False)):
         row = "".join(f"{counts[label][i]:>18,}" for label in labels)
         print(f"  {lo:5.0f}-{hi:<5.0f}{row}  {'#' * int(round(first[i] * scale))}")
     print(f"  {'total':11}" + "".join(f"{int(c.sum()):>18,}" for c in counts.values()))
@@ -103,10 +107,12 @@ def text_histograms(spectra: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
 
 
 def in_window(mass: np.ndarray, window: tuple[float, float]) -> int:
+    """Number of masses in the half-open window [low, high)."""
     return int(np.sum((mass >= window[0]) & (mass < window[1])))
 
 
 def main() -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=None, help="NanoAOD ROOT file (default: first data/*.root)")
     path = parser.parse_args().file or default_file()

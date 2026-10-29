@@ -127,7 +127,8 @@ def test_chi2_ndf_pvalue_and_covariance(model):
     edges = h.edges
     inside = (edges[:-1] >= 70) & (edges[1:] <= 110)
     # independent: integrate the fitted density over each bin with adaptive quadrature
-    expected = np.array([integrate.quad(r.model, a, b)[0] for a, b in zip(edges[:-1][inside], edges[1:][inside])])
+    bins = zip(edges[:-1][inside], edges[1:][inside], strict=False)
+    expected = np.array([integrate.quad(r.model, a, b)[0] for a, b in bins])
     counts = h.counts[inside]
     chi2 = np.sum((counts - expected) ** 2 / np.maximum(counts, 1.0))
     assert r.chi2 == pytest.approx(chi2, rel=1e-6)
@@ -228,7 +229,7 @@ def test_models():
     assert v == pytest.approx(1000.0 * special.voigt_profile(x - 91.0, 1.5, 1.25))
 
 
-# -- 6. PDG comparison ----------------------------------------------------------------------------------------------------
+# -- 6. PDG comparison -------------------------------------------------------------------------------------------------
 
 
 def test_pdg_z_mass_from_particle(capsys):
@@ -259,7 +260,7 @@ def test_compare_to_pdg_hand_case():
         compare_to_pdg("not a fit")
 
 
-# -- 7. failures are loud --------------------------------------------------------------------------------------------------
+# -- 7. failures are loud ----------------------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("model", MODELS)
@@ -320,7 +321,7 @@ def test_negative_background_is_a_warning_not_silent():
     assert r.values[3:] == pytest.approx([120.0, -7.2], rel=1e-3)
 
 
-# -- 8. fit_stability ----------------------------------------------------------------------------------------------------------
+# -- 8. fit_stability --------------------------------------------------------------------------------------------------
 
 
 def test_fit_stability_grid_and_summary():
@@ -351,13 +352,24 @@ def test_fit_stability_lists_failures():
 
 
 def test_package_exports():
-    for name in ("make_histogram", "MassHistogram", "fit_mass_peak", "FitResult", "FitError", "compare_to_pdg", "fit_stability",
-                 "gaussian", "polynomial", "gaussian_plus_polynomial", "voigt_plus_polynomial"):
+    for name in (
+        "make_histogram",
+        "MassHistogram",
+        "fit_mass_peak",
+        "FitResult",
+        "FitError",
+        "compare_to_pdg",
+        "fit_stability",
+        "gaussian",
+        "polynomial",
+        "gaussian_plus_polynomial",
+        "voigt_plus_polynomial",
+    ):
         assert name in cmsopen.__all__ and getattr(cmsopen, name) is not None
     assert isinstance(fit_mass_peak(toy_histogram(np.random.default_rng(2))), FitResult)
 
 
-# -- real file --------------------------------------------------------------------------------------------------------------------
+# -- real file ---------------------------------------------------------------------------------------------------------
 
 
 @pytest.mark.skipif(not REAL_FILE.exists(), reason=f"real CMS file not downloaded: {REAL_FILE} (see DATA.md)")

@@ -56,6 +56,7 @@ def _one(path: str, n_events: int | None, chunk_size: int, workers: int | None) 
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", required=True, help="NanoAOD file to analyse")
     parser.add_argument("--n-events", type=int, default=None, help="process at most this many events")

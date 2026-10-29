@@ -45,15 +45,18 @@ class Checks:
         self.failures: list[str] = []
 
     def check(self, name: str, ok: bool, detail: str) -> None:
+        """Print one OK or FAIL line and remember failures."""
         print(f"{'OK' if ok else 'FAIL'}: {name} ({detail})")
         if not ok:
             self.failures.append(name)
 
     def skip(self, name: str, reason: str) -> None:
+        """Print one SKIP line (a check that cannot run here)."""
         print(f"SKIP: {name} ({reason})")
 
 
 def default_file() -> Path:
+    """The first ROOT file in the repository's data/ directory (exits with a message if there is none)."""
     data_dir = Path(__file__).resolve().parents[1] / "data"
     files = sorted(data_dir.glob("*.root"))
     if not files:
@@ -62,6 +65,7 @@ def default_file() -> Path:
 
 
 def main() -> int:
+    """Parse the command line, run the demo or tool, and return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", type=Path, default=None, help="NanoAOD ROOT file (default: first data/*.root)")
     path = parser.parse_args().file or default_file()
@@ -69,7 +73,8 @@ def main() -> int:
         sys.exit(f"error: file not found: {path}")
 
     print(f"cmsopen imported from: {cmsopen.__file__}")
-    print(f"vector library: {vector.__version__ if vector else 'not installed (pip install vector to enable the cross-check)'}")
+    status = vector.__version__ if vector else "not installed"
+    print(f"vector library: {status} (pip install vector to enable the cross-check)")
     print()
 
     with open_events(path) as events:
@@ -82,8 +87,10 @@ def main() -> int:
     lead, sub = muons[:, 0], muons[:, 1]
     selected = (
         (lead.charge * sub.charge < 0)
-        & (lead.p4.pt > PT_MIN) & (sub.p4.pt > PT_MIN)
-        & (np.abs(lead.p4.eta) < ETA_MAX) & (np.abs(sub.p4.eta) < ETA_MAX)
+        & (lead.p4.pt > PT_MIN)
+        & (sub.p4.pt > PT_MIN)
+        & (np.abs(lead.p4.eta) < ETA_MAX)
+        & (np.abs(sub.p4.eta) < ETA_MAX)
     )
     lead, sub = lead[selected], sub[selected]
     mass = ak.to_numpy(invariant_mass(lead.p4, sub.p4))
@@ -97,7 +104,7 @@ def main() -> int:
 
     print("Dimuon invariant mass (GeV), 2 GeV bins:")
     scale = 50 / counts.max() if counts.max() else 0
-    for lo, hi, n in zip(edges[:-1], edges[1:], counts):
+    for lo, hi, n in zip(edges[:-1], edges[1:], counts, strict=False):
         print(f"  {lo:5.0f}-{hi:<5.0f} {n:7d} {'#' * int(round(n * scale))}")
     print()
 

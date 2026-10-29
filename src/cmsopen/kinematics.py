@@ -67,7 +67,9 @@ def _as_pair_arrays(a: Any, b: Any) -> tuple[Any, Any]:
     if a_scalar and b_scalar:
         return np.float64(a), np.float64(b)
     if a_scalar or b_scalar:
-        raise ValueError("both arguments must be arrays of the same structure, or both scalars; got a scalar and an array")
+        raise ValueError(
+            "both arguments must be arrays of the same structure, or both scalars; got a scalar and an array"
+        )
     a = ak.values_astype(ak.Array(a), np.float64)
     b = ak.values_astype(ak.Array(b), np.float64)
     _check_same_structure({"first": a, "second": b})

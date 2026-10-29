@@ -31,6 +31,7 @@ HASH_FILE = "dev/registry.sha256"
 
 
 def repo_root() -> Path:
+    """The top-level directory of the git repository containing the working directory."""
     out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
     if out.returncode != 0:
         raise RuntimeError(f"not inside a git repository: {out.stderr.strip()}")
@@ -43,6 +44,7 @@ def production_names(registry: dict) -> list[str]:
 
 
 def repo_files(root: Path) -> list[str]:
+    """Tracked and untracked (not ignored) files of the repository, relative to its root."""
     out = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=root,
                          capture_output=True, text=True)
     if out.returncode != 0:
@@ -51,6 +53,7 @@ def repo_files(root: Path) -> list[str]:
 
 
 def main() -> int:
+    """Run the blinding check on the current repository and return the exit status."""
     try:
         root = repo_root()
     except RuntimeError as exc:
