@@ -1928,6 +1928,129 @@ which works from a notebook cell as it is) equals serial with validation on (who
     return _notebook(cells)
 
 
+LAYER9_LOAD = """\
+# The sample: examples/data/cmsopen_sample.root, committed next to this notebook (no download needed).
+# Set CMSOPEN_SAMPLE_FILE to use another copy.
+import os
+from pathlib import Path
+
+DATA_FILE = Path(os.environ.get("CMSOPEN_SAMPLE_FILE") or Path.cwd() / "data" / "cmsopen_sample.root")
+if not DATA_FILE.exists():
+    raise FileNotFoundError(
+        f"the sample is missing: {DATA_FILE}. Start Jupyter in examples/ of a clone of the repository, or set "
+        "CMSOPEN_SAMPLE_FILE=/absolute/path/to/cmsopen_sample.root"
+    )
+print(f"Sample: {DATA_FILE} ({DATA_FILE.stat().st_size:,} bytes)")"""
+
+LAYER9_SETUP = r"""import hashlib
+import json
+import re
+import tempfile
+import time
+
+from IPython.display import Image, display
+
+import cmsopen
+from cmsopen.fitting import pdg_mass_width
+from cmsopen.pipeline import CHANNELS
+
+WINDOW = {"Z_mumu": 1.0, "Jpsi_mumu": 0.02}  # GeV around the PDG mass: generous, structural
+
+
+def recorded(key):
+    '''A value from the provenance table in data/SAMPLE.md.'''
+    m = re.search(rf"^\| {key} \| (.+?) \|$", (DATA_FILE.parent / "SAMPLE.md").read_text(), flags=re.M)
+    return m.group(1) if m else ""
+
+
+print(f"cmsopen imported from: {cmsopen.__file__}")
+print(f"recorded: {recorded('events')}; {recorded('size')}")
+tmp = Path(tempfile.mkdtemp(prefix="cmsopen-layer9-"))
+results = {}"""
+
+LAYER9_CHANNEL = r"""name = "{name}"
+start = time.perf_counter()
+results[name] = r = cmsopen.analyze(DATA_FILE, channel=name, model="voigt_poly", stability=False, verbose=False,
+                                    outdir=tmp / name)
+print(f"[time] {{time.perf_counter() - start:.1f}} s")
+print(r.fit.table())
+display(Image(filename=str(tmp / name / "mass_fit.png"), width=640))"""
+
+LAYER9_CHECKS = (
+    r"""checks = Checks()
+data = DATA_FILE.read_bytes()
+checks.check(
+    "the sample matches its recorded size and SHA-256 (data/SAMPLE.md)",
+    recorded("size") == f"{len(data):,} bytes" and recorded("SHA-256") == hashlib.sha256(data).hexdigest(),
+    f"{len(data):,} bytes, sha256 {hashlib.sha256(data).hexdigest()[:16]}...",
+)
+for name, r in results.items():
+    pdg = pdg_mass_width(CHANNELS[name].resonance)[0]
+    m, me = r.fit.peak_position
+    checks.check(f"{name}: pairs and a converged voigt_poly fit", r.fit.n_entries > 500,
+                 f"{r.fit.n_entries:,} pairs in the fit range, chi2/ndf {r.fit.chi2_ndf:.2f}")
+    checks.check(f"{name}: the peak lies within {WINDOW[name]:g} GeV of the PDG mass (a generous window)",
+                 abs(m - pdg) < WINDOW[name], f"{m:.4f} +- {me:.4f} GeV, PDG {pdg:.4f} GeV")
+    written = {p.name for p in (tmp / name).iterdir()}
+    checks.check(f"{name}: figures and summaries are written",
+                 {"summary.json", "summary.txt", "mass_fit.png", "cutflow.png"} <= written, ", ".join(sorted(written)))
+
+parallel = cmsopen.analyze(DATA_FILE, channel="Z_mumu", model="voigt_poly", stability=False, verbose=False,
+                           n_workers=2, chunk_size=10_000)
+checks.check("parallel (n_workers=2, chunks of 10,000 events) equals serial",
+             json.dumps(parallel.to_dict(), sort_keys=True) == json.dumps(results["Z_mumu"].to_dict(), sort_keys=True),
+             "to_dict() compared")
+
+default = CHANNELS["Jpsi_mumu"].model
+try:
+    r = cmsopen.analyze(DATA_FILE, channel="Jpsi_mumu", stability=False, verbose=False)
+    outcome, ok = f"fitted: {r.fit.model_name}, chi2/ndf {r.fit.chi2_ndf:.2f}", r.fit.model_name == default
+except cmsopen.AnalysisError as exc:
+    outcome, ok = f"AnalysisError: {str(exc)[:110]}", "fit failed" in str(exc)
+print(f"The frozen J/psi default ({default}) on the sample: {outcome}")
+checks.check("the frozen default either fits or fails with the documented AnalysisError", ok, outcome[:60])
+
+"""
+    + FINISH
+)
+
+
+def layer9() -> nbformat.NotebookNode:
+    cells = [
+        new_code_cell(LAYER9_LOAD),
+        new_markdown_cell(
+            r"""# Layer 9: the whole analysis on a small real-data sample
+
+`examples/data/cmsopen_sample.root` holds the first events of the development file (CERN Open Data record 31129,
+Run2012C DoubleMuParked) with only the branches the analysis reads; `data/SAMPLE.md` records its provenance, size
+and checksums. It is small enough to commit, so this notebook runs from a fresh clone with no download.
+
+**The fit.** With a few thousand pairs per channel the notebook fits `voigt_poly`: a Breit-Wigner of the
+resonance's natural width (fixed) convolved with one Gaussian resolution, on a quadratic background. That line shape
+has a single free width, which a few thousand pairs determine. The frozen default models (two resolution cores,
+`dev/model_choice.md`) need far more pairs to determine their second core; on the sample they may fail, and the
+last check shows that this is reported as an `AnalysisError`, not hidden.
+
+No physics number is asserted: the checks are structural."""
+        ),
+        new_code_cell(LAYER9_SETUP),
+        new_markdown_cell(r"""## Z $\to \mu^+\mu^-$"""),
+        new_code_cell(LAYER9_CHANNEL.format(name="Z_mumu")),
+        new_markdown_cell(r"""## J/$\psi \to \mu^+\mu^-$"""),
+        new_code_cell(LAYER9_CHANNEL.format(name="Jpsi_mumu")),
+        new_markdown_cell(
+            r"""## Self-checks (structural only)
+
+The sample matches its recorded size and SHA-256; both channels give pairs and a converged fit whose peak lies within
+a generous window of the PDG mass (Z: 1 GeV, J/$\psi$: 0.02 GeV); the figures and summaries are written; parallel
+processing equals serial; the frozen default either fits or fails with the documented exception."""
+        ),
+        new_code_cell(CHECKS_CLASS),
+        new_code_cell(LAYER9_CHECKS),
+    ]
+    return _notebook(cells)
+
+
 def _notebook(cells: list) -> nbformat.NotebookNode:
     for i, cell in enumerate(cells):
         cell.id = f"cell-{i:02d}"  # deterministic ids so rebuilds give identical files
@@ -1947,6 +2070,7 @@ NOTEBOOKS = {
     "layer6b_demo.ipynb": layer6b,
     "layer7_plotting.ipynb": layer7,
     "layer8_pipeline.ipynb": layer8,
+    "layer9_sample_demo.ipynb": layer9,
 }
 
 

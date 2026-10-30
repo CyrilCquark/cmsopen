@@ -189,6 +189,9 @@ here may be described as achieved.
 - Write tests with each layer.
 - Commit after each layer once its tests pass.
 - Never commit ROOT files. `data/` and `*.root` are gitignored.
+  The one exception, approved by the user in prompt 11: the ~8 MB real-data
+  sample `examples/data/cmsopen_sample.root` (provenance in
+  `examples/data/SAMPLE.md`; written by `scripts/make_skim.py`).
 - Confirm branch names against the real file (for example by listing
   `tree.keys()`) before relying on them.
 

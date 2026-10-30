@@ -13,6 +13,8 @@ dist/
 *.root
 data/*
 !data/.gitkeep
+# The one exception (approved in prompt 11): the ~8 MB real-data sample for readers without the large file
+!examples/data/cmsopen_sample.root
 
 # Jupyter
 .ipynb_checkpoints/
