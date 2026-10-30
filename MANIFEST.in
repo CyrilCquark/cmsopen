@@ -1,0 +1,3 @@
+# The sdist is the package source and its metadata. The tests need the repository (conftest.py, the
+# synthetic writers, scripts/ and examples/), so they are not shipped in it.
+prune tests

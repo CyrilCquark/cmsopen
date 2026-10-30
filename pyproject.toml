@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cmsopen"
-version = "0.1.0"
+dynamic = ["version"]  # single source: cmsopen.__version__ (src/cmsopen/__init__.py)
 description = "End-to-end analysis of CMS open data: from NanoAOD ROOT files to the Z boson mass peak"
 readme = "README.md"
 license = "MIT"
@@ -21,20 +21,50 @@ dependencies = [
     "particle>=0.24",
 ]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Physics",
+    "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://github.com/CyrilCquark/cmsopen"
+Repository = "https://github.com/CyrilCquark/cmsopen"
+Issues = "https://github.com/CyrilCquark/cmsopen/issues"
 
 [project.scripts]
 cmsopen = "cmsopen.__main__:main"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "pytest-timeout>=2.3", "mypy", "ruff", "jupyter", "nbformat", "vector>=1.3"]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-timeout>=2.3",
+    "mypy",
+    "ruff",
+    "jupyter",
+    "nbformat",
+    "vector>=1.3",
+    "build",
+    "twine",
+    "setuptools>=77",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "cmsopen.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+cmsopen = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
