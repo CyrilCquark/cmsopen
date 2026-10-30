@@ -142,3 +142,31 @@ def test_binned_values_give_the_same_figure_as_raw_values(tmp_path):
         binned_all + BinnedValues.from_values(pt_sel, np.linspace(0, 100, 11))
     with pytest.raises(ValueError, match="edges differ"):
         plot_pt_distribution(BinnedValues.from_values(pt_sel, np.linspace(0, 100, 11)))
+
+
+@pytest.fixture(scope="module")
+def jpsi_result(tmp_path_factory):
+    from synthetic_production import write_production_file
+
+    from cmsopen import analyze
+
+    path = write_production_file(tmp_path_factory.mktemp("jpsi") / "zj.root", 2_000, 20_000, seed=7)
+    return analyze(path, channel="Jpsi_mumu", stability=False, verbose=False)
+
+
+def test_jpsi_figures_caption_and_readme_rows(jpsi_result, two_files, built, tmp_path):
+    """The production run's J/psi figures: same formats as z_*, a caption with both fits, README rows."""
+    written = make_figures.write_jpsi(jpsi_result, tmp_path)
+    assert sorted(p.name for p in written) == ["jpsi_os_vs_ss.png", "jpsi_peak_fit.pdf", "jpsi_peak_fit.png",
+                                               "jpsi_peak_fit_caption.md"]
+    assert all(p.stat().st_size > 20_000 for p in written if p.suffix == ".png")
+    caption = (tmp_path / "jpsi_peak_fit_caption.md").read_text()
+    assert caption.startswith("# jpsi_peak_fit") and "20 MeV" in caption and "J/psi natural width" in caption
+    assert "- `cb2_bw_poly2` (shown): pole mass" in caption and "- `voigt_poly` (same data" in caption
+    assert "Z natural width" not in caption and "PDG mass 3.0969 GeV" in caption
+    z_only = make_figures.readme(built[0].fits, [two_files[0]], "voigt_poly")
+    both = make_figures.readme(built[0].fits, [two_files[0]], "voigt_poly", jpsi_model="cb2_bw_poly2")
+    assert "jpsi" not in z_only and "(Z selection)" not in z_only  # the Z-only README is unchanged
+    assert "`jpsi_peak_fit.png`, `jpsi_peak_fit.pdf` | J/psi dimuon mass spectrum with the fit (model `cb2_bw_poly2`)" \
+        in both and "`jpsi_os_vs_ss.png`" in both and "Z -> mu+ mu- and J/psi -> mu+ mu- analysis" in both
+    assert both.index("`cutflow.png`") < both.index("`jpsi_peak_fit.png`") < both.index("## Regenerate")

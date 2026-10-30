@@ -261,11 +261,11 @@ def _pm(fit: Any, name: str, digits: int = 3) -> str:
     return f"{v:.{digits}f} +- {e:.{digits}f}"
 
 
-def _fit_line(fit: Any) -> str:
+def _fit_line(fit: Any, resonance: str = "Z", digits: int = 3) -> str:
     """Every fitted quantity of one fit, including those the figure annotation may leave out."""
     m, me = fit.peak_position
     s, se = fit.resolution
-    c = compare_to_pdg(fit)
+    c = compare_to_pdg(fit, resonance)
     position = "pole mass" if fit.cb_n is not None else "peak position"
     mixture = "r" in fit.parameters or "r2" in fit.parameters
     width = "resolution (FWHM/2.355 of the signal)" if mixture else "sigma"
@@ -279,10 +279,11 @@ def _fit_line(fit: Any) -> str:
         extra.append(f"alpha {_pm(fit, 'alpha')}, n = {fit.cb_n:g} (fixed)")
     if fit.gamma is not None:
         extra.append(f"natural width {2 * fit.gamma:.4f} GeV (fixed)")
+    d = digits
     return (
-        f"{position} {m:.3f} +- {me:.3f} GeV (stat.), {width} {s:.3f} +- {se:.3f} GeV, "
+        f"{position} {m:.{d}f} +- {me:.{d}f} GeV (stat.), {width} {s:.{d}f} +- {se:.{d}f} GeV, "
         + "".join(f"{x}, " for x in extra)
-        + f"chi2/ndf = {fit.chi2:.1f}/{fit.ndf}; {c.difference:+.3f} GeV ({100 * c.relative_difference:+.2f} %) "
+        + f"chi2/ndf = {fit.chi2:.1f}/{fit.ndf}; {c.difference:+.{d}f} GeV ({100 * c.relative_difference:+.2f} %) "
         f"from the PDG mass {c.pdg_mass:.4f} GeV"
     )
 
@@ -322,6 +323,58 @@ Data.
 """
 
 
+JPSI_EXPECTED = {"jpsi_peak_fit": ("png", "pdf"), "jpsi_os_vs_ss": ("png",)}
+_JPSI_FIGURE = {"jpsi_peak_fit": "mass_fit", "jpsi_os_vs_ss": "os_vs_ss"}  # name -> AnalysisResult.figures key
+
+
+def jpsi_caption(result: Any) -> str:
+    """The caption of jpsi_peak_fit, from a Jpsi_mumu :class:`cmsopen.AnalysisResult` (both fits, every parameter)."""
+    main, other = result.fit, result.alternate_fit
+    lo, hi = result.config.mass_range
+    bin_mev = 1000 * (hi - lo) / result.config.bins
+    data = _plain(run_label(result.files))
+
+    def model(name: str) -> str:
+        return _MODEL_TEXT[name].replace("the Z natural width", "the J/psi natural width")
+
+    other_line = (f"- `{other.model_name}` (same data, same range, not shown): {_fit_line(other, 'J/psi', 5)}."
+                  if other is not None else "- The alternate fit failed (see the analysis warnings).")
+    return f"""# jpsi_peak_fit
+
+Invariant mass of the two muons of one opposite-sign pair per event (the pair with the highest
+pT sum), after the J/psi -> mu+ mu- selection ({result.config.description}), in {bin_mev:g} MeV
+bins ({data}), with a fit of {model(main.model_name)} over {main.fit_range[0]:g}-{main.fit_range[1]:g} GeV (model
+`{main.model_name}`, the natural width from the `particle` package). The lower panel shows (data - fit) / sigma per
+bin. The dotted line is the PDG J/psi mass, drawn for reference only; the fit does not use it.
+
+- `{main.model_name}` (shown): {_fit_line(main, 'J/psi', 5)}.
+{other_line}
+
+{_yields_sentence({f.model_name: f for f in (main, other) if f is not None})}
+Uncertainties are statistical only. The offset from the PDG mass reflects the absent muon momentum-scale
+corrections and the simple line shape; it is not a measurement of the J/psi mass. Unofficial analysis of CMS Open
+Data.
+"""
+
+
+def write_jpsi(result: Any, outdir: Path) -> list[Path]:
+    """Save the J/psi figures of a Jpsi_mumu analysis (its own figures, same format as z_*) and their caption."""
+    outdir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for name, formats in JPSI_EXPECTED.items():
+        written += save_figure(result.figures[_JPSI_FIGURE[name]], outdir / name, formats=formats)
+    caption_path = outdir / "jpsi_peak_fit_caption.md"
+    caption_path.write_text(jpsi_caption(result))
+    return [*written, caption_path]
+
+
+_ROW_JPSI = (
+    "| `jpsi_peak_fit.png`, `jpsi_peak_fit.pdf` | J/psi dimuon mass spectrum with the fit (model `{model}`), "
+    "background, signal band, PDG J/psi mass and pull panel. Caption: "
+    "[`jpsi_peak_fit_caption.md`](jpsi_peak_fit_caption.md). |\n"
+    "| `jpsi_os_vs_ss.png` | Opposite- vs same-sign pair masses after the full J/psi selection: the peak is "
+    "opposite-sign only. |\n"
+)
 _ROW_FIT = (
     "| `z_peak_fit.png`, `z_peak_fit.pdf` | Dimuon mass spectrum with the fit (model `{model}`), background, "
     "signal band, PDG Z mass and pull panel. Caption: [`z_peak_fit_caption.md`](z_peak_fit_caption.md). |"
@@ -362,27 +415,34 @@ def _regenerate(data_files: list[Path], main_model: str, anonymous: bool) -> str
     return f"python examples/make_figures.py --production --file {files}{model}"
 
 
-def readme(fits: dict[str, Any], data_files: list[Path], main_model: str = MAIN_MODEL, anonymous: bool = False) -> str:
-    """The README of the figures directory: what each figure is, how to regenerate it, data and versions."""
+def readme(fits: dict[str, Any], data_files: list[Path], main_model: str = MAIN_MODEL, anonymous: bool = False,
+           jpsi_model: str | None = None) -> str:
+    """The README of the figures directory: what each figure is, how to regenerate it, data and versions.
+
+    ``jpsi_model`` (the production run) adds the rows of the J/psi figures written by :func:`write_jpsi`.
+    """
     try:
         commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"], capture_output=True,
                                 text=True, check=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         commit = "unknown"
     versions = "\n".join(f"| {pkg} | {metadata.version(pkg)} |" for pkg in PACKAGES)
+    analysis = "Z -> mu+ mu-" if jpsi_model is None else "Z -> mu+ mu- and J/psi -> mu+ mu-"
+    jpsi_rows = "" if jpsi_model is None else _ROW_JPSI.format(model=jpsi_model)
+    z_only = "" if jpsi_model is None else " (Z selection)"
     return f"""# Figures
 
-Final figures of the cmsopen Z -> mu+ mu- analysis of real CMS Open Data. Unofficial analysis of CMS Open
+Final figures of the cmsopen {analysis} analysis of real CMS Open Data. Unofficial analysis of CMS Open
 Data: these are not CMS results.
 
 | file | content |
 |---|---|
 {_ROW_FIT.format(model=main_model)}
 {_ROW_OS_SS}
-| `muon_pt.png` | Muon pT: every muon in the file vs the muons passing the full selection. |
-| `muon_eta.png` | Muon eta: every muon vs the selected muons, with the abs(eta) = 2.4 acceptance edges. |
-| `cutflow.png` | Events left after each step of the selection, with the percentage of all events. |
-
+| `muon_pt.png` | Muon pT: every muon in the file vs the muons passing the full selection{z_only}. |
+| `muon_eta.png` | Muon eta: every muon vs the selected muons, with the abs(eta) = 2.4 acceptance edges{z_only}. |
+| `cutflow.png` | Events left after each step of the selection, with the percentage of all events{z_only}. |
+{jpsi_rows}
 ## Regenerate
 
 From the repository root, with the package installed (`pip install -e ".[dev]"`):
@@ -407,18 +467,23 @@ Generated from commit `{commit}` with Python {platform.python_version()}:
 """
 
 
-def write(figs: Figures, outdir: Path, anonymous: bool = False) -> Figures:
+def write(figs: Figures, outdir: Path, anonymous: bool = False, jpsi: Any = None) -> Figures:
     """Save every figure, the caption and the README into ``outdir``.
 
     ``anonymous`` describes the data in the README without file names (for the
-    production sample, whose names appear only in the registry).
+    production sample, whose names appear only in the registry). ``jpsi``, a
+    Jpsi_mumu :class:`cmsopen.AnalysisResult`, adds its figures and caption
+    (:func:`write_jpsi`) and their README rows.
     """
     outdir.mkdir(parents=True, exist_ok=True)
     for name, formats in EXPECTED.items():
         figs.files[name] = save_figure(figs.figures[name], outdir / name, formats=formats)
     (outdir / "z_peak_fit_caption.md").write_text(caption(figs.fits, figs.main_model, figs.other_model,
                                                           figs.data_label))
-    (outdir / "README.md").write_text(readme(figs.fits, figs.data_files, figs.main_model, anonymous))
+    if jpsi is not None:
+        figs.files["jpsi"] = write_jpsi(jpsi, outdir)
+    (outdir / "README.md").write_text(readme(figs.fits, figs.data_files, figs.main_model, anonymous,
+                                             jpsi.fit.model_name if jpsi is not None else None))
     return figs
 
 

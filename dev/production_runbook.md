@@ -52,10 +52,10 @@ been run on the production sample. The commands print no production file name.
 
    Success prints the preflight's `PASS:` lines, then
    `downloaded and verified file k/20 (record ..., index ..., ... bytes)` for
-   each file, `run lock written: results/production_run.lock`,
-   `figures written: 6 figure files, the caption and the README in docs/figures/`, one line per channel
-   (`Z_mumu: cb2_bw_exp, peak ... GeV, chi2/ndf ...; T1 True`, then the same
-   for `Jpsi_mumu`), `written: results/production.json (total ... s)` and
+   each file, `run lock written: results/production_run.lock`, one line per
+   channel (`Z_mumu: cb2_bw_exp, peak ... GeV, chi2/ndf ...; T1 True`, then the
+   same for `Jpsi_mumu`), `figures written: 12 files in docs/figures/ (figures,
+   captions, README)`, `written: results/production.json (total ... s)` and
    finally `PRODUCTION RUN COMPLETE`.
 
 5. Review, then commit the outputs yourself:
@@ -66,14 +66,17 @@ been run on the production sample. The commands print no production file name.
    ```
 
    The run creates or modifies exactly these paths in the repository:
-   `results/production.json` (protected, new), `results/production_run.lock`
-   (new), and `docs/figures/README.md`, `docs/figures/cutflow.png`,
-   `docs/figures/muon_eta.png`, `docs/figures/muon_pt.png`,
-   `docs/figures/z_os_vs_ss.png`, `docs/figures/z_peak_fit.pdf`,
-   `docs/figures/z_peak_fit.png`, `docs/figures/z_peak_fit_caption.md`
-   (protected, modified). It also writes the 20 downloads to `data/production/`
-   and the per-channel outputs (which list the input files) to
-   `build/production/`; both are gitignored. The README results block is
+
+   - modified (protected): `docs/figures/README.md`, `docs/figures/cutflow.png`,
+     `docs/figures/muon_eta.png`, `docs/figures/muon_pt.png`,
+     `docs/figures/z_os_vs_ss.png`, `docs/figures/z_peak_fit.pdf`,
+     `docs/figures/z_peak_fit.png`, `docs/figures/z_peak_fit_caption.md`;
+   - new (protected): `docs/figures/jpsi_os_vs_ss.png`,
+     `docs/figures/jpsi_peak_fit.pdf`, `docs/figures/jpsi_peak_fit.png`,
+     `docs/figures/jpsi_peak_fit_caption.md`, `results/production.json`;
+   - new: `results/production_run.lock`;
+   - gitignored: `data/production/` (the 20 downloads) and
+     `build/production/` (the per-channel outputs, which list the input files). The README results block is
    updated by hand from the `render_results.py` output (README.md is
    protected); `scripts/check_readme_numbers.py` then checks it.
 

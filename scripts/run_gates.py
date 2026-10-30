@@ -2,9 +2,10 @@
 
 Requires a clean working tree, so that the record describes exactly the
 committed state. Writes build/gates/<HEAD>.json with the HEAD commit, the exit
-statuses of ``pytest`` (the full suite) and ``scripts/check_quality.py``, and
-pytest's summary line. ``scripts/production_preflight.py`` accepts only a
-record whose HEAD is the current HEAD and whose two statuses are 0.
+statuses of ``pytest`` (the full suite) and ``scripts/check_quality.py``,
+pytest's summary line and the total line coverage of src/cmsopen.
+``scripts/production_preflight.py`` accepts only a record whose HEAD is the
+current HEAD and whose two statuses are 0.
 
 Usage:
     python scripts/run_gates.py
@@ -37,8 +38,9 @@ def main() -> int:
     quality = subprocess.run([sys.executable, str(REPO / "scripts" / "check_quality.py")], cwd=REPO,
                              capture_output=True, text=True)
     print(f"check_quality: exit {quality.returncode}; {quality.stdout.strip().splitlines()[-1:]}")
+    total = next((line.split()[-1] for line in quality.stdout.splitlines() if line.startswith("TOTAL ")), "unknown")
     record = {"head": head, "pytest_rc": pytest.returncode, "quality_rc": quality.returncode, "summary": summary,
-              "seconds": round(time.time() - start)}
+              "coverage_total": total, "seconds": round(time.time() - start)}
     out = REPO / "build" / "gates" / f"{head}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(record, indent=2) + "\n")
