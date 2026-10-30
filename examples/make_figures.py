@@ -336,6 +336,14 @@ def _plain(label: str) -> str:
     return label.replace(r"$\sqrt{s}$", "sqrt(s)")
 
 
+def _anonymous_data_section(data_files: list[Path]) -> str:
+    """The production sample described without file names (they appear only in the registry)."""
+    total = sum(f.stat().st_size for f in data_files)
+    return (f"{len(data_files)} files of the pre-registered production sample ({_plain(run_label(data_files))}), "
+            f"{total:,} bytes in all,\nanalysed in registry order; their names, sizes and checksums are in "
+            "`results/production_files.json`.")
+
+
 def _data_section(data_files: list[Path]) -> str:
     if len(data_files) == 1:
         f = data_files[0]
@@ -346,7 +354,15 @@ def _data_section(data_files: list[Path]) -> str:
             f"portal, analysed in this order:\n\n| file | bytes |\n|---|---|\n{rows}")
 
 
-def readme(fits: dict[str, Any], data_files: list[Path], main_model: str = MAIN_MODEL) -> str:
+def _regenerate(data_files: list[Path], main_model: str, anonymous: bool) -> str:
+    if anonymous:
+        return "python scripts/production_run.py --confirm-single-production-run   # once; dev/production_runbook.md"
+    model = "" if main_model == MAIN_MODEL else f" --model {main_model}"
+    files = " ".join(f"data/{f.name}" for f in data_files)
+    return f"python examples/make_figures.py --production --file {files}{model}"
+
+
+def readme(fits: dict[str, Any], data_files: list[Path], main_model: str = MAIN_MODEL, anonymous: bool = False) -> str:
     """The README of the figures directory: what each figure is, how to regenerate it, data and versions."""
     try:
         commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"], capture_output=True,
@@ -372,15 +388,14 @@ Data: these are not CMS results.
 From the repository root, with the package installed (`pip install -e ".[dev]"`):
 
 ```bash
-python examples/make_figures.py --production --file {" ".join(f"data/{f.name}" for f in data_files)}\
-{"" if main_model == MAIN_MODEL else f" --model {main_model}"}
+{_regenerate(data_files, main_model, anonymous)}
 ```
 
 The output is deterministic: rerunning on the same data and software gives byte-identical files.
 
 ## Data
 
-{_data_section(data_files)}
+{_anonymous_data_section(data_files) if anonymous else _data_section(data_files)}
 
 ## Software
 
@@ -392,14 +407,18 @@ Generated from commit `{commit}` with Python {platform.python_version()}:
 """
 
 
-def write(figs: Figures, outdir: Path) -> Figures:
-    """Save every figure, the caption and the README into ``outdir``."""
+def write(figs: Figures, outdir: Path, anonymous: bool = False) -> Figures:
+    """Save every figure, the caption and the README into ``outdir``.
+
+    ``anonymous`` describes the data in the README without file names (for the
+    production sample, whose names appear only in the registry).
+    """
     outdir.mkdir(parents=True, exist_ok=True)
     for name, formats in EXPECTED.items():
         figs.files[name] = save_figure(figs.figures[name], outdir / name, formats=formats)
     (outdir / "z_peak_fit_caption.md").write_text(caption(figs.fits, figs.main_model, figs.other_model,
                                                           figs.data_label))
-    (outdir / "README.md").write_text(readme(figs.fits, figs.data_files, figs.main_model))
+    (outdir / "README.md").write_text(readme(figs.fits, figs.data_files, figs.main_model, anonymous))
     return figs
 
 
