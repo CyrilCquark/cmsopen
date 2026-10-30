@@ -479,3 +479,35 @@ No default changed. The statistics-scaling table, the per-file chi2/ndf and
 poles, the chi2/ndf over the fit-range x bin-width grid and the
 core/left/right chi2 split were recomputed (`scripts/rehearsal.py rest`) and
 are identical to the prompt 9 values in dev/benchmarks.md.
+
+## Model freeze (2026-10-29, prompt 11)
+
+Frozen at commit `35af6445db8d601972e60d3ba03f7c19a99527bb` (START11; the
+configuration lives in `src/cmsopen/pipeline.py`, blob `0b910b2` at that
+commit). Validation plan: dev/validation_plan.md, blob `9f9492b` at that
+commit (the plan with its addenda of prompts 7, 8 and 10).
+
+| | Z_mumu | Jpsi_mumu |
+|---|---|---|
+| default model | `cb2_bw_exp` (Amendment 2) | `cb2_bw_poly2` (Amendment 2) |
+| cb_n (fixed) | 2 | 100 (Amendment 1) |
+| validation model | `cb_bw_exp` | `cb_bw_poly2` |
+| histogram range, bin width | 60-120 GeV, 1 GeV (60 bins) | 2.6-3.6 GeV, 0.02 GeV (50 bins) |
+| fit range | 70-110 GeV | 2.8-3.4 GeV |
+| polynomial degree (alternate fits) | 2 | 2 |
+| trigger (any of) | HLT_Mu17_Mu8, HLT_Mu17_TkMu8 | HLT_Dimuon8_Jpsi, HLT_Dimuon10_Jpsi |
+| muon cuts | pT > 20 GeV, abs(eta) < 2.4, tight ID, PF relative isolation (cone 0.4) < 0.12 | pT > 3 GeV, abs(eta) < 2.4, soft ID |
+| events | at least two selected muons | at least two selected muons |
+| pair choice | opposite charge, the pair with the highest pT sum (mass-blind) | same |
+| minimum pairs in the fit range | 100 | 100 |
+| stability grid: fit ranges | 70-110, 75-105, 80-100 GeV | 2.8-3.4, 2.85-3.35, 2.9-3.3 GeV |
+| stability grid: bin widths | 0.5, 1, 2 GeV | 0.01, 0.02, 0.04 GeV |
+| natural width | from the `particle` package | from the `particle` package |
+
+Validation: at least 5,000 pairs per entry; categories, charge, pT, pileup
+and working-point scans as in the plan; scaled errors as in its prompt 10
+addendum.
+
+Rule: from now on, any change to these requires the user's explicit
+approval and a recorded amendment written before the change. A bug fix that
+alters any result is reported to the user before it is committed.
