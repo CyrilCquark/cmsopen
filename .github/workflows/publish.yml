@@ -1,0 +1,30 @@
+# NOT USED UNTIL RELEASE. This workflow never runs on its own: it has only a manual trigger, and even then it
+# only builds and checks the distributions unless the confirmation input is given; the upload step is absent
+# on purpose and will be added (with PyPI trusted publishing, no stored token) when the first release is made.
+name: Publish (not used until release)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "build-only" to build and check the distributions (nothing is uploaded)'
+        required: true
+        default: "no"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.event.inputs.confirm == 'build-only'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and check (no upload)
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check --strict dist/*

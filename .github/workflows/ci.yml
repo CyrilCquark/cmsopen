@@ -1,0 +1,96 @@
+# Continuous integration: lint, types and the fast tests on every push and pull request; the full suite and the
+# package checks on pushes to main and weekly. No secrets are used and no data are downloaded: the tests use
+# synthetic files and the small committed sample (examples/data/cmsopen_sample.root).
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1"  # weekly, Monday 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: fast tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.10", "3.12", "3.13"]  # 3.10: the declared minimum (requires-python)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Ruff (all files, including notebooks and examples)
+        run: python -m ruff check src tests scripts examples
+      - name: Mypy
+        run: python -m mypy
+      - name: Fast tests with the coverage gate
+        run: python -m pytest -m "not slow" -q --cov=cmsopen --cov-report=term --cov-fail-under=90
+
+  lowest:
+    name: lowest declared dependency versions (ubuntu, Python 3.10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Pin every runtime dependency to its declared lower bound
+        run: |
+          sed -n '/^dependencies = \[/,/^\]/p' pyproject.toml | grep -o '"[A-Za-z0-9_.-]*>=[0-9.]*"' \
+            | tr -d '"' | sed 's/>=/==/' | tee lowest.txt
+      - name: Install
+        run: python -m pip install -e ".[dev]" -c lowest.txt
+      - name: Fast tests
+        run: python -m pytest -m "not slow" -q
+
+  full:
+    name: full suite with the coverage gate (ubuntu, Python 3.12)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Full suite with the coverage gate
+        run: python -m pytest -q --cov=cmsopen --cov-report=term --cov-fail-under=90
+
+  package:
+    name: package and sample (ubuntu, Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Build, twine, contents, fresh-venv install (offline)
+        run: python scripts/check_package.py --offline
+      - name: End-to-end analysis of the committed real-data sample
+        run: python -m pytest -q tests/test_sample.py
