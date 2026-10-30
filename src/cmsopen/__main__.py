@@ -51,24 +51,55 @@ def build_parser() -> argparse.ArgumentParser:
         help="model of the validation scans and their inclusive reference (default: the channel's validation model)",
     )
     a.add_argument("--quiet", action="store_true", help="do not print the summary")
-    f = sub.add_parser("fetch", help="download the development data file (resumable, size and adler32 verified)")
+    f = sub.add_parser(
+        "fetch",
+        help="download the development data file, or every file of a listing (resumable, size and adler32 verified)",
+    )
     f.add_argument("--dest", type=Path, default=Path("data"), help="directory to download into (default: data)")
     f.add_argument("--force", action="store_true", help="replace an existing file that fails verification")
     f.add_argument("--url", default=None, help="download from this URL instead of the CERN Open Data portal")
     f.add_argument("--size", type=int, default=None, help="expected size in bytes (with --url)")
     f.add_argument("--adler32", default=None, help="expected adler32 checksum, 8 hex digits (with --url)")
+    f.add_argument(
+        "--listing",
+        type=Path,
+        default=None,
+        help="download every file of a JSON listing with a 'files' list of https_url, size_bytes and "
+        "checksum ('adler32:<8 hex digits>') entries, such as dev/development_set.json",
+    )
+    f.add_argument(
+        "--download-workers",
+        type=int,
+        default=4,
+        choices=range(1, 5),
+        metavar="N",
+        help="with --listing: concurrent downloads, 1 to 4 (default 4); each file is resumable and verified",
+    )
     return parser
 
 
 def _fetch(args: argparse.Namespace) -> int:
-    from cmsopen.datasets import DownloadError, fetch_example_data
+    import json
+
+    from cmsopen.datasets import DownloadError, fetch_example_data, fetch_many
 
     try:
-        path = fetch_example_data(args.dest, url=args.url, force=args.force, size=args.size, adler32=args.adler32)
-    except (DownloadError, OSError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        if args.listing is not None:
+            listing = json.loads(args.listing.read_text())
+            entries = [
+                {"url": e["https_url"], "size": int(e["size_bytes"]), "adler32": e["checksum"].split(":", 1)[1]}
+                for e in listing["files"]
+            ]
+            paths = fetch_many(entries, args.dest, workers=args.download_workers)
+        else:
+            path = fetch_example_data(args.dest, url=args.url, force=args.force, size=args.size, adler32=args.adler32)
+            paths = [path]
+    except (DownloadError, OSError, KeyError, ValueError, IndexError) as exc:
+        message = f"listing entry without {exc}" if isinstance(exc, KeyError) else exc
+        print(f"error: {message}", file=sys.stderr)
         return 1
-    print(path)
+    for path in paths:
+        print(path)
     return 0
 
 

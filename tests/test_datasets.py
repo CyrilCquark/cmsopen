@@ -1,6 +1,7 @@
 """Tests for cmsopen.datasets: a local HTTP server on a thread stands in for the portal (no network)."""
 
 import http.server
+import json
 import re
 import subprocess
 import sys
@@ -289,3 +290,26 @@ def test_fetch_many_limits_and_failures(many, tmp_path):
     with pytest.raises(DownloadError, match="1 of 3 downloads failed; the first \\(entry 2\\)"):
         fetch_many(bad, tmp_path, workers=3, retries=1, backoff=0.01)
     assert (tmp_path / "f0.root").exists() and (tmp_path / "f1.root").exists() and not (tmp_path / "f2.root").exists()
+
+
+def test_cli_fetch_listing_with_download_workers(many, tmp_path, capsys):
+    """cmsopen fetch --listing: every file of a development-set-style listing, concurrently, resumable, verified."""
+    from cmsopen.__main__ import main
+
+    srv, entries = many
+    listing = tmp_path / "listing.json"
+    listing.write_text(json.dumps({"files": [{"https_url": e["url"], "size_bytes": e["size"],
+                                              "checksum": f"adler32:{e['adler32']}"} for e in entries]}))
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "f4.root").write_bytes(FILES["/many/f4.root"][:5000])
+    assert main(["fetch", "--listing", str(listing), "--dest", str(tmp_path / "out"), "--download-workers", "3"]) == 0
+    printed = capsys.readouterr().out.split()
+    assert [Path(p).name for p in printed] == [f"f{k}.root" for k in range(5)]
+    assert all(Path(p).read_bytes() == FILES[f"/many/{Path(p).name}"] for p in printed)
+    assert {"path": "/many/f4.root", "range": "bytes=5000-"} in srv.requests
+    with pytest.raises(SystemExit):
+        main(["fetch", "--listing", str(listing), "--download-workers", "5"])
+    assert "invalid choice" in capsys.readouterr().err
+    listing.write_text(json.dumps({"files": [{"https_url": entries[0]["url"]}]}))
+    assert main(["fetch", "--listing", str(listing), "--dest", str(tmp_path / "x")]) == 1
+    assert "error: listing entry without 'size_bytes'" in capsys.readouterr().err

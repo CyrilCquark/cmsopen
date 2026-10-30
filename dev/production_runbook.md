@@ -12,8 +12,14 @@ been run on the production sample. The commands print no production file name.
   If you need room, the five extra development-set files in `data/` (7.6 GB,
   dev/development_set.md) can be deleted; the original development file is
   still needed by the development tests.
-- Time: about 5 hours for the download at the 1.5-1.8 MB/s measured from the
-  CERN Open Data portal on 2026-10-29, then about 40-60 minutes of analysis
+- Time: the download runs four files at a time (`--download-workers 4`, the
+  default). Measured on 2026-10-30 with 50 MB range requests to the
+  development files (`python scripts/measure_throughput.py`): 1 stream
+  0.61 MB/s, 2 streams 1.27, 3 streams 1.70, 4 streams 1.86 MB/s in total
+  (3.05 times one stream). At 1.86 MB/s the 29.99 GB take about 4.5 hours; at
+  that day's single-stream rate they would take about 14 hours (on
+  2026-10-29 a single stream gave 1.5-1.8 MB/s: the portal's rate varies from
+  day to day). Then about 40-60 minutes of analysis
   and figures (estimated from the 6-file development set: per channel about
   1 minute per 6 files for the analysis with validation using 4 workers, the
   serial repeat about twice that, plus the per-period fits and the figures).
@@ -50,9 +56,10 @@ been run on the production sample. The commands print no production file name.
    python scripts/production_run.py --confirm-single-production-run
    ```
 
-   Success prints the preflight's `PASS:` lines, then
-   `downloaded and verified file k/20 (record ..., index ..., ... bytes)` for
-   each file, `run lock written: results/production_run.lock`, one line per
+   Success prints `run state: not started`, the preflight's `PASS:` lines,
+   `attempt 1 started`, then
+   `downloaded and verified file k/20 (record ..., index ...), ... bytes` for
+   each file in the order the downloads finish, `run lock written: results/production_run.lock`, one line per
    channel (`Z_mumu: cb2_bw_exp, peak ... GeV, chi2/ndf ...; T1 True`, then the
    same for `Jpsi_mumu`), `figures written: 12 files in docs/figures/ (figures,
    captions, README)`, `written: results/production.json (total ... s)` and

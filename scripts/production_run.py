@@ -37,10 +37,12 @@ It refuses to run
 
 Steps of an attempt:
 
-1. download every registered file into data/production/, re-verifying every
-   file already there by size and adler32 on every attempt: a truncated file
-   is resumed, a corrupted one is fetched again from the first byte, never
-   trusted (cmsopen.datasets.fetch_verified);
+1. download every registered file into data/production/, four at a time by
+   default (``--download-workers``, 1 to 4; measured in prompt 12: four streams
+   gave 3.05 times the throughput of one), re-verifying every file already
+   there by size and adler32 on every attempt: a truncated file is resumed, a
+   corrupted one is fetched again from the first byte, never trusted, and a
+   network error is retried after a backoff (cmsopen.datasets.fetch_many);
 2. write the run lock (from here on the production files are opened; kept
    from an earlier attempt on a resume);
 3. per channel (Z_mumu and Jpsi_mumu): the analysis with validation twice,
@@ -67,7 +69,8 @@ gitignored build/production/; error messages are printed with each file
 replaced by its record and index).
 
 Usage:
-    python scripts/production_run.py --confirm-single-production-run [--workers N] [--channels Z_mumu Jpsi_mumu]
+    python scripts/production_run.py --confirm-single-production-run [--workers N] [--download-workers N]
+                                     [--channels Z_mumu Jpsi_mumu]
 
     python scripts/production_run.py --confirm-single-production-run --code-fix-reason "..."   # resume after a fix
 
@@ -239,22 +242,23 @@ def sanitize(text: str, paths: list[Path], files: list[dict[str, Any]]) -> str:
     return text
 
 
-def _download(files: list[dict[str, Any]], backoff: float) -> list[Path] | None:
-    from cmsopen.datasets import DownloadError, fetch_verified
+def _download(files: list[dict[str, Any]], workers: int, backoff: float) -> list[Path] | None:
+    """Every registered file, ``workers`` at a time, each resumable and verified (cmsopen.datasets.fetch_many)."""
+    from cmsopen.datasets import DownloadError, fetch_many
 
-    paths = []
-    for k, e in enumerate(files, 1):
-        label = f"{_label(e, k, len(files))}, {int(e['size_bytes']):,} bytes"
-        try:
-            path = fetch_verified(REPO / DOWNLOAD_DIR, url=e["https_url"], size=int(e["size_bytes"]),
-                                  adler32=e["checksum"].split(":")[1], backoff=backoff)
-        except (DownloadError, OSError) as exc:
-            kind = type(exc).__name__
-            print(f"FAIL: download of {label}: {kind} (run the same command again to resume)")
-            return None
-        print(f"downloaded and verified {label}", flush=True)
-        paths.append(path)
-    return paths
+    entries = [{"url": e["https_url"], "size": int(e["size_bytes"]), "adler32": e["checksum"].split(":")[1]}
+               for e in files]
+
+    def done(k: int, path: Path) -> None:
+        print(f"downloaded and verified {_label(files[k], k + 1, len(files))}, {int(files[k]['size_bytes']):,} bytes",
+              flush=True)
+
+    try:
+        return fetch_many(entries, REPO / DOWNLOAD_DIR, workers=workers, backoff=backoff, on_done=done)
+    except (DownloadError, OSError) as exc:
+        message = sanitize(str(exc), [], files)
+        print(f"FAIL: download: {type(exc).__name__}: {message} (run the same command again to resume)")
+        return None
 
 
 def _fit_dict(r: Any) -> dict[str, Any]:
@@ -440,7 +444,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--confirm-single-production-run", action="store_true",
                         help="required: this command runs the production analysis, once")
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workers", type=int, default=4, help="analysis worker processes (default 4)")
+    parser.add_argument("--download-workers", type=int, default=4, choices=range(1, 5), metavar="N",
+                        help="concurrent downloads, 1 to 4 (default 4)")
     parser.add_argument("--channels", nargs="+", default=["Z_mumu", "Jpsi_mumu"])
     parser.add_argument("--no-network", action="store_true", help="skip the preflight's reachability check")
     parser.add_argument("--code-fix-reason", default=None, metavar="TEXT",
@@ -489,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
     phase = "download"
     _checkpoint(log, attempt, phase)
     t = time.perf_counter()
-    paths = _download(files, args.retry_backoff)
+    paths = _download(files, args.download_workers, args.retry_backoff)
     if paths is None:
         log.add(event="attempt_end", attempt=attempt, status="failed", phase=phase, exception="DownloadError")
         return 5
