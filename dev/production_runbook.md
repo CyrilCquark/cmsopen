@@ -42,7 +42,7 @@ been run on the production sample. The commands print no production file name.
    python scripts/production_preflight.py
    ```
 
-   Success: eleven `PASS:` lines and `PREFLIGHT PASSED`.
+   Success: twelve `PASS:` lines and `PREFLIGHT PASSED`.
 
 4. The production run (download, figures, analysis, results/production.json):
 
@@ -74,35 +74,75 @@ been run on the production sample. The commands print no production file name.
    - new (protected): `docs/figures/jpsi_os_vs_ss.png`,
      `docs/figures/jpsi_peak_fit.pdf`, `docs/figures/jpsi_peak_fit.png`,
      `docs/figures/jpsi_peak_fit_caption.md`, `results/production.json`;
-   - new: `results/production_run.lock`;
+   - new: `results/production_run.lock` and `results/production_run.log` (the
+     run's state and its log of attempts; commit both with the results);
    - gitignored: `data/production/` (the 20 downloads) and
      `build/production/` (the per-channel outputs, which list the input files). The README results block is
    updated by hand from the `render_results.py` output (README.md is
    protected); `scripts/check_readme_numbers.py` then checks it.
 
+## States of the run
+
+| state | what exists | what the command does |
+|---|---|---|
+| not started | nothing | starts attempt 1 |
+| downloaded | the verified files in `data/production/`, the log | starts the next attempt (re-verifies every file, then writes the lock) |
+| analysis started | `results/production_run.lock` (the files have been opened), the log | resumes, under the conditions below |
+| complete | `results/production.json` | refuses (`REFUSED: single-run guard`, exit 3) |
+
+Only "complete" blocks a new run. Every attempt is numbered and logged in
+`results/production_run.log` (one JSON object per line: time, attempt, phase,
+exception type, commits; no file names). A killed attempt (power, kill -9,
+a closed lid that stopped the process) has no end line; the next attempt
+records it as `interrupted` in the phase where it stopped.
+`results/production.json` carries `attempts`: the count, every failed or
+interrupted attempt (time, phase, exception type) and every code fix.
+
 ## If something goes wrong
 
+Every failure is fixed by running the same command again (step 4), unless
+it says otherwise. The log and the lock are the run's own state: the
+preflight and `scripts/run_gates.py` do not count them as changes, and they
+must not be deleted.
+
 - **The download is interrupted** (network error, laptop asleep): run the
-  same command again (step 4). Nothing has been opened yet: the run lock is
-  written only after every file is downloaded and verified. Partial files in
-  `data/production/` are resumed (the preflight accepts files there and
-  nowhere else). A file that fails its size or checksum check is reported as
-  `FAIL: download of file k/20 ...`; run the command again to retry.
+  same command again. Nothing has been opened yet. Every file already in
+  `data/production/` is verified again by size and adler32 on every attempt;
+  a truncated file is resumed with an HTTP Range request, a corrupted one is
+  fetched again from the first byte (never trusted). Network errors are
+  retried three times per file, after 10, 30 and 90 seconds.
 - **A preflight check fails** (`FAIL:` lines, `REFUSED: the preflight
   failed`): fix the cause it names (commit or stash changes; rerun
   `scripts/run_gates.py` after a new commit; free disk space; wait for the
   network) and start again from that step. Do not edit a check.
-- **`REFUSED: single-run guard`**: the production run has already started
-  (the lock or results/production.json exists). Do not delete them to run
-  again; report it.
-- **`FAIL: the production analysis failed`** after the lock was written: the
-  files have been opened. Do not rerun; report the message. Any change after
-  this point is an amendment (dev/model_choice.md, "Model freeze").
+- **`FAIL: the production analysis failed in phase '...'`** (after the lock),
+  or the process was killed: the files have been opened. If the cause was
+  outside the code (memory, sleep, a full disk, Ctrl-C), run the same
+  command again: it resumes if HEAD is still the lock's commit, the working
+  tree is clean apart from the lock and the log, and the Python environment
+  is unchanged. Partial figures of the failed attempt in `docs/figures/` are
+  restored to HEAD automatically before the checks.
+- **A code fix is needed** after such a failure: report the message first.
+  Commit the fix (no analysis choice may change: the channel configurations
+  and the validation plan's constants are compared with the lock's hash, and
+  the command refuses if they differ), run `python scripts/run_gates.py` for
+  the new HEAD, then
+  `python scripts/production_run.py --confirm-single-production-run --code-fix-reason "<what was fixed and why>"`.
+  The new commit and the reason are recorded in the lock, the log and
+  `results/production.json`. Without the flag a changed HEAD is refused
+  (`REFUSED: HEAD ... differs from the lock's commit`, exit 8). Any change of
+  an analysis choice is an amendment (dev/model_choice.md, "Model freeze") and
+  is not possible through a resume.
+- **`REFUSED: resuming needs a clean working tree`** (exit 8): commit or stash
+  the changes it counts, then run again.
+- **`REFUSED: single-run guard`** (exit 3): the run is complete. Do not delete
+  results/production.json to run again; report it.
 - **`FAIL: T1`**: the results are written, but the two runs differ; report it.
 
 ## Once only
 
-This command must be run once. The single-run guard (the lock and
-results/production.json) enforces it; a second run is refused. The
-evaluation of the targets (T1, T2, T4, T6 in dev/targets.md) is read from
-results/production.json as it is; nothing is refitted or tuned afterwards.
+This command completes once. The single-run guard (results/production.json)
+enforces it; a run after completion is refused. A failed attempt is not a
+second run: it is resumed, and every attempt is recorded. The evaluation of
+the targets (T1-T7 in dev/targets.md) is read from results/production.json as
+it is; nothing is refitted or tuned afterwards.

@@ -26,9 +26,12 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 import zlib
+from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -38,9 +41,13 @@ __all__ = [
     "DEV_SIZE",
     "DEV_URL",
     "GENERIC_DATA_LABEL",
+    "MAX_DOWNLOAD_WORKERS",
     "DownloadError",
+    "VerificationError",
     "adler32_of",
     "fetch_example_data",
+    "fetch_many",
+    "fetch_verified",
     "run_label",
 ]
 
@@ -125,6 +132,10 @@ def run_label(paths: str | Path | list[str | Path]) -> str:
 
 class DownloadError(RuntimeError):
     """The download failed, or the file on disk does not match the expected size or checksum."""
+
+
+class VerificationError(DownloadError):
+    """A file on disk (already there, or just downloaded) does not have the expected size or checksum."""
 
 
 def adler32_of(path: str | Path) -> str:
@@ -229,7 +240,7 @@ def fetch_example_data(
                     out.write(f"{target} is already present and verified\n")
                 return target
             if not force:
-                raise DownloadError(
+                raise VerificationError(
                     f"{target} exists but fails verification ({problem}); not overwriting it. "
                     "Pass force=True (cmsopen fetch --force) to replace it."
                 )
@@ -261,7 +272,107 @@ def fetch_example_data(
         out.write("\n")
     problem = _verify(target, size, adler32)
     if problem is not None:
-        raise DownloadError(f"downloaded {target} fails verification ({problem})")
+        raise VerificationError(f"downloaded {target} fails verification ({problem})")
     if out:
         out.write(f"Verified {target}: {size:,} bytes, adler32 {adler32}\n")
     return target
+
+
+MAX_DOWNLOAD_WORKERS = 4
+"""The most concurrent downloads :func:`fetch_many` opens to one portal (politeness towards a shared service)."""
+
+
+def fetch_verified(
+    dest: str | Path,
+    *,
+    url: str,
+    size: int,
+    adler32: str,
+    filename: str | None = None,
+    retries: int = 3,
+    backoff: float = 10.0,
+    timeout: float = 60.0,
+    progress: bool = False,
+) -> Path:
+    """Download one file with :func:`fetch_example_data`, never trusting a bad copy, and retry politely.
+
+    A file already in ``dest`` is verified (size and adler32) on every call. A
+    shorter file is resumed with an HTTP Range request; a file that fails
+    verification (corrupted, too large, or a resumed file whose first part was
+    corrupted) is deleted and downloaded again from the first byte. A network
+    error is retried after ``backoff``, ``3 * backoff``, ``9 * backoff`` ...
+    seconds, resuming each time, up to ``retries`` retries.
+
+    Raises
+    ------
+    DownloadError
+        The file could not be downloaded and verified within the retries.
+    """
+    if retries < 0:
+        raise ValueError(f"retries must be >= 0, got {retries}")
+    last: DownloadError | None = None
+    for attempt in range(retries + 1):
+        if attempt:
+            time.sleep(backoff * 3 ** (attempt - 1))
+        try:
+            return fetch_example_data(dest, url=url, size=size, adler32=adler32, filename=filename, force=True,
+                                      progress=progress, timeout=timeout)
+        except VerificationError as exc:  # a corrupted copy: start this file again from the first byte
+            last = exc
+            target = Path(dest) / (filename or url.rstrip("/").rsplit("/", 1)[-1])
+            target.unlink(missing_ok=True)
+        except DownloadError as exc:  # a network error: resume after the backoff
+            last = exc
+    assert last is not None
+    raise last
+
+
+def fetch_many(
+    entries: Sequence[Mapping[str, Any]],
+    dest: str | Path,
+    *,
+    workers: int = MAX_DOWNLOAD_WORKERS,
+    retries: int = 3,
+    backoff: float = 10.0,
+    progress: bool = False,
+    on_done: Callable[[int, Path], None] | None = None,
+) -> list[Path]:
+    """Download several files concurrently with :func:`fetch_verified`; return their paths in ``entries`` order.
+
+    Each entry has ``url``, ``size`` and ``adler32`` (and optionally
+    ``filename``). At most ``workers`` (1 to :data:`MAX_DOWNLOAD_WORKERS`)
+    downloads run at once; each file is resumable and verified on its own, so
+    an interrupted call is completed by calling again. ``on_done(index, path)``
+    is called as each file is verified.
+
+    Raises
+    ------
+    ValueError
+        ``workers`` outside 1 to MAX_DOWNLOAD_WORKERS.
+    DownloadError
+        One or more files failed; the message counts them and quotes the first error (the others were completed).
+    """
+    if isinstance(workers, bool) or not 1 <= workers <= MAX_DOWNLOAD_WORKERS:
+        raise ValueError(f"workers must be between 1 and {MAX_DOWNLOAD_WORKERS}, got {workers!r}")
+
+    def one(k: int) -> Path:
+        e = entries[k]
+        path = fetch_verified(dest, url=e["url"], size=int(e["size"]), adler32=e["adler32"],
+                              filename=e.get("filename"), retries=retries, backoff=backoff, progress=progress)
+        if on_done is not None:
+            on_done(k, path)
+        return path
+
+    paths: list[Path | None] = [None] * len(entries)
+    errors: list[tuple[int, DownloadError]] = []
+    with ThreadPoolExecutor(workers) as pool:
+        futures = {pool.submit(one, k): k for k in range(len(entries))}
+        for future in as_completed(futures):
+            try:
+                paths[futures[future]] = future.result()
+            except DownloadError as exc:
+                errors.append((futures[future], exc))
+    if errors:
+        k, first = min(errors, key=lambda item: item[0])
+        raise DownloadError(f"{len(errors)} of {len(entries)} downloads failed; the first (entry {k}): {first}")
+    return [p for p in paths if p is not None]

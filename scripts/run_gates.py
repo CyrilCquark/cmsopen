@@ -25,7 +25,10 @@ REPO = Path(__file__).resolve().parents[1]
 def main() -> int:
     """Run the gates and write the record; return 0 only if both passed."""
     status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True)
-    if status.returncode != 0 or status.stdout.strip():
+    # the state of a production attempt that failed after the lock (scripts/production_run.py) is not a change
+    run_state = ("results/production_run.lock", "results/production_run.log")
+    dirty = [line for line in status.stdout.splitlines() if line.strip() and line[3:] not in run_state]
+    if status.returncode != 0 or dirty:
         print("FAIL: the working tree is not clean; commit first so the record describes HEAD")
         return 1
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()

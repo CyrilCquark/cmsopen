@@ -1,20 +1,48 @@
 """The single production run: download, analysis of both channels, figures, T1-T7, results/production.json.
 
 Run it ONCE, on the pre-registered production sample (results/production_files.json),
-after ``scripts/production_preflight.py`` has passed. It refuses to run
+after ``scripts/production_preflight.py`` has passed.
+
+States (dev/production_runbook.md):
+
+- not started: neither the run lock nor results/production.json exists;
+- downloaded: every file is in data/production/ and verified (no lock yet:
+  nothing has been opened);
+- analysis started: the run lock results/production_run.lock exists (the
+  production files have been opened);
+- complete: results/production.json exists.
+
+Only "complete" blocks a new run (the single-run guard). After a failure
+(any state but complete) the same command is run again: an attempt that
+failed after the lock is resumed only if HEAD equals the lock's commit, the
+working tree is clean (apart from the lock and the log) and the environment
+is unchanged. If a code fix was committed after the failure, the command
+refuses unless ``--code-fix-reason "..."`` is given; then the fix's commit must
+descend from the lock's commit and the analysis choices (every channel's
+configuration and the validation plan's constants) must be unchanged; the
+new commit and the reason are recorded. Every attempt is numbered;
+results/production_run.log (JSON lines, aggregate information only: times,
+attempts, phases, exception types, commits) records each attempt's start,
+phases and end (complete, failed with the phase and the exception type, or
+interrupted when a killed attempt is found by the next one); results/production.json
+carries the count, the failed attempts and the code fixes.
+
+It refuses to run
 
 - without ``--confirm-single-production-run`` (exit 2);
-- if results/production.json or the run lock results/production_run.lock exists
-  (the single-run guard; exit 3);
-- if the preflight fails (exit 4).
+- if results/production.json exists (the run is complete; exit 3);
+- if the preflight fails (exit 4);
+- if a resume is not allowed (dirty tree, changed HEAD without a reason, changed
+  analysis choices or environment; exit 8).
 
-Steps:
+Steps of an attempt:
 
-1. download every registered file into data/production/ with the verified,
-   resumable fetch of cmsopen.datasets (size and adler32 checked; an
-   interrupted download is resumed by running the command again, since
-   nothing has been opened yet);
-2. write the run lock (from here on the production files are opened);
+1. download every registered file into data/production/, re-verifying every
+   file already there by size and adler32 on every attempt: a truncated file
+   is resumed, a corrupted one is fetched again from the first byte, never
+   trusted (cmsopen.datasets.fetch_verified);
+2. write the run lock (from here on the production files are opened; kept
+   from an earlier attempt on a resume);
 3. per channel (Z_mumu and Jpsi_mumu): the analysis with validation twice,
    once with worker processes and once serially, into
    build/production/<channel>/ (T1: the two summary.json files must be
@@ -41,7 +69,10 @@ replaced by its record and index).
 Usage:
     python scripts/production_run.py --confirm-single-production-run [--workers N] [--channels Z_mumu Jpsi_mumu]
 
-Exit 0 on success; 5 on a download failure; 6 on an analysis failure; 7 if T1 fails (results are still written).
+    python scripts/production_run.py --confirm-single-production-run --code-fix-reason "..."   # resume after a fix
+
+Exit 0 on success; 5 on a download failure; 6 on an analysis failure; 7 if T1 fails (results are still written);
+130 if interrupted with Ctrl-C.
 """
 
 from __future__ import annotations
@@ -50,6 +81,9 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import signal
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -61,9 +95,11 @@ from production_preflight import (  # noqa: E402
     DOWNLOAD_DIR,
     GATES_DIR,
     LOCK,
+    LOG,
     PRODUCTION_JSON,
     REGISTRY,
     REPO,
+    git,
     load_registry,
     run_preflight,
     selected,
@@ -71,6 +107,123 @@ from production_preflight import (  # noqa: E402
 
 CHI2_NDF_BENCHMARK = 2.0  # T2 (dev/targets.md)
 FILES_BENCHMARK = {31129: 12, 31123: 8}  # T4 (dev/targets.md): 20 files, 12 from record 31129, 8 from 31123
+FIGURES_DIR = Path("docs") / "figures"
+INJECT_ENV = "CMSOPEN_PRODUCTION_INJECT"  # tests only: "raise:<phase>" or "kill:<phase>" at a checkpoint
+
+
+class RunLog:
+    """results/production_run.log: one JSON object per line (time, event, attempt, phase, exception type, commits)."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def events(self) -> list[dict[str, Any]]:
+        """Every event so far, in order."""
+        if not self.path.exists():
+            return []
+        return [json.loads(line) for line in self.path.read_text().splitlines() if line.strip()]
+
+    def add(self, **event: Any) -> None:
+        """Append one event and flush it to disk (it must survive a killed process)."""
+        line = json.dumps({"time": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **event}, sort_keys=True)
+        with open(self.path, "a") as f:
+            f.write(line + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+
+    def begin(self, head: str) -> int:
+        """Close any attempt that never ended (killed) as interrupted, start the next one and return its number."""
+        events = self.events()
+        ended = {e["attempt"] for e in events if e["event"] == "attempt_end"}
+        starts = [e["attempt"] for e in events if e["event"] == "attempt_start"]
+        for n in starts:
+            if n not in ended:
+                phases = [e for e in events if e["event"] == "phase" and e["attempt"] == n]
+                self.add(event="attempt_end", attempt=n, status="interrupted",
+                         phase=phases[-1]["phase"] if phases else "start", last_seen=(phases or [{}])[-1].get("time"),
+                         exception="none recorded (the process was killed or the machine stopped)")
+        attempt = len(starts) + 1
+        self.add(event="attempt_start", attempt=attempt, head=head)
+        return attempt
+
+    def summary(self, attempt: int) -> dict[str, Any]:
+        """The attempt count, every failed or interrupted attempt and every code fix, for results/production.json."""
+        events = self.events()
+        return {
+            "n": attempt,
+            "failed": [{k: e.get(k) for k in ("attempt", "time", "status", "phase", "exception")}
+                       for e in events if e["event"] == "attempt_end" and e["status"] != "complete"],
+            "code_fixes": [{k: e[k] for k in ("attempt", "time", "from_head", "to_head", "reason")}
+                           for e in events if e["event"] == "code_fix"],
+        }
+
+
+def analysis_config_sha256() -> str:
+    """SHA-256 of the analysis choices: every registered channel's configuration and the validation plan's constants."""
+    from cmsopen import validation as v
+    from cmsopen.pipeline import CHANNELS
+
+    choices = {
+        "channels": {n: {**c.to_dict(), "validation_model": c.validation_model} for n, c in sorted(CHANNELS.items())},
+        "validation": {k: getattr(v, k) for k in ("BARREL_MAX_ETA", "ENDCAP_MAX_ETA", "MIN_PAIRS", "PHI_EDGES",
+                                                  "ETA_EDGES", "PT_EDGES", "PILEUP_EDGES", "WORKING_POINTS",
+                                                  "COMPARED_MODELS")},
+    }
+    return hashlib.sha256(json.dumps(choices, sort_keys=True, default=dict).encode()).hexdigest()
+
+
+def _checkpoint(log: RunLog, attempt: int, phase: str) -> None:
+    """Record that ``phase`` starts; the tests inject a failure or a kill here through INJECT_ENV."""
+    log.add(event="phase", attempt=attempt, phase=phase)
+    inject = os.environ.get(INJECT_ENV, "")
+    if inject == f"raise:{phase}":
+        raise RuntimeError(f"injected failure at {phase} (test)")
+    if inject == f"kill:{phase}":
+        os.kill(os.getpid(), signal.SIGKILL)
+
+
+def restore_figures() -> None:
+    """Put docs/figures/ back to HEAD: a failed or killed attempt may have written part of its figures there."""
+    subprocess.run(["git", "checkout", "-q", "HEAD", "--", str(FIGURES_DIR)], cwd=REPO, check=True)
+    subprocess.run(["git", "clean", "-fq", "--", str(FIGURES_DIR)], cwd=REPO, check=True)
+
+
+def _dirty() -> list[str]:
+    """Changed or untracked paths other than the run's own state (the lock and the log)."""
+    out = git(REPO, "status", "--porcelain", "--untracked-files=all").stdout.splitlines()
+    return [line for line in out if line.strip() and line[3:] not in (str(LOCK), str(LOG))]
+
+
+def check_resume(lock: dict[str, Any], reason: str | None) -> tuple[int, dict[str, Any] | None]:
+    """Whether an attempt may resume after the lock: (0, code fix to record or None) or (8, None) with a message."""
+    restore_figures()
+    dirty = _dirty()
+    if dirty:
+        print(f"REFUSED: resuming needs a clean working tree ({len(dirty)} changed or untracked paths besides the "
+              f"lock and the log); commit or stash them")
+        return 8, None
+    head = git(REPO, "rev-parse", "HEAD").stdout.strip()
+    from production_preflight import environment
+
+    if environment()["sha256"] != lock["environment_sha256"]:
+        print("REFUSED: the environment (Python or package versions) changed since the run started; restore it")
+        return 8, None
+    if head == lock["head"]:
+        if reason:
+            print("note: HEAD is the lock's commit; --code-fix-reason ignored")
+        return 0, None
+    if not reason:
+        print(f"REFUSED: HEAD {head[:12]} differs from the lock's commit {lock['head'][:12]}; if a code fix was "
+              'needed, run again with --code-fix-reason "<what was fixed and why>"')
+        return 8, None
+    if git(REPO, "merge-base", "--is-ancestor", lock["head"], head).returncode != 0:
+        print(f"REFUSED: the lock's commit {lock['head'][:12]} is not an ancestor of HEAD {head[:12]}")
+        return 8, None
+    if analysis_config_sha256() != lock["analysis_config_sha256"]:
+        print("REFUSED: the analysis choices changed (a channel configuration or a validation plan constant differs "
+              "from the frozen one); a code fix may not change them")
+        return 8, None
+    return 0, {"from_head": lock["head"], "to_head": head, "reason": reason}
 
 
 def _label(e: dict[str, Any], k: int, n: int) -> str:
@@ -86,15 +239,15 @@ def sanitize(text: str, paths: list[Path], files: list[dict[str, Any]]) -> str:
     return text
 
 
-def _download(files: list[dict[str, Any]]) -> list[Path] | None:
-    from cmsopen.datasets import DownloadError, fetch_example_data
+def _download(files: list[dict[str, Any]], backoff: float) -> list[Path] | None:
+    from cmsopen.datasets import DownloadError, fetch_verified
 
     paths = []
     for k, e in enumerate(files, 1):
         label = f"{_label(e, k, len(files))}, {int(e['size_bytes']):,} bytes"
         try:
-            path = fetch_example_data(REPO / DOWNLOAD_DIR, url=e["https_url"], size=int(e["size_bytes"]),
-                                      adler32=e["checksum"].split(":")[1], progress=False)
+            path = fetch_verified(REPO / DOWNLOAD_DIR, url=e["https_url"], size=int(e["size_bytes"]),
+                                  adler32=e["checksum"].split(":")[1], backoff=backoff)
         except (DownloadError, OSError) as exc:
             kind = type(exc).__name__
             print(f"FAIL: download of {label}: {kind} (run the same command again to resume)")
@@ -271,40 +424,92 @@ def targets(data: dict[str, Any], gates: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def run_state() -> str:
+    """not started, downloaded, analysis started or complete (see the module docstring)."""
+    if (REPO / PRODUCTION_JSON).exists():
+        return "complete"
+    if (REPO / LOCK).exists():
+        return "analysis started"
+    if any(e["event"] == "downloaded" for e in RunLog(REPO / LOG).events()):
+        return "downloaded"
+    return "not started"
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Run the production analysis once."""
+    """Run the production analysis once (resuming a failed attempt when allowed)."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--confirm-single-production-run", action="store_true",
                         help="required: this command runs the production analysis, once")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--channels", nargs="+", default=["Z_mumu", "Jpsi_mumu"])
     parser.add_argument("--no-network", action="store_true", help="skip the preflight's reachability check")
+    parser.add_argument("--code-fix-reason", default=None, metavar="TEXT",
+                        help="resume after a code fix committed since the run started: what was fixed and why")
+    parser.add_argument("--retry-backoff", type=float, default=10.0, help=argparse.SUPPRESS)  # seconds (tests)
     args = parser.parse_args(argv)
     if not args.confirm_single_production_run:
         print("REFUSED: pass --confirm-single-production-run (the production analysis is run once)")
         return 2
-    existing = [str(p) for p in (PRODUCTION_JSON, LOCK) if (REPO / p).exists()]
-    if existing:
-        print(f"REFUSED: single-run guard: {', '.join(existing)} exists; the production run has already started")
+    state = run_state()
+    print(f"run state: {state}", flush=True)
+    if state == "complete":
+        print(f"REFUSED: single-run guard: {PRODUCTION_JSON} exists; the production run is complete")
         return 3
+    lock = json.loads((REPO / LOCK).read_text()) if state == "analysis started" else None
+    code_fix = None
+    if lock is not None:
+        rc, code_fix = check_resume(lock, args.code_fix_reason)
+        if rc:
+            return rc
+    elif args.code_fix_reason:
+        print("note: no run lock (nothing has been opened yet); --code-fix-reason ignored")
     start = time.perf_counter()
     pf = run_preflight(REPO, allow_downloaded=True, network=not args.no_network)
     if not pf.passed:
         print("REFUSED: the preflight failed (see the FAIL lines above)")
         return 4
+    log = RunLog(REPO / LOG)
+    attempt = log.begin(pf.head)
+    print(f"attempt {attempt} started (log: {LOG})", flush=True)
+    phase = "start"
+
+    def failed(exc: BaseException, rc: int, message: str) -> int:
+        log.add(event="attempt_end", attempt=attempt, status="failed", phase=phase, exception=type(exc).__name__)
+        print(message)
+        return rc
+
+    if code_fix is not None:
+        log.add(event="code_fix", attempt=attempt, **code_fix)
+        assert lock is not None
+        lock.update(head=code_fix["to_head"], code_fixes=[*lock.get("code_fixes", []), code_fix])
+        (REPO / LOCK).write_text(json.dumps(lock, indent=2) + "\n")
+        print(f"code fix recorded: {code_fix['from_head'][:12]} -> {code_fix['to_head'][:12]}", flush=True)
     registry = load_registry(REPO)
     files = selected(registry)
+    phase = "download"
+    _checkpoint(log, attempt, phase)
     t = time.perf_counter()
-    paths = _download(files)
+    paths = _download(files, args.retry_backoff)
     if paths is None:
+        log.add(event="attempt_end", attempt=attempt, status="failed", phase=phase, exception="DownloadError")
         return 5
+    log.add(event="downloaded", attempt=attempt, n_files=len(paths))
     timing = {"download_s": round(time.perf_counter() - t, 1)}
-    (REPO / LOCK).write_text(json.dumps({"head": pf.head, "environment_sha256": pf.environment["sha256"],
-                                         "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}, indent=2) + "\n")
-    print(f"run lock written: {LOCK} (the production files are opened from here on)", flush=True)
     try:
+        phase = "lock"
+        if lock is None:
+            lock = {"first_head": pf.head, "head": pf.head, "environment_sha256": pf.environment["sha256"],
+                    "analysis_config_sha256": analysis_config_sha256(),
+                    "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+            (REPO / LOCK).write_text(json.dumps(lock, indent=2) + "\n")
+            print(f"run lock written: {LOCK} (the production files are opened from here on)", flush=True)
+        else:
+            print(f"run lock kept: {LOCK} (resuming after the lock)", flush=True)
+        _checkpoint(log, attempt, phase)
         channels, results = {}, {}
         for name in args.channels:
+            phase = f"analysis {name}"
+            _checkpoint(log, attempt, phase)
             print(f"analysing {name} ...", flush=True)
             t = time.perf_counter()
             channels[name], results[name] = _channel(name, paths, files, args.workers)
@@ -313,13 +518,21 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{name}: {res['model']}, peak {res['peak_position_gev']:.4f} +- {res['stat_error_gev']:.4f} GeV, "
                   f"chi2/ndf {res['chi2_ndf']:.3f}; T1 {channels[name]['t1']['summary_json_byte_identical']}",
                   flush=True)
+        phase = "figures"
+        _checkpoint(log, attempt, phase)
         t = time.perf_counter()
         figures = _figures(paths, results.get("Jpsi_mumu"))
         timing["figures_s"] = round(time.perf_counter() - t, 1)
         print(f"figures written: {len(figures)} files in docs/figures/ (figures, captions, README)", flush=True)
-    except Exception as exc:  # any analysis failure: reported; the lock stays (the files have been opened)
-        print(f"FAIL: the production analysis failed: {type(exc).__name__}: {sanitize(str(exc), paths, files)}")
-        return 6
+        phase = "results"
+        _checkpoint(log, attempt, phase)
+    except KeyboardInterrupt as exc:
+        restore_figures()
+        return failed(exc, 130, "FAIL: interrupted; run the same command again to resume")
+    except Exception as exc:  # any analysis failure: recorded; the lock stays (the files have been opened)
+        restore_figures()
+        return failed(exc, 6, f"FAIL: the production analysis failed in phase '{phase}': {type(exc).__name__}: "
+                              f"{sanitize(str(exc), paths, files)} (fix the cause, then run the same command again)")
 
     headline = channels.get("Z_mumu") or next(iter(channels.values()))
     res = headline["result"]
@@ -340,15 +553,18 @@ def main(argv: list[str] | None = None) -> int:
                    "size_bytes": int(e["size_bytes"]), "checksum": e["checksum"]} for e in files],
         "registry_sha256": hashlib.sha256((REPO / REGISTRY).read_bytes()).hexdigest(),
         "git_head": pf.head,
+        "first_head": lock["first_head"],
         "freeze_commit": pf.freeze_commit,
+        "analysis_config_sha256": lock["analysis_config_sha256"],
         "environment": pf.environment,
         "gates": gates,
-        "attempts": 1,
+        "attempts": log.summary(attempt),
         "timing_s": {**timing, "total_s": round(time.perf_counter() - start, 1)},
     }
     data["targets"] = targets(data, gates)
     (REPO / PRODUCTION_JSON).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-    print(f"written: {PRODUCTION_JSON} (total {data['timing_s']['total_s']} s)")
+    log.add(event="attempt_end", attempt=attempt, status="complete", phase=phase)
+    print(f"written: {PRODUCTION_JSON} (attempt {attempt}, total {data['timing_s']['total_s']} s)")
     t1_ok = all(c["t1"]["summary_json_byte_identical"] for c in channels.values())
     if not t1_ok:
         print("FAIL: T1: the two analysis runs gave different summary.json files")

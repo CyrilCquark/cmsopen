@@ -7,6 +7,7 @@ download step uses the real fetch with its size and adler32 checks. No real prod
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -69,9 +70,13 @@ def record_gates(repo: Path) -> None:
         {"head": head, "pytest_rc": 0, "quality_rc": 0, "summary": "recorded by the test"}))
 
 
-def run(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess:
+def run(repo: Path, script: str, *args: str, inject: str | None = None) -> subprocess.CompletedProcess:
+    env = {k: v for k, v in os.environ.items() if k != "CMSOPEN_PRODUCTION_INJECT"}
+    env["PYTHONPATH"] = str(repo / "src")  # the copy's code, as the preflight requires (not the editable install's)
+    if inject:
+        env["CMSOPEN_PRODUCTION_INJECT"] = inject  # a test hook of production_run.py: "raise:<phase>", "kill:<phase>"
     return subprocess.run([sys.executable, str(repo / "scripts" / script), *args], cwd=repo, capture_output=True,
-                          text=True)
+                          text=True, env=env)
 
 
 @pytest.fixture(scope="module")
@@ -204,3 +209,132 @@ def test_sanitize_replaces_every_file_name_and_path(tmp_path):
     text = sanitize(f"cannot read {paths[0]} (chunk 2); BBB.root has no Events tree", paths, files)
     assert text == ("cannot read file 1/2 (record 31129, index 3) (chunk 2); file 2/2 (record 31123, index 0) has no "
                     "Events tree")
+
+
+# -- crash and resume (Phase B of prompt 12): one copy, the Z channel only, the steps in order ---------------------
+
+Z_ONLY = ("--confirm-single-production-run", "--channels", "Z_mumu", "--workers", "2", "--retry-backoff", "0.01")
+
+
+def show(capsys, title, out):
+    with capsys.disabled():
+        print(f"\n--- {title} (exit {out.returncode})\n{out.stdout.strip()}")
+
+
+def events(repo):
+    return [json.loads(line) for line in (repo / "results" / "production_run.log").read_text().splitlines()]
+
+
+@pytest.fixture(scope="module")
+def resume(tmp_path_factory):
+    """A copy whose download directory already holds a truncated file and a corrupted file of the registry."""
+    repo, source = make_copy(tmp_path_factory.mktemp("resume"))
+    record_gates(repo)
+    sources = sorted(source.glob("SYNTH-*.root"))
+    (repo / "data" / "production").mkdir(parents=True)
+    data = sources[0].read_bytes()
+    (repo / "data" / "production" / sources[0].name).write_bytes(data[: len(data) // 3])  # truncated
+    data = bytearray(sources[1].read_bytes())
+    data[1000] ^= 0xFF
+    (repo / "data" / "production" / sources[1].name).write_bytes(bytes(data))  # same size, corrupted
+    return repo, source
+
+
+@pytest.mark.slow
+def test_resume_1_truncated_and_corrupted_downloads_are_refetched_then_an_injected_exception_after_the_lock(
+        resume, capsys):
+    repo, source = resume
+    out = run(repo, "production_run.py", *Z_ONLY, inject="raise:lock")
+    show(capsys, "attempt 1: truncated and corrupted files present; an exception injected after the lock", out)
+    assert out.returncode == 6 and "FAIL: the production analysis failed in phase 'lock': RuntimeError" in out.stdout
+    assert "run state: not started" in out.stdout and "SYNTH-" not in out.stdout
+    for f in source.glob("SYNTH-*.root"):  # both bad copies were replaced by verified ones
+        assert (repo / "data" / "production" / f.name).read_bytes() == f.read_bytes()
+    assert (repo / "results" / "production_run.lock").exists() and not (repo / "results" / "production.json").exists()
+    end = events(repo)[-1]
+    assert (end["event"], end["attempt"], end["status"], end["phase"], end["exception"]) == (
+        "attempt_end", 1, "failed", "lock", "RuntimeError")
+    assert git(repo, "status", "--porcelain").splitlines() == ["?? results/production_run.lock",
+                                                               "?? results/production_run.log"]
+
+
+@pytest.mark.slow
+def test_resume_2_a_dirty_tree_is_refused(resume, capsys):
+    repo, _ = resume
+    n = len(events(repo))
+    (repo / "notes.txt").write_text("dirty\n")
+    out = run(repo, "production_run.py", *Z_ONLY)
+    show(capsys, "resume with an untracked file", out)
+    (repo / "notes.txt").unlink()
+    assert out.returncode == 8 and "REFUSED: resuming needs a clean working tree" in out.stdout
+    assert "run state: analysis started" in out.stdout and len(events(repo)) == n  # no attempt started
+
+
+@pytest.mark.slow
+def test_resume_3_a_changed_head_needs_a_reason_and_may_not_change_the_analysis(resume, capsys):
+    repo, _ = resume
+    with open(repo / "dev" / "production_runbook.md", "a") as f:
+        f.write("\n<!-- a code fix (test) -->\n")
+    git(repo, "commit", "-qam", "a code fix (test)")
+    record_gates(repo)
+    out = run(repo, "production_run.py", *Z_ONLY)
+    show(capsys, "resume after a new commit, without --code-fix-reason", out)
+    assert out.returncode == 8 and "differs from the lock's commit" in out.stdout and "--code-fix-reason" in out.stdout
+    pipeline = repo / "src" / "cmsopen" / "pipeline.py"
+    text = pipeline.read_text()
+    assert text.count("        bins=60,\n") == 1
+    pipeline.write_text(text.replace("        bins=60,\n", "        bins=61,\n"))
+    git(repo, "commit", "-qam", "change a Z histogram choice (test)")
+    record_gates(repo)
+    out = run(repo, "production_run.py", *Z_ONLY, "--code-fix-reason", "rebinned (test)")
+    show(capsys, "resume with --code-fix-reason after changing an analysis choice", out)
+    assert out.returncode == 8 and "the analysis choices changed" in out.stdout
+    git(repo, "revert", "--no-edit", "HEAD")
+    record_gates(repo)
+    assert len([e for e in events(repo) if e["event"] == "attempt_start"]) == 1
+
+
+@pytest.mark.slow
+def test_resume_4_a_killed_process_after_a_code_fix(resume, capsys):
+    repo, _ = resume
+    out = run(repo, "production_run.py", *Z_ONLY, "--code-fix-reason", "the fix of test 3 (test)",
+              inject="kill:figures")
+    show(capsys, "attempt 2: code fix recorded, process killed at the figures step", out)
+    assert out.returncode == -9 and "code fix recorded" in out.stdout and "attempt 2 started" in out.stdout
+    last = events(repo)[-1]
+    assert (last["event"], last["attempt"], last["phase"]) == ("phase", 2, "figures")  # no end: killed
+    lock = json.loads((repo / "results" / "production_run.lock").read_text())
+    assert lock["head"] == git(repo, "rev-parse", "HEAD").strip() != lock["first_head"]
+    (repo / "docs" / "figures" / "z_peak_fit.png").write_bytes(b"partial")  # what a kill mid-figures leaves
+    (repo / "docs" / "figures" / "jpsi_peak_fit.png").write_bytes(b"partial")
+
+
+@pytest.mark.slow
+def test_resume_5_completes_and_records_every_attempt(resume, capsys):
+    repo, _ = resume
+    out = run(repo, "production_run.py", *Z_ONLY)
+    show(capsys, "attempt 3: resume to completion", out)
+    assert out.returncode == 0 and out.stdout.strip().endswith("PRODUCTION RUN COMPLETE")
+    assert "run lock kept" in out.stdout and "attempt 3 started" in out.stdout
+    data = json.loads((repo / "results" / "production.json").read_text())
+    attempts = data["attempts"]
+    with capsys.disabled():
+        print("attempts in results/production.json:\n" + json.dumps(attempts, indent=2))
+        print("results/production_run.log:\n" + (repo / "results" / "production_run.log").read_text())
+    assert attempts["n"] == 3
+    assert [(f["attempt"], f["status"], f["phase"]) for f in attempts["failed"]] == [
+        (1, "failed", "lock"), (2, "interrupted", "figures")]
+    assert attempts["failed"][0]["exception"] == "RuntimeError"
+    assert [(c["attempt"], c["reason"]) for c in attempts["code_fixes"]] == [(2, "the fix of test 3 (test)")]
+    assert data["first_head"] != data["git_head"] == attempts["code_fixes"][0]["to_head"]
+    assert (repo / "docs" / "figures" / "z_peak_fit.png").stat().st_size > 20_000  # regenerated, not the partial
+    assert not (repo / "docs" / "figures" / "jpsi_peak_fit.png").exists()  # Z only: the partial file was removed
+    assert "SYNTH-" not in (repo / "results" / "production_run.log").read_text()
+
+
+@pytest.mark.slow
+def test_resume_6_a_second_run_after_completion_is_refused(resume, capsys):
+    repo, _ = resume
+    out = run(repo, "production_run.py", *Z_ONLY)
+    show(capsys, "a run after completion", out)
+    assert out.returncode == 3 and "REFUSED: single-run guard" in out.stdout and "run state: complete" in out.stdout

@@ -3,7 +3,8 @@
 Never prints a production file name (the registry is read in memory; only
 counts, sizes and hosts are printed). Checks:
 
-1. the git working tree is clean; HEAD is recorded;
+1. the git working tree is clean (apart from the run's own state: the run lock
+   and the log of an attempt that failed after the lock); HEAD is recorded;
 2. dev/registry.sha256 matches results/production_files.json;
 3. no production file exists in the repository (with ``--allow-downloaded``:
    only in the download directory data/production/, where an interrupted
@@ -11,14 +12,17 @@ counts, sizes and hosts are printed). Checks:
 4. the "Model freeze" section exists in dev/model_choice.md and its commit is
    an ancestor of HEAD;
 5. the docs-freeze check (since the freeze commit) and the blinding check pass;
-6. the single-run guard: results/production.json and the run lock
-   results/production_run.lock do not exist;
+6. the single-run guard: results/production.json does not exist (the run is
+   not complete; the run lock alone means a failed attempt that may be resumed,
+   see scripts/production_run.py);
 7. free disk space is at least twice the registered download volume;
 8. the data server is reachable (host only);
 9. the full test suite and the quality gates passed at HEAD: a record
    build/gates/<HEAD>.json written by ``scripts/run_gates.py`` (``--run-gates``
    runs them now);
-10. the environment (Python, platform, package versions) and its SHA-256.
+10. the environment (Python, platform, package versions) and its SHA-256;
+11. the cmsopen package is imported from this repository's src/ (so the
+    analysis runs the code at HEAD, not another checkout or an installed copy).
 
 Usage:
     python scripts/production_preflight.py [--allow-downloaded] [--run-gates] [--no-network]
@@ -30,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import platform
 import re
@@ -48,6 +53,7 @@ REGISTRY = Path("results") / "production_files.json"
 HASH_FILE = Path("dev") / "registry.sha256"
 PRODUCTION_JSON = Path("results") / "production.json"
 LOCK = Path("results") / "production_run.lock"
+LOG = Path("results") / "production_run.log"
 DOWNLOAD_DIR = Path("data") / "production"
 GATES_DIR = Path("build") / "gates"
 PACKAGES = ("cmsopen", "numpy", "awkward", "uproot", "scipy", "matplotlib", "hist", "particle", "vector")
@@ -115,7 +121,7 @@ def run_preflight(repo: Path = REPO, *, allow_downloaded: bool = False, run_gate
     pf = Preflight()
     status = git(repo, "status", "--porcelain")
     pf.head = git(repo, "rev-parse", "HEAD").stdout.strip()
-    dirty = [line for line in status.stdout.splitlines() if line.strip()]
+    dirty = [line for line in status.stdout.splitlines() if line.strip() and line[3:] not in (str(LOCK), str(LOG))]
     pf.add("git working tree is clean", status.returncode == 0 and not dirty,
            f"HEAD {pf.head[:12]}" + (f"; {len(dirty)} changed or untracked paths" if dirty else ""))
 
@@ -153,9 +159,14 @@ def run_preflight(repo: Path = REPO, *, allow_downloaded: bool = False, run_gate
                            capture_output=True, text=True)
     pf.add("blinding check", blind.returncode == 0, blind.stdout.strip().replace("\n", "; ")[:120])
 
-    pf.add("single-run guard: results/production.json and the run lock do not exist",
-           not (repo / PRODUCTION_JSON).exists() and not (repo / LOCK).exists(),
-           ", ".join(str(p) for p in (PRODUCTION_JSON, LOCK) if (repo / p).exists()) or "neither exists")
+    if (repo / PRODUCTION_JSON).exists():
+        state = "complete: results/production.json exists"
+    elif (repo / LOCK).exists():
+        state = "analysis started: the run lock exists; the production command resumes a failed attempt"
+    else:
+        state = "not started"
+    pf.add("single-run guard: results/production.json does not exist", not (repo / PRODUCTION_JSON).exists(),
+           f"run state: {state}")
 
     volume = sum(int(e["size_bytes"]) for e in files)
     have = sum(p.stat().st_size for p in in_download)
@@ -194,6 +205,11 @@ def run_preflight(repo: Path = REPO, *, allow_downloaded: bool = False, run_gate
     pf.environment = environment()
     pf.add("environment captured", True, f"Python {pf.environment['python']}, sha256 "
                                          f"{pf.environment['sha256'][:16]}...")
+    spec = importlib.util.find_spec("cmsopen")
+    origin = Path(spec.origin).resolve() if spec is not None and spec.origin else None
+    src = (repo / "src").resolve()
+    pf.add("cmsopen is imported from this repository's src/", origin is not None and origin.is_relative_to(src),
+           "src/cmsopen" if origin is not None and origin.is_relative_to(src) else f"imported from {origin}")
     return pf
 
 
