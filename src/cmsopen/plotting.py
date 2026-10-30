@@ -112,7 +112,8 @@ FOOTNOTE = "Unofficial analysis of CMS Open Data"
 MIN_FONT_SIZE = 8.0
 """No text in any figure is smaller than this (points): when a box does not fit, its content is shortened."""
 SERIF_FONTS = ("STIX Two Text", "STIXGeneral", "DejaVu Serif")
-"""Serif text fonts in order of preference; all ship with matplotlib (STIX Two from 3.10, the others earlier)."""
+"""Serif text fonts in order of preference. STIXGeneral and DejaVu Serif ship with matplotlib; STIX Two Text is used
+where the system has it (macOS does; a plain Linux runner does not, and the figures then use STIXGeneral)."""
 WIDTH = 5.0  # inches: 1.5-column figure width
 _ANNOTATION_GID = "annotation"
 _LOCATIONS = ("upper right", "upper left", "center right", "center left", "lower right", "lower left")
@@ -259,7 +260,8 @@ def _clip_segments(xy: np.ndarray, box: tuple[float, float, float, float]) -> np
     p0, p1 = p0[ok], p1[ok]
     d = p1 - p0
     x0, y0, x1, y1 = box
-    t0, t1 = np.zeros(len(d)), np.ones(len(d))
+    t0: np.ndarray = np.zeros(len(d))  # plain ndarray: the shape-typed stubs of some numpy versions differ
+    t1: np.ndarray = np.ones(len(d))
     keep = np.ones(len(d), dtype=bool)
     edges = ((-d[:, 0], p0[:, 0] - x0), (d[:, 0], x1 - p0[:, 0]), (-d[:, 1], p0[:, 1] - y0), (d[:, 1], y1 - p0[:, 1]))
     for p, q in edges:

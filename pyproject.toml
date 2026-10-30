@@ -12,8 +12,8 @@ license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "Cyril Nadar" }]
 dependencies = [
-    "uproot>=5",
-    "awkward>=2",
+    "uproot>=5.6",  # tested lower bounds (CI job "lowest"): closed-file errors need 5.6
+    "awkward>=2.7",
     "numpy>=1.26",
     "matplotlib>=3.8",
     "scipy>=1.11",

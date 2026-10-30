@@ -280,13 +280,28 @@ def test_footnote_and_label_present_and_no_official_claim():
     assert "Preliminary" not in all_text and "CMS Collaboration" not in all_text
 
 
+def _has_font(font_manager, name):
+    try:
+        font_manager.findfont(name, fallback_to_default=False)
+    except ValueError:
+        return False
+    return True
+
+
 def test_fonts_are_concrete_and_measured_consistently():
     """Regression: text measured inside paper_style must be the text drawn outside it (no generic 'serif')."""
     h, fit = toy_fit()
     fig, (ax, _) = plot_mass_spectrum(h, fit)
     ann = annotation_text(ax)
-    assert ann.get_fontname() == "STIX Two Text"
-    assert ax.get_yticklabels()[1].get_fontname() == "STIX Two Text"
+    # the first of the preferred fonts this machine has (STIX Two Text on macOS, STIXGeneral, bundled with matplotlib,
+    # on a plain Linux runner): a concrete font, never the generic "serif"
+    from matplotlib import font_manager
+
+    from cmsopen.plotting import SERIF_FONTS
+
+    expected = next(f for f in SERIF_FONTS if _has_font(font_manager, f))
+    assert ann.get_fontname() == expected
+    assert ax.get_yticklabels()[1].get_fontname() == expected
     widths = []
     for dpi in (100, 300):
         fig.set_dpi(dpi)
