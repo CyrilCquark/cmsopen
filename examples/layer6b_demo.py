@@ -1,4 +1,4 @@
-"""Layer 6b/6c demo: the Breit-Wigner (x) Crystal Ball fits, resolution mixtures, model comparison, validation.
+"""Layer 6b/6c/6d demo: Breit-Wigner (x) Crystal Ball fits, resolution mixtures, model comparison, validation.
 
 For each channel (Z_mumu, Jpsi_mumu) the demo fits the default model
 (chosen on the development file by the rules in dev/model_choice.md: since
@@ -16,7 +16,12 @@ parallel equals serial; validation off gives exactly the old output; the
 5,000-pair rule fires exactly for the entries below 5,000 pairs; a mixture
 with f = 1 is the single-resolution model; a mixture fitted to a sample with
 one resolution is ineligible; a mixture's reported resolution is its
-numerical FWHM / 2.355.
+numerical FWHM / 2.355. Layer 6d (Amendment 3): the three-resolution models
+cb3_bw_exp and cb3_bw_poly2 are fitted and reported (they may fail on one
+file; the rule was applied on the 6-file development set), a three-resolution
+mixture with g = 1 is the two-resolution model, a cb3 fit to a sample with
+one resolution is ineligible, and every scaled validation error
+(max(1, sqrt(chi2/ndf)) x the raw error) is at least the raw error.
 
 On macOS a script that uses n_workers needs the ``if __name__ == "__main__":``
 guard, as here.
@@ -42,10 +47,12 @@ import numpy as np
 import cmsopen
 from cmsopen.fitting import (
     MIXTURE_MODELS,
+    THREE_RES_MODELS,
     FitError,
     FitResult,
     MassHistogram,
     crystalball2_bw,
+    crystalball3_bw,
     crystalball_bw,
     fit_mass_peak,
     pdg_mass_width,
@@ -54,7 +61,7 @@ from cmsopen.pipeline import CHANNELS
 from cmsopen.validation import MIN_PAIRS
 
 REPO = Path(__file__).resolve().parents[1]
-COMPARED = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2")
+COMPARED = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2", "cb3_bw_exp", "cb3_bw_poly2")
 SINGLE_OF = {"cb2_bw_exp": "cb_bw_exp", "cb2_bw_poly2": "cb_bw_poly2"}
 FWHM_PER_SIGMA = 2.3548200450309493
 PARTITIONS = ("region", "phi(mu+)", "phi(mu-)", "eta(mu+)", "eta(mu-)", "pT(sublead)", "PV_npvsGood")
@@ -136,6 +143,35 @@ def print_mixtures(name: str, fits: dict[str, FitResult | str]) -> None:
         print(line)
 
 
+def print_three(name: str, fits: dict[str, FitResult | str]) -> None:
+    """The three-resolution fits (Amendment 3): parameters, or why the fit is not eligible."""
+    print(f"Three-resolution mixtures, {name} (Amendment 3; the rule is applied on the 6-file development set):")
+    for model in THREE_RES_MODELS:
+        fit = fits[model]
+        if isinstance(fit, str):
+            print(f"  {model:<12} {fit}")
+            continue
+        p = fit.parameters
+        s, se = fit.resolution
+        print(
+            f"  {model:<12} sigma1 {p['sigma'][0]:.4f} +- {p['sigma'][1]:.4f} GeV, r2 {p['r2'][0]:.3f}, "
+            f"s {p['s'][0]:.3f}, f1 {p['f1'][0]:.3f}, g {p['g'][0]:.3f}, FWHM/2.355 {s:.4f} +- {se:.4f} GeV, "
+            f"chi2/ndf {fit.chi2_ndf:.3f}"
+        )
+
+
+def g_one_matches_two(fit: FitResult) -> float:
+    """Largest difference (relative to the peak) between the three-resolution signal with g = 1 and the
+    two-resolution signal with r = r2 and f = f1, at the parameters of a two-resolution fit (s set to 2)."""
+    a, m, s1, alpha, r, f = fit.values[:6]
+    edges = fit._fit_edges()
+    x = np.linspace(edges[0], edges[-1], 801)
+    kw = dict(n=fit.cb_n, gamma=fit.gamma, norm_edges=edges)
+    three = crystalball3_bw(x, a, m, s1, alpha, r, 2.0, f, 1.0, **kw)
+    two = crystalball2_bw(x, a, m, s1, alpha, r, f, **kw)
+    return float(np.max(np.abs(three - two) / two.max()))
+
+
 def aic(fit: FitResult) -> float:
     """chi2 + 2k."""
     return fit.chi2 + 2 * len(fit.values)
@@ -199,6 +235,7 @@ def main() -> int:
         fits = compare_models(result)
         print_comparison(name, fits)
         print_mixtures(name, fits)
+        print_three(name, fits)
         v = result.validation
         assert v is not None
         print()
@@ -241,6 +278,24 @@ def main() -> int:
             bool(mixtures) and max(ratios) < 1e-12,
             ", ".join(f"{f.model_name}: {f.resolution[0]:.5f} GeV = {f.fwhm[0]:.5f} / 2.355" for f in mixtures),
         )
+        diffs3 = [g_one_matches_two(f) for f in mixtures]
+        checks.check(
+            f"{name}: a three-resolution mixture with g = 1 is the two-resolution model",
+            bool(mixtures) and max(diffs3) < 1e-6,
+            ", ".join(f"at the {f.model_name} fit: max difference {d:.1e} of the peak"
+                      for f, d in zip(mixtures, diffs3, strict=True)),
+        )
+        fitted = [e for e in (v.inclusive, *v.entries) if e.fitted]
+        summary = v.summary
+        checks.check(
+            f"{name}: every scaled validation error is at least the raw error (scale factor never below 1)",
+            all(e.scale_factor >= 1.0 and e.error_scaled >= e.error for e in fitted)
+            and (summary.pdg_offset_error_scaled is None
+                 or summary.pdg_offset_error_scaled >= summary.pdg_offset_error),
+            f"{len(fitted)} fitted entries, scale factors {min(e.scale_factor for e in fitted):.2f}-"
+            f"{max(e.scale_factor for e in fitted):.2f}; headline +- {summary.pdg_offset_error:.5f} raw, "
+            f"+- {summary.pdg_offset_error_scaled:.5f} scaled",
+        )
         small = [e for e in (v.inclusive, *v.entries) if e.n_pairs < MIN_PAIRS]
         large = [e for e in (v.inclusive, *v.entries) if e.n_pairs >= MIN_PAIRS]
         checks.check(
@@ -251,10 +306,10 @@ def main() -> int:
             f"{sum(e.status == 'failed' for e in large)} failed",
         )
 
-    print("\n=== Eligibility on a sample with one resolution (Amendment 2 rule)")
+    print("\n=== Eligibility on a sample with one resolution (Amendment 2 and 3 rules)")
     toy = one_resolution_toy()
     outcomes = {}
-    for model in MIXTURE_MODELS:
+    for model in (*MIXTURE_MODELS, *THREE_RES_MODELS):
         try:
             fit = fit_mass_peak(toy, model=model, natural_width=pdg_mass_width("Z")[2], cb_n=CHANNELS["Z_mumu"].cb_n)
             outcomes[model] = "eligible" if not fit.on_bound and fit.yields_reliable else f"on a bound: {fit.on_bound}"
@@ -262,7 +317,8 @@ def main() -> int:
             outcomes[model] = f"ineligible: {str(exc)[str(exc).find('parameter') :][:70]}"
         print(f"  {model}: {outcomes[model]}")
     checks.check(
-        "a mixture fitted to a sample with one resolution is ineligible (rule (a)/(b) of Amendment 2)",
+        "a two- or three-resolution mixture fitted to a sample with one resolution is ineligible "
+        "(rule (a)/(b) of Amendments 2 and 3)",
         all(not o.startswith("eligible") for o in outcomes.values()),
         "; ".join(f"{m}: {o.split(':')[0]}" for m, o in outcomes.items()),
     )
@@ -273,7 +329,7 @@ def main() -> int:
     serial = results["Z_mumu"]
     parallel = cmsopen.analyze(path, channel="Z_mumu", validation=True, verbose=False, n_workers=2)
     checks.check(
-        "parallel (n_workers=2) equals serial with validation on",
+        "parallel (n_workers=2) equals serial with validation on (the summary's model list includes cb3)",
         json.dumps(serial.to_dict(), sort_keys=True) == json.dumps(parallel.to_dict(), sort_keys=True)
         and serial.summary() == parallel.summary(),
         "to_dict() and summary text compared",

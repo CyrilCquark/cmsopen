@@ -1611,10 +1611,12 @@ from IPython.display import Image, display
 import cmsopen
 from cmsopen.fitting import (
     MIXTURE_MODELS,
+    THREE_RES_MODELS,
     FitError,
     FitResult,
     MassHistogram,
     crystalball2_bw,
+    crystalball3_bw,
     crystalball_bw,
     fit_mass_peak,
     pdg_mass_width,
@@ -1622,7 +1624,7 @@ from cmsopen.fitting import (
 from cmsopen.pipeline import CHANNELS
 from cmsopen.validation import MIN_PAIRS
 
-COMPARED = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2")
+COMPARED = ("voigt_poly", "cb_bw_exp", "cb_bw_poly2", "cb2_bw_exp", "cb2_bw_poly2", "cb3_bw_exp", "cb3_bw_poly2")
 SINGLE_OF = {"cb2_bw_exp": "cb_bw_exp", "cb2_bw_poly2": "cb_bw_poly2"}
 FWHM_PER_SIGMA = 2.3548200450309493
 PARTITIONS = ("region", "phi(mu+)", "phi(mu-)", "eta(mu+)", "eta(mu-)", "pT(sublead)", "PV_npvsGood")
@@ -1679,6 +1681,33 @@ def print_mixtures(name, fits):
         print(line)
 
 
+def print_three(name, fits):
+    '''The three-resolution fits (Amendment 3): parameters, or why the fit is not eligible.'''
+    print(f"Three-resolution mixtures, {name} (Amendment 3; the rule is applied on the 6-file development set):")
+    for model in THREE_RES_MODELS:
+        fit = fits[model]
+        if isinstance(fit, str):
+            print(f"  {model:<12} {fit}")
+            continue
+        p = fit.parameters
+        s, se = fit.resolution
+        print(f"  {model:<12} sigma1 {p['sigma'][0]:.4f} +- {p['sigma'][1]:.4f} GeV, r2 {p['r2'][0]:.3f}, "
+              f"s {p['s'][0]:.3f}, f1 {p['f1'][0]:.3f}, g {p['g'][0]:.3f}, FWHM/2.355 {s:.4f} +- {se:.4f} GeV, "
+              f"chi2/ndf {fit.chi2_ndf:.3f}")
+
+
+def g_one_matches_two(fit):
+    '''Largest difference (relative to the peak) between the three-resolution signal with g = 1 and the
+    two-resolution signal with r = r2, f = f1, at the parameters of a two-resolution fit (s set to 2).'''
+    a, m, s1, alpha, r, f = fit.values[:6]
+    edges = fit._fit_edges()
+    x = np.linspace(edges[0], edges[-1], 801)
+    kw = dict(n=fit.cb_n, gamma=fit.gamma, norm_edges=edges)
+    three = crystalball3_bw(x, a, m, s1, alpha, r, 2.0, f, 1.0, **kw)
+    two = crystalball2_bw(x, a, m, s1, alpha, r, f, **kw)
+    return float(np.max(np.abs(three - two) / two.max()))
+
+
 def f_one_matches_single(fit):
     '''Largest difference (relative to the peak) between the mixture with f = 1 and the single-resolution signal.'''
     a, m, s1, alpha, r, _ = fit.values[:6]
@@ -1727,7 +1756,8 @@ result.save(tmp / name)
 display(Image(filename=str(tmp / name / "mass_fit.png"), width=640))
 comparisons[name] = compare_models(result)
 print_comparison(name, comparisons[name])
-print_mixtures(name, comparisons[name])"""
+print_mixtures(name, comparisons[name])
+print_three(name, comparisons[name])"""
 
 LAYER6B_CHECKS = (
     r"""checks = Checks()
@@ -1766,6 +1796,24 @@ for name, result in results.items():
         bool(mixtures) and max(ratios) < 1e-12,
         ", ".join(f"{f.model_name}: {f.resolution[0]:.5f} GeV = {f.fwhm[0]:.5f} / 2.355" for f in mixtures),
     )
+    diffs3 = [g_one_matches_two(f) for f in mixtures]
+    checks.check(
+        f"{name}: a three-resolution mixture with g = 1 is the two-resolution model",
+        bool(mixtures) and max(diffs3) < 1e-6,
+        ", ".join(f"at the {f.model_name} fit: max difference {d:.1e} of the peak"
+                  for f, d in zip(mixtures, diffs3, strict=True)),
+    )
+    fitted = [e for e in (v.inclusive, *v.entries) if e.fitted]
+    summary = v.summary
+    checks.check(
+        f"{name}: every scaled validation error is at least the raw error (scale factor never below 1)",
+        all(e.scale_factor >= 1.0 and e.error_scaled >= e.error for e in fitted)
+        and (summary.pdg_offset_error_scaled is None
+             or summary.pdg_offset_error_scaled >= summary.pdg_offset_error),
+        f"{len(fitted)} fitted entries, scale factors {min(e.scale_factor for e in fitted):.2f}-"
+        f"{max(e.scale_factor for e in fitted):.2f}; headline +- {summary.pdg_offset_error:.5f} raw, "
+        f"+- {summary.pdg_offset_error_scaled:.5f} scaled",
+    )
     small = [e for e in (v.inclusive, *v.entries) if e.n_pairs < MIN_PAIRS]
     large = [e for e in (v.inclusive, *v.entries) if e.n_pairs >= MIN_PAIRS]
     checks.check(
@@ -1778,14 +1826,15 @@ for name, result in results.items():
 
 toy = one_resolution_toy()
 outcomes = {}
-for model in MIXTURE_MODELS:
+for model in (*MIXTURE_MODELS, *THREE_RES_MODELS):
     try:
         fit = fit_mass_peak(toy, model=model, natural_width=pdg_mass_width("Z")[2], cb_n=CHANNELS["Z_mumu"].cb_n)
         outcomes[model] = "eligible" if not fit.on_bound and fit.yields_reliable else f"on a bound: {fit.on_bound}"
     except FitError as exc:
         outcomes[model] = f"ineligible: {str(exc)[str(exc).find('parameter'):][:70]}"
 checks.check(
-    "a mixture fitted to a sample with one resolution is ineligible (rule (a)/(b) of Amendment 2)",
+    "a two- or three-resolution mixture fitted to a sample with one resolution is ineligible "
+    "(rule (a)/(b) of Amendments 2 and 3)",
     all(not o.startswith("eligible") for o in outcomes.values()),
     "; ".join(f"{m}: {o.split(':')[0]}" for m, o in outcomes.items()),
 )
@@ -1794,7 +1843,7 @@ checks.check(
 serial = results["Z_mumu"]
 parallel = cmsopen.analyze(DATA_FILE, channel="Z_mumu", validation=True, verbose=False, n_workers=2)
 checks.check(
-    "parallel (n_workers=2) equals serial with validation on",
+    "parallel (n_workers=2) equals serial with validation on (the summary's model list includes cb3)",
     json.dumps(serial.to_dict(), sort_keys=True) == json.dumps(parallel.to_dict(), sort_keys=True)
     and serial.summary() == parallel.summary(),
     "to_dict() and summary text compared",
@@ -1809,7 +1858,7 @@ def layer6b() -> nbformat.NotebookNode:
     cells = [
         new_code_cell(LOAD_PATH),
         new_markdown_cell(
-            r"""# Layer 6b/6c: a line shape with final-state radiation, resolution mixtures, model choice, validation
+            r"""# Layer 6b/6c/6d: a line shape with final-state radiation, resolution mixtures, model choice, validation
 
 **Final-state radiation.** A muon from the decay can radiate a photon. The photon is not part of the dimuon, so the
 measured mass is lower: events leak from the peak into a long low-mass tail. A symmetric Gaussian or Voigt peak
@@ -1827,6 +1876,12 @@ mixes both, which a single Gaussian core cannot describe. The `cb2_bw_*` models 
 $\sigma_1$ and $r\,\sigma_1$, in proportions $f$ and $1-f$. $r$ and $f$ describe this sample, not the detector.
 Their reported resolution is the numerical FWHM / 2.355 of the whole signal (which, for the Z, includes the natural
 width).
+
+**Three resolutions (Layer 6d).** The resolution varies continuously with pseudorapidity and transverse momentum,
+and a few Gaussian cores approximate that continuum. The `cb3_bw_*` models use three cores, widths $\sigma_1$,
+$r_2\,\sigma_1$ and $r_2\,s\,\sigma_1$, with fractions $f_1$, $(1-f_1)\,g$ and $(1-f_1)(1-g)$. Under Amendment 3
+they were tested on the 6-file development set; on one file the extra cores are usually not determined, and the fit
+reports that rather than a number.
 
 **Model choice.** The default model of each channel was chosen on the development file by rules written down
 before the fits were run (`dev/model_choice.md`): eligible models converge, have no parameter on a bound and a
@@ -1849,8 +1904,10 @@ shift, not a target and not an error bar."""
 
 One row per category, bin or working point: the fitted position, resolution, $\chi^2$/ndf, signal yield and the
 difference to the inclusive fit in units of the combined statistical error (the samples overlap, so this overstates
-the uncertainty of the difference). Then the systematics summary: the offset from the PDG mass, the fit-choice
-spread, the category spread, the $\mu^+ - \mu^-$ differences and the working-point spread."""
+the uncertainty of the difference). Beside each raw error: the scale factor $S = \max(1, \sqrt{\chi^2/\mathrm{ndf}})$,
+the scaled error and the difference in units of the scaled errors. Then the systematics summary: the offset from the
+PDG mass, the fit-choice spread, the category spread, the $\mu^+ - \mu^-$ differences and the working-point
+spread."""
         ),
         new_code_cell(r"""print(results["Z_mumu"].validation.table())"""),
         new_code_cell(r"""print(results["Jpsi_mumu"].validation.table())"""),
@@ -1860,9 +1917,10 @@ spread, the category spread, the $\mu^+ - \mu^-$ differences and the working-poi
 No physics number is asserted to be correct. Checked: validation off gives exactly the old output; every category
 and binning partitions the pairs; every fit that claims reliable yields has a non-negative background over its fit
 range; the 5,000-pair rule fires exactly for the entries below 5,000 pairs; a mixture with $f = 1$ is the
-single-resolution model; a mixture's reported resolution is its numerical FWHM / 2.355; a mixture fitted to a sample
-with one resolution is ineligible; parallel processing (`n_workers=2`, which works from a notebook cell as it is)
-equals serial with validation on (whole file)."""
+single-resolution model; a mixture's reported resolution is its numerical FWHM / 2.355; a three-resolution mixture
+with $g = 1$ is the two-resolution model; every scaled validation error is at least the raw error; a two- or
+three-resolution mixture fitted to a sample with one resolution is ineligible; parallel processing (`n_workers=2`,
+which works from a notebook cell as it is) equals serial with validation on (whole file)."""
         ),
         new_code_cell(CHECKS_CLASS),
         new_code_cell(LAYER6B_CHECKS),
