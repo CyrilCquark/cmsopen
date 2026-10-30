@@ -191,6 +191,16 @@ def test_dry_run_of_the_production_path_and_the_single_run_guard(tmp_path, capsy
 
     sys.path.pop(0)
     assert "Peak position" in render_results_block(data)
+    report = run(repo, "production_report.py")
+    with capsys.disabled():
+        print(report.stdout)
+    assert report.returncode == 0 and "SYNTH-" not in report.stdout and ".root" not in report.stdout
+    for heading in ("== Run", "== Targets T1-T7", "== Z_mumu: headline fit", "== Jpsi_mumu: headline fit",
+                    "== Jpsi_mumu: per-run consistency (T6)", "== Z_mumu: validation", "== Jpsi_mumu: per-file fits",
+                    "== Z_mumu: cutflow", "== Timings", "events with muons"):
+        assert heading in report.stdout, heading
+    assert "T4: NOT MET" in report.stdout and "T1: met" in report.stdout and "attempts: 1" in report.stdout
+    assert run(repo, "production_report.py", str(repo / "missing.json")).returncode == 1
     changed = git(repo, "status", "--porcelain", "--untracked-files=all")
     with capsys.disabled():
         print("paths the production run created or modified (git status of the copy):\n" + changed)

@@ -7,22 +7,36 @@ been run on the production sample. The commands print no production file name.
 
 ## Before you start
 
+- Power and sleep: plug the Mac in and keep it awake for the long steps
+  (the gates and the production run). Run them under `caffeinate -dimsu`,
+  which keeps the display, the system and the disk awake while the command
+  runs (and asserts the user is active), for example
+  `caffeinate -dimsu python scripts/production_run.py --confirm-single-production-run`.
+  Do not close the lid. If the Mac sleeps anyway, nothing is lost: run the
+  same command again (see "If something goes wrong").
 - Disk: the download is 29.99 GB; the preflight requires at least twice that
-  free (59.98 GB). On 2026-10-29 the machine had 62.4 GB free, a thin margin.
-  If you need room, the five extra development-set files in `data/` (7.6 GB,
-  dev/development_set.md) can be deleted; the original development file is
-  still needed by the development tests.
-- Time: the download runs four files at a time (`--download-workers 4`, the
-  default). Measured on 2026-10-30 with 50 MB range requests to the
-  development files (`python scripts/measure_throughput.py`): 1 stream
-  0.61 MB/s, 2 streams 1.27, 3 streams 1.70, 4 streams 1.86 MB/s in total
-  (3.05 times one stream). At 1.86 MB/s the 29.99 GB take about 4.5 hours; at
-  that day's single-stream rate they would take about 14 hours (on
-  2026-10-29 a single stream gave 1.5-1.8 MB/s: the portal's rate varies from
-  day to day). Then about 40-60 minutes of analysis
-  and figures (estimated from the 6-file development set: per channel about
-  1 minute per 6 files for the analysis with validation using 4 workers, the
-  serial repeat about twice that, plus the per-period fits and the figures).
+  free (59.98 GB). On 2026-10-30 the machine had about 53-59 GB free (the
+  preflight measured 58.9 GB on 2026-10-29): the disk check FAILS today. Free
+  space first; candidates (sizes measured 2026-10-30; nothing was deleted):
+  the five extra development-set files in `data/` (7.6 GB of the 8.7 GB
+  there, dev/development_set.md; the original development file is still
+  needed by the development tests), `brew cleanup` (about 2.4 GB), and
+  caches such as `~/Library/Containers/com.docker.docker` (43.8 GB, Docker's
+  disk image), `~/.cache/huggingface` (9.5 GB) and `~/.npm` (4.5 GB).
+- Time, from the measurements of 2026-10-30:
+  - download: four files at a time (`--download-workers 4`, the default).
+    `python scripts/measure_throughput.py` (50 MB range requests to the
+    development files only) gave 0.61 MB/s for 1 stream, 1.27 for 2, 1.70 for
+    3 and 1.86 MB/s for 4 streams in total (3.05 times one stream). At
+    1.86 MB/s the 29.99 GB take about 4.5 hours; at that day's single-stream
+    rate they would take about 14 hours (on 2026-10-29 one stream gave
+    1.5-1.8 MB/s: the portal's rate varies from day to day);
+  - analysis and figures: the 6-file dry run of the production command
+    (8.71 GB, both channels, 4 workers) took 5.3 minutes after the download
+    (Z_mumu 145 s, Jpsi_mumu 131 s, figures 26 s; peak resident memory
+    0.88 GB). Scaled to 20 files (29.99 GB): about 15-20 minutes, plus about
+    a minute to re-verify the 20 checksums on every attempt;
+  - gates (`scripts/run_gates.py`): 35-50 minutes.
 - Use the project venv: `cd ~/Developer/cmsopen && source .venv/bin/activate`.
 
 ## Commands, in order
@@ -36,7 +50,7 @@ been run on the production sample. The commands print no production file name.
 2. Record the full test suite and the quality gates at HEAD (35-50 minutes):
 
    ```bash
-   python scripts/run_gates.py
+   caffeinate -dimsu python scripts/run_gates.py
    ```
 
    Success prints `pytest: exit 0; ... passed`, `check_quality: exit 0;
@@ -50,22 +64,42 @@ been run on the production sample. The commands print no production file name.
 
    Success: twelve `PASS:` lines and `PREFLIGHT PASSED`.
 
-4. The production run (download, figures, analysis, results/production.json):
+4. The production run (download, analysis, figures, results/production.json;
+   about 5 hours):
 
    ```bash
-   python scripts/production_run.py --confirm-single-production-run
+   caffeinate -dimsu python scripts/production_run.py --confirm-single-production-run
    ```
 
    Success prints `run state: not started`, the preflight's `PASS:` lines,
    `attempt 1 started`, then
    `downloaded and verified file k/20 (record ..., index ...), ... bytes` for
-   each file in the order the downloads finish, `run lock written: results/production_run.lock`, one line per
-   channel (`Z_mumu: cb2_bw_exp, peak ... GeV, chi2/ndf ...; T1 True`, then the
-   same for `Jpsi_mumu`), `figures written: 12 files in docs/figures/ (figures,
-   captions, README)`, `written: results/production.json (total ... s)` and
-   finally `PRODUCTION RUN COMPLETE`.
+   each file in the order the downloads finish,
+   `run lock written: results/production_run.lock`, one line per channel
+   (`Z_mumu: cb2_bw_exp, peak ... GeV, chi2/ndf ...; T1 True`, then the same
+   for `Jpsi_mumu`), `figures written: 12 files in docs/figures/ (figures,
+   captions, README)`, `written: results/production.json (attempt 1, total ... s)`
+   and finally `PRODUCTION RUN COMPLETE`.
 
-5. Review, then commit the outputs yourself:
+5. Read the results and paste them back for review:
+
+   ```bash
+   python scripts/production_report.py > build/production_report.txt
+   less build/production_report.txt
+   ```
+
+   The report names no file. It has: the run (commits, environment, every
+   attempt and code fix); the T1-T7 table, each target with its controlling
+   benchmark, the observed value and met / NOT MET; per channel the headline
+   fit with the raw and the scaled statistical error, the offset from the PDG
+   mass, the fit-choice spread and the alternate fit; Run 2012B versus Run
+   2012C (T6); the validation table and systematics summary; the per-file
+   fits; the cutflow; the timings. **Paste back the whole of
+   `build/production_report.txt`** (and the last lines of the command's output
+   if anything failed). A target that is not met is reported as not met;
+   nothing is refitted.
+
+6. Review, then commit the outputs yourself:
 
    ```bash
    git status --short
@@ -84,9 +118,11 @@ been run on the production sample. The commands print no production file name.
    - new: `results/production_run.lock` and `results/production_run.log` (the
      run's state and its log of attempts; commit both with the results);
    - gitignored: `data/production/` (the 20 downloads) and
-     `build/production/` (the per-channel outputs, which list the input files). The README results block is
-   updated by hand from the `render_results.py` output (README.md is
-   protected); `scripts/check_readme_numbers.py` then checks it.
+     `build/production/` (the per-channel outputs, which list the input files).
+
+   The README results block is updated by hand from the `render_results.py`
+   output (README.md is protected); `scripts/check_readme_numbers.py` then
+   checks it.
 
 ## States of the run
 
