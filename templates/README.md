@@ -115,6 +115,12 @@ Run-period consistency (Run 2012B minus Run 2012C, observed):
 
 {{ periods_table }}
 
+### Every benchmark in the registry
+
+{{ registry_table }}
+
+{{ registry_not_met }}
+
 Every category, charge, pT, pileup and working-point entry is listed under
 [validation and systematics](docs/validation.md).
 

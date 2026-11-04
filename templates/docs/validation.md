@@ -15,6 +15,12 @@ category, which uncorrected momentum scales can produce. Values are reported as 
 
 {{ targets_table }}
 
+## Every benchmark in the registry
+
+{{ registry_table }}
+
+{{ registry_not_met }}
+
 ## Summary
 
 {{ systematics_table }}

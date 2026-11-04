@@ -8,6 +8,12 @@ All generated from `results/production.json` (SHA-256 `{{ production_sha }}`). A
 
 {{ targets_table }}
 
+## Every benchmark in the registry
+
+{{ registry_table }}
+
+{{ registry_not_met }}
+
 ## Headline fits
 
 {{ headline_table }}

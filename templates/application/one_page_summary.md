@@ -24,4 +24,4 @@ results file, so the numbers on this page can be checked against the repository.
 GeV, from {{ jpsi.pairs }} pairs. These are not mass measurements: no momentum-scale corrections are applied, and the
 offsets from the PDG masses are reported and studied.
 
-Unofficial analysis of CMS Open Data, not a CMS result. Built with AI coding assistance (Claude Code).
+Unofficial analysis of CMS Open Data, not a CMS result. It was built with AI coding assistance (Claude Code) under my direction.
