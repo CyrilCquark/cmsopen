@@ -97,12 +97,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from production_preflight import (  # noqa: E402
     DOWNLOAD_DIR,
     GATES_DIR,
+    INJECT_ENV,
     LOCK,
     LOG,
     PRODUCTION_JSON,
     REGISTRY,
     REPO,
     git,
+    is_test_copy,
     load_registry,
     run_preflight,
     selected,
@@ -111,7 +113,6 @@ from production_preflight import (  # noqa: E402
 CHI2_NDF_BENCHMARK = 2.0  # T2 (dev/targets.md)
 FILES_BENCHMARK = {31129: 12, 31123: 8}  # T4 (dev/targets.md): 20 files, 12 from record 31129, 8 from 31123
 FIGURES_DIR = Path("docs") / "figures"
-INJECT_ENV = "CMSOPEN_PRODUCTION_INJECT"  # tests only: "raise:<phase>" or "kill:<phase>" at a checkpoint
 
 
 class RunLog:
@@ -176,9 +177,9 @@ def analysis_config_sha256() -> str:
 
 
 def _checkpoint(log: RunLog, attempt: int, phase: str) -> None:
-    """Record that ``phase`` starts; the tests inject a failure or a kill here through INJECT_ENV."""
+    """Record that ``phase`` starts; in a temporary test copy only, INJECT_ENV injects a failure or a kill here."""
     log.add(event="phase", attempt=attempt, phase=phase)
-    inject = os.environ.get(INJECT_ENV, "")
+    inject = os.environ.get(INJECT_ENV, "") if is_test_copy(REPO) else ""
     if inject == f"raise:{phase}":
         raise RuntimeError(f"injected failure at {phase} (test)")
     if inject == f"kill:{phase}":
@@ -470,7 +471,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.code_fix_reason:
         print("note: no run lock (nothing has been opened yet); --code-fix-reason ignored")
     start = time.perf_counter()
-    pf = run_preflight(REPO, allow_downloaded=True, network=not args.no_network)
+    pf = run_preflight(REPO, allow_downloaded=True, network=not args.no_network, allow_test_hook=is_test_copy(REPO))
     if not pf.passed:
         print("REFUSED: the preflight failed (see the FAIL lines above)")
         return 4

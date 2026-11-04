@@ -70,9 +70,19 @@ def record_gates(repo: Path) -> None:
         {"head": head, "pytest_rc": 0, "quality_rc": 0, "summary": "recorded by the test"}))
 
 
+def arm_test_hook(repo: Path) -> Path:
+    """Mark ``repo`` as a temporary test copy (ignored by git there), so production_run.py honours the injection."""
+    with open(repo / ".git" / "info" / "exclude", "a") as f:
+        f.write("scripts/.production_test_copy\n")
+    marker = repo / "scripts" / ".production_test_copy"
+    marker.write_text(str(repo.resolve()) + "\n")
+    return marker
+
+
 def run(repo: Path, script: str, *args: str, inject: str | None = None) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items() if k != "CMSOPEN_PRODUCTION_INJECT"}
     env["PYTHONPATH"] = str(repo / "src")  # the copy's code, as the preflight requires (not the editable install's)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"  # a same-size edit within one second must not run from stale bytecode
     if inject:
         env["CMSOPEN_PRODUCTION_INJECT"] = inject  # a test hook of production_run.py: "raise:<phase>", "kill:<phase>"
     return subprocess.run([sys.executable, str(repo / "scripts" / script), *args], cwd=repo, capture_output=True,
@@ -240,6 +250,7 @@ def resume(tmp_path_factory):
     """A copy whose download directory already holds a truncated file and a corrupted file of the registry."""
     repo, source = make_copy(tmp_path_factory.mktemp("resume"))
     record_gates(repo)
+    arm_test_hook(repo)
     sources = sorted(source.glob("SYNTH-*.root"))
     (repo / "data" / "production").mkdir(parents=True)
     data = sources[0].read_bytes()
@@ -348,3 +359,67 @@ def test_resume_6_a_second_run_after_completion_is_refused(resume, capsys):
     out = run(repo, "production_run.py", *Z_ONLY)
     show(capsys, "a run after completion", out)
     assert out.returncode == 3 and "REFUSED: single-run guard" in out.stdout and "run state: complete" in out.stdout
+
+
+# -- the failure-injection hook: only in a marked temporary test copy --------------------------------------------
+
+
+@pytest.mark.slow
+def test_outside_a_test_copy_the_injection_is_refused_by_the_preflight(copy, capsys):
+    repo, _ = copy
+    record_gates(repo)
+    clean = run(repo, "production_preflight.py")
+    assert clean.returncode == 0 and "PASS: no failure-injection hook is armed" in clean.stdout
+    assert len([x for x in clean.stdout.splitlines() if x.startswith("PASS: ")]) == 13
+    out = run(repo, "production_preflight.py", inject="raise:lock")
+    show(capsys, "preflight with the injection variable set", out)
+    assert out.returncode == 1 and "FAIL: no failure-injection hook is armed" in out.stdout
+    out = run(repo, "production_run.py", *Z_ONLY, inject="kill:lock")
+    assert out.returncode == 4 and "REFUSED: the preflight failed" in out.stdout
+    assert not (repo / "results" / "production_run.lock").exists()
+    assert not (repo / "results" / "production_run.log").exists()
+
+
+@pytest.mark.slow
+def test_the_standalone_preflight_fails_on_a_marker_even_a_valid_one(copy):
+    repo, _ = copy
+    record_gates(repo)
+    marker = arm_test_hook(repo)
+    try:
+        out = run(repo, "production_preflight.py")
+    finally:
+        marker.unlink()
+    assert out.returncode == 1 and "FAIL: no failure-injection hook is armed" in out.stdout
+
+
+def test_the_hook_is_honoured_only_with_a_marker_holding_this_repository(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import production_preflight
+    import production_run
+
+    sys.path.pop(0)
+
+    class Log:
+        def add(self, **event):
+            pass
+
+    kills = []
+    monkeypatch.setattr(production_run.os, "kill", lambda pid, sig: kills.append(sig))
+    monkeypatch.setenv("CMSOPEN_PRODUCTION_INJECT", "raise:lock")
+    assert not production_preflight.is_test_copy(REPO)  # the real repository is never a test copy
+    production_run._checkpoint(Log(), 1, "lock")  # ignored here
+    monkeypatch.setenv("CMSOPEN_PRODUCTION_INJECT", "kill:lock")
+    production_run._checkpoint(Log(), 1, "lock")
+    assert kills == []
+    marker = tmp_path / "scripts" / ".production_test_copy"
+    marker.parent.mkdir()
+    monkeypatch.setattr(production_run, "REPO", tmp_path)
+    marker.write_text("/some/other/repository\n")  # a marker copied from elsewhere does not count
+    production_run._checkpoint(Log(), 1, "lock")
+    assert kills == []
+    marker.write_text(str(tmp_path.resolve()) + "\n")
+    production_run._checkpoint(Log(), 1, "lock")
+    assert len(kills) == 1
+    monkeypatch.setenv("CMSOPEN_PRODUCTION_INJECT", "raise:lock")
+    with pytest.raises(RuntimeError, match="injected failure at lock"):
+        production_run._checkpoint(Log(), 1, "lock")

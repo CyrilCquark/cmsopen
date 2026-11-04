@@ -62,7 +62,7 @@ been run on the production sample. The commands print no production file name.
    python scripts/production_preflight.py
    ```
 
-   Success: twelve `PASS:` lines and `PREFLIGHT PASSED`.
+   Success: thirteen `PASS:` lines and `PREFLIGHT PASSED`.
 
 4. The production run (download, analysis, figures, results/production.json;
    about 5 hours):

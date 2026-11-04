@@ -22,7 +22,11 @@ counts, sizes and hosts are printed). Checks:
    runs them now);
 10. the environment (Python, platform, package versions) and its SHA-256;
 11. the cmsopen package is imported from this repository's src/ (so the
-    analysis runs the code at HEAD, not another checkout or an installed copy).
+    analysis runs the code at HEAD, not another checkout or an installed copy);
+12. no failure-injection hook of scripts/production_run.py is armed: no
+    CMSOPEN_PRODUCTION_INJECT* variable in the environment and no test-copy
+    marker next to the scripts. Only production_run.py, inside a temporary test
+    copy that has a valid marker, tolerates them.
 
 Usage:
     python scripts/production_preflight.py [--allow-downloaded] [--run-gates] [--no-network]
@@ -36,6 +40,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 import platform
 import re
 import shutil
@@ -56,6 +61,8 @@ LOCK = Path("results") / "production_run.lock"
 LOG = Path("results") / "production_run.log"
 DOWNLOAD_DIR = Path("data") / "production"
 GATES_DIR = Path("build") / "gates"
+INJECT_ENV = "CMSOPEN_PRODUCTION_INJECT"  # tests only: "raise:<phase>" or "kill:<phase>" (scripts/production_run.py)
+TEST_COPY_MARKER = Path("scripts") / ".production_test_copy"
 PACKAGES = ("cmsopen", "numpy", "awkward", "uproot", "scipy", "matplotlib", "hist", "particle", "vector")
 
 
@@ -115,9 +122,18 @@ def _version(package: str) -> str:
         return "not installed"
 
 
+def is_test_copy(repo: Path) -> bool:
+    """True only in a temporary test copy: the marker next to the scripts holds this repository's own resolved path."""
+    marker = repo / TEST_COPY_MARKER
+    return marker.is_file() and marker.read_text().strip() == str(repo.resolve())
+
+
 def run_preflight(repo: Path = REPO, *, allow_downloaded: bool = False, run_gates: bool = False,
-                  network: bool = True) -> Preflight:
-    """Run every check on the repository ``repo`` and print PASS/FAIL lines."""
+                  network: bool = True, allow_test_hook: bool = False) -> Preflight:
+    """Run every check on the repository ``repo`` and print PASS/FAIL lines.
+
+    ``allow_test_hook`` (only production_run.py, only in a valid test copy) tolerates an armed injection hook.
+    """
     pf = Preflight()
     status = git(repo, "status", "--porcelain")
     pf.head = git(repo, "rev-parse", "HEAD").stdout.strip()
@@ -210,6 +226,11 @@ def run_preflight(repo: Path = REPO, *, allow_downloaded: bool = False, run_gate
     src = (repo / "src").resolve()
     pf.add("cmsopen is imported from this repository's src/", origin is not None and origin.is_relative_to(src),
            "src/cmsopen" if origin is not None and origin.is_relative_to(src) else f"imported from {origin}")
+    armed = sorted(k for k in os.environ if k.startswith(INJECT_ENV))
+    marker = (repo / TEST_COPY_MARKER).exists()
+    pf.add("no failure-injection hook is armed", allow_test_hook or not (armed or marker),
+           f"{len(armed)} injection variable(s) set, test-copy marker {'present' if marker else 'absent'}"
+           + ("; tolerated in this test copy" if allow_test_hook else ""))
     return pf
 
 
