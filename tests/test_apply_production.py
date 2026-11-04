@@ -537,6 +537,7 @@ def tree_state(repo):
 
 
 @pytest.mark.slow
+@pytest.mark.timeout(900, method="signal")  # a production run on the synthetic registry, a rehearsal and an apply
 def test_apply_after_a_real_production_run_on_the_synthetic_registry(tmp_path):
     """The whole path on real outputs of the production command: rehearse, apply, extras from the saved histogram."""
     repo = real_run_output(tmp_path)
