@@ -39,6 +39,11 @@ requirements.
 | Run-period consistency | reported | 2012B and 2012C peak and resolution, differences with combined stat. uncertainties | T6 (AMBITION OVERRIDES 2) |
 | Mass value | none | no numeric target (T3) | T3 |
 
+J/psi sideband signal-to-background, as evaluated by `scripts/production_extras.py` (the registry gave no formula; this
+was written on 2026-11-04, before any production file was opened): in the Jpsi_mumu channel's saved histogram, the signal
+window is 2.9-3.3 GeV and the sidebands are the rest of the histogram, 2.6-2.9 and 3.3-3.6 GeV. B is the sideband count
+scaled by width (a locally flat background), S is the window count minus B.
+
 Existing self-check thresholds in examples/ are also benchmarks and may not
 be loosened: same-sign pairs in 88-94 GeV below 10 % of opposite-sign pairs
 (Layer 4); fitted resolution 0.5-4 GeV, stability spread below 0.5 GeV and the
