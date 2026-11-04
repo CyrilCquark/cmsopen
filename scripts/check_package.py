@@ -13,6 +13,7 @@ Checks (one PASS/FAIL line each; exit 1 if any fails):
   (results/production_files.json; compared in memory, only a count is
   printed);
 - the wheel's metadata version equals ``cmsopen.__version__`` in the source;
+- the long description has no relative image or link, and any image is pinned to the release tag;
 - installed into a fresh venv and run from another directory, ``cmsopen
   --help`` works, ``import cmsopen`` imports from that venv, and
   ``cmsopen.__version__`` equals the metadata version.
@@ -32,6 +33,7 @@ import argparse
 import ast
 import json
 import os
+import re
 import subprocess
 import sys
 import sysconfig
@@ -142,6 +144,13 @@ def main(argv: list[str] | None = None) -> int:
             version = next(line.split(":", 1)[1].strip() for line in meta.splitlines() if line.startswith("Version:"))
             report.check("wheel metadata version equals cmsopen.__version__ in the source",
                          version == source_version(), f"metadata {version}, source {source_version()}")
+            description = meta.split("\n\n", 1)[1] if "\n\n" in meta else ""
+            relative = re.findall(r"\]\((?!https?://|#)[^)]+\)", description)
+            report.check("long description has no relative image or link", not relative, ", ".join(relative[:3]))
+            images = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", description)
+            unpinned = [i for i in images if f"/v{source_version()}/" not in i]
+            report.check("long description images are pinned to the release tag", not unpinned,
+                         ", ".join(unpinned[:3]) or f"{len(images)} images")
             entry = next((members[n].decode() for n in names if n.endswith(".dist-info/entry_points.txt")), "")
             report.check("wheel declares the cmsopen console script", "cmsopen = cmsopen.__main__:main" in entry,
                          entry.strip().replace("\n", "; ") or "no entry_points.txt")
