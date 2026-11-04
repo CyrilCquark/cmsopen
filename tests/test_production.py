@@ -49,7 +49,7 @@ def restore_pre_production(repo: Path) -> None:
     """
     freeze = re.search(r"Frozen at commit `([0-9a-f]{40})`", (repo / "dev" / "model_choice.md").read_text()).group(1)
     for name in ("results/production.json", "results/production_run.lock", "results/production_run.log",
-                 "CITATION.cff", ".zenodo.json"):
+                 "CITATION.cff", ".zenodo.json", "README_PYPI.md", "results/production_extras.json"):
         (repo / name).unlink(missing_ok=True)
     for name in ("docs", "notebooks"):
         shutil.rmtree(repo / name, ignore_errors=True)

@@ -1,7 +1,8 @@
 # Post-production runbook
 
 What happens after `PRODUCTION RUN COMPLETE` (`dev/production_runbook.md`). One command writes every results-bearing
-file from `results/production.json` and `docs/figures/`; nothing is typed by hand. Do these steps in this order.
+file from `results/production.json`, `docs/figures/` and the run's saved outputs in `build/production/`; nothing is typed
+by hand. Do these steps in this order.
 
 Do not merge the `post-production` branch while the production run may still resume. A resume requires HEAD to be the
 lock's commit and a clean tree.
@@ -18,34 +19,60 @@ headline fits, the warnings, the validation tables. A missed benchmark is report
 
 ## 2. Commit the production outputs, then bring in the branch
 
-These two steps are additions to the order in the prompt: `apply_production.py` is only on the branch, and it requires
-the production commit to be an ancestor of HEAD.
+`apply_production.py` is only on the branch, and it requires the production commit to be an ancestor of HEAD.
 
 ```bash
 git status --short
 git add results/production.json results/production_run.lock results/production_run.log docs/figures
 git commit -m "Production run: results and figures"
 git merge --no-ff post-production
-pip install -e ".[dev]"      # adds mkdocs, nbclient, jsonschema; only now, after the run, may the venv change
+pip install -e ".[dev,docs]"   # dev adds nbclient and jsonschema, docs adds mkdocs; only now may the venv change
 ```
 
-## 3. Generate everything
+## 3. See the extra benchmark values
+
+Read-only: it opens no data file and writes nothing.
+
+```bash
+python scripts/production_extras.py
+```
+
+Every registry benchmark with its observed value, or `not derivable` with the reason: the J/psi pairs in 2.9-3.3 GeV and
+sideband S/B from the saved histogram (definition in `dev/targets.md`), and the toy results, labelled "from the test
+suite, not production data". Review these with Claude as well: the report in step 1 does not have them.
+
+## 4. Rehearse
+
+```bash
+python scripts/apply_production.py --rehearse
+```
+
+The whole apply step in a throwaway copy of this tree, including all three notebooks: nothing here changes. Success ends
+with `REHEARSAL PASSED` and lists the files it would change. **Go on only if it passes.** If it fails, stop and report it.
+
+## 5. Generate everything
 
 ```bash
 python scripts/apply_production.py
+git diff DATA.md
 ```
 
 It refuses and writes nothing unless `results/production.json` passes the schema check, is not a dry run, matches the
 registry hash, has a commit that is an ancestor of HEAD, and the figure captions state the same peaks.
 
-It then writes the 13 repository files below and the application assets, and runs: `check_readme_numbers.py`,
+It then writes the 16 repository files below and the application assets, and runs: `check_readme_numbers.py`,
 `check_release_metadata.py`, `check_blinding.py`, the audit of numbers, `mkdocs build --strict`, and all three notebooks
-top to bottom. Success ends with `APPLY COMPLETE` and lists the changed files. It does not commit.
-Takes about a minute. It also prints the benchmarks not met.
+top to bottom. Success ends with `APPLY COMPLETE` and lists the changed files. It does not commit. Takes about a minute.
+
+Your email address stays out by default. To put it in `CITATION.cff`, add `--include-email` to both commands of steps 4
+and 5. `.zenodo.json` has no field for it.
 
 | generated | from |
 |---|---|
 | `README.md` | `templates/README.md`, `scripts/render_results.py` (results block), `scripts/generate_release_files.py` |
+| `README_PYPI.md` (the package's long description) | the README, images and links pinned to tag `v<version>` |
+| `DATA.md` | the existing file plus `templates/DATA_md_addition.txt` and `templates/DATA_md_citation_addition.txt` |
+| `results/production_extras.json` | `scripts/production_extras.py`, kept because `build/` is not in the repository |
 | `docs/index.md` | the README, links rewritten |
 | `docs/physics.md`, `user_guide.md`, `api.md`, `validation.md`, `reproducibility.md`, `changelog.md` | `templates/docs/` |
 | `CITATION.cff`, `.zenodo.json` | `templates/release_metadata.json`, `templates/citation_abstract.md`, `DATA.md` |
@@ -53,62 +80,60 @@ Takes about a minute. It also prints the benchmarks not met.
 | `~/Developer/cmsopen-application/*` | `templates/application/`, `scripts/make_application_assets.py`, `docs/figures/` |
 
 If a check fails, the files are written but nothing is committed; report it. Do not edit a generated file: change the
-template or the generator, then rerun.
+template or the generator, then rerun. Read the generated README and the application assets yourself before going on,
+and add your mentor's name to the email.
 
-Read the generated README and the application assets yourself before going on. Add your mentor's name to the email.
+## 6. Commit the generated files
 
-## 4. Commit the generated files
-
-An addition to the prompt's order, because `run_gates.py` requires a clean tree.
+`run_gates.py` requires a clean tree.
 
 ```bash
 git status --short
-git add -A README.md CITATION.cff .zenodo.json docs notebooks
+git add -A README.md README_PYPI.md DATA.md CITATION.cff .zenodo.json docs notebooks results/production_extras.json
 git commit -m "Generated documentation from the production run"
 python scripts/apply_production.py --check   # OK: ... byte-identical
 ```
 
-## 5. Run the notebooks in Chrome
+## 7. Run the notebooks in Chrome
 
 The live browser check of CLAUDE.md for `notebooks/01_z_peak.ipynb`, `02_jpsi_peak.ipynb` and `03_modular_usage.ipynb`
 (Layer 9): JupyterLab on `--notebook-dir notebooks`, Run All Cells, final cell `All checks passed`, screenshot and GIF in
 `~/Developer/cmsopen-verification/`. Ask Claude to do this.
 
-## 6. Run the gates once
+## 8. Run the gates once
 
 ```bash
 caffeinate -dimsu python scripts/run_gates.py
 ```
 
 Success prints `pytest: exit 0; ... passed`, `check_quality: exit 0; ['OK: quality gates pass']` and the record's path.
-35-50 minutes. If it fails, stop and report it. Do not tag.
+If it fails, stop and report it. Do not tag.
 
-## 7. Benchmark registry
+## 9. Benchmark registry
 
 Under the policy in CLAUDE.md, a verified production result that beats a benchmark becomes the new benchmark, and
-`dev/targets.md` is the permanent registry ("Verified production results so far: none"). Update it by hand after
-reviewing the results with Claude, and commit it before step 8; `dev/targets.md` is not a protected path.
-A decision is needed for χ²/ndf, because a lower value is not simply better once it is below one: a fit far below one can
-mean overestimated errors. Decide with Claude whether the registry should move, and record the decision there.
+`dev/targets.md` is the permanent registry ("Verified production results so far: none"). Check each row of step 3 with
+Claude, update the file by hand where a result beats its benchmark, and commit it before step 10; it is not protected.
 
-## 8. Tag
+chi2/ndf stays at <= 2.0: a lower observed value is reported as observed and does not replace the benchmark, because
+chi2/ndf is a consistency window, not a higher-is-better metric.
 
-First finish the open TODOs. They are harmless warnings until now, but `--release` fails on them:
+A change to `dev/targets.md` changes the generated table, so rerun steps 4 to 6 afterwards.
 
-- your ORCID: in `templates/release_metadata.json` set `"orcid"` to the bare identifier (`0000-0000-0000-0000` form), or to
-  `""` if you have none;
-- the DOI for record 31123, which `DATA.md` does not record: check the portal and set `"record_dois"` in the same file.
+## 10. Tag
 
-Then rerun `python scripts/apply_production.py`, commit, and:
+First set your ORCID, the one TODO left: in `templates/release_metadata.json` set `"orcid"` to the bare identifier
+(`0000-0000-0000-0000` form), or to `""` if you have none. Then rerun steps 4 to 6 and:
 
 ```bash
 python scripts/check_release_metadata.py --release
 git tag -a v0.1.0 -m "cmsopen 0.1.0"
 ```
 
-Any commit after step 6 that touches code means rerunning the gates.
+The tag must be `v` plus `cmsopen.__version__`: `README_PYPI.md` is pinned to it. Any commit after step 8 that touches
+code means rerunning the gates.
 
-## 9. Push
+## 11. Push
 
 ```bash
 git push origin main --follow-tags
@@ -117,12 +142,13 @@ git push origin main --follow-tags
 ## Left for you
 
 - **PyPI.** `.github/workflows/publish.yml` builds only, and its upload step is absent on purpose. Set up trusted
-  publishing and add the step. README images use repository-relative paths, which PyPI does not display; decide whether to
-  point them at absolute URLs for the PyPI description once the repository is public.
+  publishing and add the step. The images in the long description load only once the tag is pushed and the repository is
+  public, so publish to PyPI after both.
 - **Zenodo DOI.** Connect the repository in Zenodo, then release. `.zenodo.json` must not carry `"orcid": "TODO"` at
-  that point, because Zenodo may reject it (step 8 removes it). When the DOI exists, add `"doi"` to
+  that point, because Zenodo may reject it (step 10 removes it). When the DOI exists, add `"doi"` to
   `templates/release_metadata.json`, rerun the apply step, and commit.
 - **Making the repository public**, only when you say so. The quick start's `git clone` and the checklist for
-  admissions readers work for others only after that. `CITATION.cff` publishes the email address given in the metadata.
+  admissions readers work for others only after that. Your email address is still the author address of every commit and
+  is in `templates/release_metadata.json`, whatever `CITATION.cff` says.
 - **GitHub Pages.** `.github/workflows/docs.yml` runs only when started by hand. Enable Pages from Actions first.
 - **Cleaning up** the worktree: `git worktree remove ~/Developer/cmsopen-post`.
