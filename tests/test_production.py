@@ -8,6 +8,7 @@ download step uses the real fetch with its size and adler32 checks. No real prod
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,20 +29,43 @@ def git(repo, *args):
     return out.stdout
 
 
+def clone_working_tree(repo: Path) -> None:
+    """A clone of the repository with the current working tree on top (so uncommitted changes are tested too)."""
+    subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(REPO), str(repo)], check=True)
+    tracked = subprocess.run(["git", "ls-files", "-co", "--exclude-standard"], cwd=REPO, capture_output=True,
+                             text=True, check=True).stdout.splitlines()
+    for rel in tracked:
+        src = REPO / rel
+        if src.is_file():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, repo / rel)
+
+
+def restore_pre_production(repo: Path) -> None:
+    """Put the copy in the state before a production run, also when the repository itself is past that state.
+
+    These tests rehearse a production run, which needs the single-run guard and the docs-freeze check to pass. Once
+    the real results and generated documentation are committed, a plain clone would fail both for that reason alone.
+    """
+    freeze = re.search(r"Frozen at commit `([0-9a-f]{40})`", (repo / "dev" / "model_choice.md").read_text()).group(1)
+    for name in ("results/production.json", "results/production_run.lock", "results/production_run.log",
+                 "CITATION.cff"):
+        (repo / name).unlink(missing_ok=True)
+    for name in ("docs", "notebooks"):
+        shutil.rmtree(repo / name, ignore_errors=True)
+    paths = git(repo, "ls-tree", "-r", "--name-only", freeze, "--", "README.md", "DATA.md", "LICENSE", "docs",
+                "notebooks")
+    git(repo, "checkout", "-q", freeze, "--", *paths.split("\n")[:-1])
+
+
 def make_copy(tmp: Path, n_events: int = 15_000) -> tuple[Path, Path]:
     """A clone of the repository with the current working tree and a synthetic registry, committed and clean.
 
     Each synthetic file has ``n_events`` Z events and as many J/psi events.
     """
     repo, source = tmp / "repo", tmp / "source"
-    subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(REPO), str(repo)], check=True)
-    tracked = subprocess.run(["git", "ls-files", "-co", "--exclude-standard"], cwd=REPO, capture_output=True,
-                             text=True, check=True).stdout.splitlines()
-    for rel in tracked:  # the working tree as it is (so uncommitted changes are tested too)
-        src = REPO / rel
-        if src.is_file():
-            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, repo / rel)
+    clone_working_tree(repo)
+    restore_pre_production(repo)
     source.mkdir()
     records = []
     for record_id, period, seeds in ((31129, "Run2012C", (101, 102)), (31123, "Run2012B", (103, 104))):
@@ -51,7 +75,8 @@ def make_copy(tmp: Path, n_events: int = 15_000) -> tuple[Path, Path]:
             selected.append({"j": j, "index": j - 1, "position": j - 1, "filename": path.name,
                              "https_url": path.as_uri(), "size_bytes": path.stat().st_size,
                              "checksum": f"adler32:{adler32_of(path)}"})
-        records.append({"record_id": record_id, "run_period": period, "selected": selected})
+        records.append({"record_id": record_id, "run_period": period, "selected": selected,
+                        "title": f"synthetic {period}", "record_url": f"https://opendata.cern.ch/record/{record_id}"})
     registry = {"schema_version": 1, "purpose": "synthetic (tests)", "records": records, "n_files_total": 4}
     reg = repo / "results" / "production_files.json"
     reg.write_text(json.dumps(registry, indent=2) + "\n")

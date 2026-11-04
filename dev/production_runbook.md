@@ -120,9 +120,8 @@ been run on the production sample. The commands print no production file name.
    - gitignored: `data/production/` (the 20 downloads) and
      `build/production/` (the per-channel outputs, which list the input files).
 
-   The README results block is updated by hand from the `render_results.py`
-   output (README.md is protected); `scripts/check_readme_numbers.py` then
-   checks it.
+   Nothing is updated by hand: the next steps, including the README, are in
+   `dev/post_production_runbook.md` (`scripts/apply_production.py`).
 
 ## States of the run
 
