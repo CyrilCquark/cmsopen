@@ -13,9 +13,10 @@
 | sample | {{ n_files }} files, {{ total_bytes }} bytes |
 | gates at that commit | {{ gates_summary }} |
 
-## Verify what is committed (about a minute, no download)
+## Verify what is committed (about a minute after the install, no download)
 
 ```bash
+pip install -e ".[dev]"
 shasum -a 256 results/production.json results/production_files.json
 python scripts/production_schema.py
 python scripts/check_readme_numbers.py

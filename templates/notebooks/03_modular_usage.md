@@ -68,10 +68,12 @@ display(figure)
 
 ```python
 result = cmsopen.analyze(SAMPLE, channel="Z_mumu", model="voigt_poly", stability=False, verbose=False)
-checks.check("the layers and the pipeline find the same masses", np.array_equal(np.sort(masses), np.sort(result.masses)),
-             f"{len(masses):,} masses")
+same_masses = np.array_equal(np.sort(masses), np.sort(result.masses))
+checks.check("the layers and the pipeline find the same masses", same_masses, f"{len(masses):,} masses")
 checks.check("the layers and the pipeline give the same peak",
              abs(fit.peak_position[0] - result.fit.peak_position[0]) < 1e-6)
+pdg_mass = pdg_mass_width(config.resonance)[0]
+checks.check("the peak is within a generous window of the PDG mass", abs(fit.peak_position[0] - pdg_mass) < 1.0)
 ```
 
 ## Optional: your own file
@@ -109,9 +111,10 @@ NOTEBOOK_FIGURES = ("z_peak_fit.png", "jpsi_peak_fit.png")
 ```python
 display(Image(filename=str(FIGURES / "z_peak_fit.png"), width=720))
 display(Image(filename=str(FIGURES / "jpsi_peak_fit.png"), width=720))
+display(Markdown((FIGURES / "jpsi_peak_fit_caption.md").read_text()))
 ```
 
-Those are the figures of the two headline fits. Their caption files in `docs/figures/` list every fitted parameter.
+Those are the figures of the two headline fits. Their caption files in `docs/figures/`, one shown here, list every fitted parameter.
 
 ```python
 #TAGS finish

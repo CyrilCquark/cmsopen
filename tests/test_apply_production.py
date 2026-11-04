@@ -367,6 +367,28 @@ def test_citation_version_and_authors_match_the_package(applied):
     assert strict.returncode == 1 and "TODO" in strict.stdout
 
 
+@pytest.mark.slow
+def test_the_orcid_and_the_second_doi_come_from_the_metadata_file_and_clear_the_todos(fresh):
+    path = fresh / "templates" / "release_metadata.json"
+    meta = json.loads(path.read_text())
+    meta["orcid"] = "0000-0002-1825-0097"  # the identifier ORCID uses in its own documentation
+    meta["record_dois"] = {"31123": "10.7483/OPENDATA.CMS.EXAMPLE"}
+    path.write_text(json.dumps(meta))
+    out = apply(fresh, "--dry-run-data", "--self-checks-only", "--application-dir", str(fresh.parent / "a"))
+    assert out.returncode == 0, out.stdout + out.stderr
+    strict = script(fresh, "check_release_metadata.py", "--release")
+    assert strict.returncode == 0, strict.stdout
+    assert "https://orcid.org/0000-0002-1825-0097" in (fresh / "CITATION.cff").read_text()
+    assert json.loads((fresh / ".zenodo.json").read_text())["creators"][0]["orcid"] == "0000-0002-1825-0097"
+
+
+@pytest.mark.slow
+def test_the_generated_notebooks_pass_ruff(applied):
+    repo, _, _, _ = applied
+    out = subprocess.run([sys.executable, "-m", "ruff", "check", "notebooks"], cwd=repo, capture_output=True, text=True)
+    assert out.returncode == 0, out.stdout
+
+
 # --- refusals: nothing is written
 
 

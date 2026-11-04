@@ -29,7 +29,8 @@ display(result.figures["mass_fit"])
 ```python
 pdg_mass = pdg_mass_width(CHANNELS["Z_mumu"].resonance)[0]
 peak, error = result.fit.peak_position
-checks.check("the sample gives a fit with pairs in its range", result.fit.n_entries > 500, f"{result.fit.n_entries:,} pairs")
+n_pairs = result.fit.n_entries
+checks.check("the sample gives a fit with pairs in its range", n_pairs > 500, f"{n_pairs:,} pairs")
 checks.check("the peak is within a generous window of the PDG mass", abs(peak - pdg_mass) < 1.0, f"{peak:.3f} GeV")
 checks.check("the figures exist", {"mass_fit", "cutflow", "os_vs_ss"} <= set(result.figures))
 ```

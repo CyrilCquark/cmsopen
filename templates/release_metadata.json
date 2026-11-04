@@ -4,6 +4,7 @@
   "family_names": "Nadar",
   "email": "Cyril.nadar1@gmail.com",
   "orcid": "TODO",
+  "record_dois": {"31123": "TODO"},
   "license": "MIT",
   "repository": "https://github.com/CyrilCquark/cmsopen",
   "keywords": ["CMS", "open data", "particle physics", "Z boson", "J/psi", "invariant mass", "NanoAOD", "Python"]

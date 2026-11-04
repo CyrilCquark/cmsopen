@@ -3,10 +3,11 @@ import os
 import re
 from pathlib import Path
 
+from IPython.display import Image, Markdown, display
+
 import cmsopen
 from cmsopen.fitting import pdg_mass_width
 from cmsopen.pipeline import CHANNELS
-from IPython.display import Image, Markdown, display
 
 ROOT = next(p for p in [Path.cwd(), *Path.cwd().parents] if (p / "examples" / "data" / "cmsopen_sample.root").exists())
 SAMPLE = ROOT / "examples" / "data" / "cmsopen_sample.root"

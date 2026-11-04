@@ -14,10 +14,11 @@ No physics background or large download is needed. Times are rough.
 
 - [ ] Run the quick start from the README: clone, `pip install .`, then the three commands, on the small committed sample.
 - [ ] Check that the last command ends with `All checks passed`, and open `out/z/mass_fit.png` to see the peak.
-- [ ] Open `notebooks/01_z_peak.ipynb` and run all cells: the last cell prints `All checks passed`.
+- [ ] Run `pip install jupyter`, open `notebooks/01_z_peak.ipynb` and run all cells: the last cell prints `All checks passed`.
 
 **Three minutes, checking that the numbers were not typed by hand.**
 
+- [ ] Run `pip install -e ".[dev]"`, which adds the checking tools.
 - [ ] Run `shasum -a 256 results/production.json`. It should print `{{ production_sha }}`.
 - [ ] Run `python scripts/check_readme_numbers.py`. It should print `OK`.
 - [ ] Run `python scripts/apply_production.py --check`, which regenerates every generated file and compares bytes.

@@ -88,14 +88,16 @@ Success prints `pytest: exit 0; ... passed`, `check_quality: exit 0; ['OK: quali
 Under the policy in CLAUDE.md, a verified production result that beats a benchmark becomes the new benchmark, and
 `dev/targets.md` is the permanent registry ("Verified production results so far: none"). Update it by hand after
 reviewing the results with Claude, and commit it before step 8; `dev/targets.md` is not a protected path.
-A decision is needed for χ²/ndf, because lower is not simply better below one; see the handover notes.
+A decision is needed for χ²/ndf, because a lower value is not simply better once it is below one: a fit far below one can
+mean overestimated errors. Decide with Claude whether the registry should move, and record the decision there.
 
 ## 8. Tag
 
 First finish the open TODOs. They are harmless warnings until now, but `--release` fails on them:
 
-- your ORCID: set `"orcid"` in `templates/release_metadata.json`, or delete that key's use if you have none;
-- the DOI for record 31123, which `DATA.md` does not record: check the portal.
+- your ORCID: in `templates/release_metadata.json` set `"orcid"` to the bare identifier (`0000-0000-0000-0000` form), or to
+  `""` if you have none;
+- the DOI for record 31123, which `DATA.md` does not record: check the portal and set `"record_dois"` in the same file.
 
 Then rerun `python scripts/apply_production.py`, commit, and:
 

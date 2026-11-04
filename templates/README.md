@@ -67,7 +67,7 @@ The sample is small, so its numbers are a demonstration and are not the results 
 `voigt_poly` line shape, because the frozen production models need far more pairs to pin down their parameters.
 
 Worked notebooks: [Z peak](notebooks/01_z_peak.ipynb), [J/ψ peak](notebooks/02_jpsi_peak.ipynb),
-[using each module on its own](notebooks/03_modular_usage.ipynb).
+[using each module on its own](notebooks/03_modular_usage.ipynb). To run them, `pip install jupyter` first.
 
 ## Production results
 
@@ -121,9 +121,10 @@ Every category, charge, pT, pileup and working-point entry is listed under
 ## Reproducibility
 
 The analysis ran once, at commit `{{ git_head }}`, in {{ n_attempts }} attempt(s). To verify what is committed (about a
-minute, no data download):
+minute after the install, no data download):
 
 ```bash
+pip install -e ".[dev]"
 shasum -a 256 results/production.json results/production_files.json
 python scripts/production_schema.py
 python scripts/check_readme_numbers.py

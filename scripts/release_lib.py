@@ -42,6 +42,7 @@ def prose(text: str) -> str:
     text = re.sub(r"\]\([^)]*\)", "]", text)
     text = re.sub(r"https?://\S+", "", text)
     text = re.sub(r"\b10\.\d{4,}/[^\s\"'*)\]]+", "", text)  # a DOI
+    text = re.sub(r"\b\d{4}-\d{4}-\d{4}-\d{3}[\dX]\b", "", text)  # an ORCID
     text = re.sub(r"\b[0-9a-f]{7,64}\b", "", text)
     text = re.sub(r"^\s*\d+\.\s", "", text, flags=re.M)
     return text
