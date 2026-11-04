@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 from release_fixtures import DRY_RUN_JSON, install_production
-from test_production import clone_working_tree, git, make_copy, record_gates, run
+from test_production import clone_working_tree, git, make_copy, record_gates, restore_pre_production, run
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO / "scripts"
@@ -93,6 +93,7 @@ def applied(tmp_path_factory):
         source = real_run_output(tmp / "source")
         data = json.loads((source / "results" / "production.json").read_text())
     clone_working_tree(repo)
+    restore_pre_production(repo)  # once the generated files are committed, a plain clone already has them
     install_production(repo, data)
     out = apply(repo, "--dry-run-data", "--application-dir", str(app))
     assert out.returncode == 0 and "APPLY COMPLETE" in out.stdout, out.stdout + out.stderr
@@ -397,6 +398,7 @@ def fresh(tmp_path, applied):
     """A copy with the production file, before the apply step."""
     repo = tmp_path / "repo"
     clone_working_tree(repo)
+    restore_pre_production(repo)  # once the generated files are committed, a plain clone already has them
     install_production(repo, applied[2])
     return repo
 
