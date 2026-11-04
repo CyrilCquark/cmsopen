@@ -30,3 +30,6 @@ data/*
 .coverage
 .coverage.*
 htmlcov/
+
+# MkDocs output
+/site/

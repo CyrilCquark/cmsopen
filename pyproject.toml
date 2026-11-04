@@ -55,7 +55,14 @@ dev = [
     "build",
     "twine",
     "setuptools>=77",
+    "nbclient",
+    "jsonschema>=4.18",
+    "pyyaml",
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
 ]
+docs = ["mkdocs>=1.6", "mkdocs-material>=9.5", "mkdocstrings[python]>=0.25"]
 
 [tool.setuptools.dynamic]
 version = { attr = "cmsopen.__version__" }
