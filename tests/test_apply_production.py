@@ -570,7 +570,21 @@ def test_apply_after_a_real_production_run_on_the_synthetic_registry(tmp_path):
     pairs = next(v for k, v in extras.items() if k.startswith("J/psi opposite-sign"))
     assert pairs["observed"].startswith(f"{int(window):,} pairs") and pairs["status"] in ("met", "not met")
     sb = next(v for k, v in extras.items() if k.startswith("J/psi sideband"))
-    assert sb["observed"] == f"{(window - background) / background:.2f}"
+    assert sb["observed"].startswith(f"{(window - background) / background:.2f} (")
+    assert sb["status"] == ("met" if (window - background) / background >= 1 else "not met")  # never the cross-check
+    fit = summary["fit"]
+    if fit["yields_reliable"]:
+        c0, c1, c2 = (fit["parameters"][f"c{k}"]["value"] for k in range(3))
+        middle = sum(fit["fit_range_gev"]) / 2
+        fitted = sum(
+            (c0 * x + c1 * x**2 / 2 + c2 * x**3 / 3) * sign for x, sign in ((3.3 - middle, 1), (2.9 - middle, -1))
+        )
+        assert f"cross-check only, not the benchmark's method: fitted background in the window {fitted:,.0f}" in (
+            sb["observed"]
+        )
+        assert f"S/B {(window - fitted) / fitted:.2f})" in sb["observed"]
+    else:
+        assert "fit cross-check not available" in sb["observed"]
 
     shutil.rmtree(repo / "build" / "production")  # as in a fresh clone: the kept file replaces the saved outputs
     assert apply(repo, "--check").returncode == 0
@@ -603,6 +617,30 @@ def test_the_window_and_the_sidebands_come_from_the_histogram_edges():
     assert window == 800 and sb == pytest.approx(3.0)
     off_edges = [2.61 + 0.02 * i for i in range(51)]
     assert extras.jpsi_window_and_background({"histogram": {"edges_gev": off_edges, "counts": counts}}) is None
+
+
+def test_the_fit_cross_check_integrates_the_saved_background_over_the_window():
+    extras = extras_module()
+    # 100 + 10 u + 30 u^2 about 3.1 GeV: over 2.8-3.4 GeV, 60 + 0 + 0.54; over 2.9-3.3 GeV, 40 + 0 + 0.16
+    fit = {
+        "yields_reliable": True,
+        "background": "pol2",
+        "fit_range_gev": [2.8, 3.4],
+        "background_yield": [60.54, 1.0],
+        "parameters": {"c0": {"value": 100.0}, "c1": {"value": 10.0}, "c2": {"value": 30.0}},
+    }
+    background, sb = extras.jpsi_fit_cross_check({"fit": fit}, 160)
+    assert background == pytest.approx(40.16) and sb == pytest.approx((160 - 40.16) / 40.16)
+    text = extras._sideband_text({"fit": fit}, (160, 0.5))
+    assert text.startswith("0.50 (cross-check only") and "fitted background in the window 40, S/B 2.98)" in text
+
+    assert "do not reproduce" in extras.jpsi_fit_cross_check({"fit": {**fit, "background_yield": [99.0, 1.0]}}, 160)
+    assert "not reliable" in extras.jpsi_fit_cross_check({"fit": {**fit, "yields_reliable": False}}, 160)
+    assert "not a polynomial" in extras.jpsi_fit_cross_check({"fit": {**fit, "background": "exp"}}, 160)
+    assert "inside the fit range" in extras.jpsi_fit_cross_check({"fit": {**fit, "fit_range_gev": [2.95, 3.25]}}, 160)
+    assert extras._sideband_text({"fit": {**fit, "yields_reliable": False}}, (160, 0.5)).startswith(
+        "0.50 (fit cross-check not available"
+    )
 
 
 def test_the_toy_record_parses_every_format_the_tests_print():

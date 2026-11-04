@@ -11,7 +11,12 @@ The benchmarks are read from the table in dev/targets.md, so a registry change r
 J/psi sideband signal-to-background, defined here before the production files were opened (dev/targets.md): in the
 saved histogram of the Jpsi_mumu channel the signal window is 2.9-3.3 GeV, the benchmark's own window, and the
 sidebands are the rest of the histogram, 2.6-2.9 and 3.3-3.6 GeV. B = sideband count x (window width / sideband width),
-assuming a locally flat background; S = window count - B.
+assuming a locally flat background; S = window count - B. Confirmed by the owner on 2026-11-04.
+
+Beside it, as a labelled cross-check only (met or not met always comes from the sideband value): B from the fit, the
+background polynomial integrated over the window. The summary's background_yield covers the fit range, not the window,
+so the integral is redone from the saved coefficients, about the middle of the fit range as in the fit, and must first
+reproduce that saved yield over the fit range. The summary has no covariance matrix, so it has no uncertainty.
 
 Usage:
     python scripts/production_extras.py     # prints the table
@@ -103,6 +108,45 @@ def jpsi_window_and_background(summary: dict[str, Any]) -> tuple[int, float] | N
     sideband_width = sum(high - low for low, high in SIDEBANDS)
     background = sum(c for c in sidebands if c is not None) * (WINDOW[1] - WINDOW[0]) / sideband_width
     return window, (window - background) / background if background > 0 else float("inf")
+
+
+def jpsi_fit_cross_check(summary: dict[str, Any], window_count: int) -> tuple[float, float] | str:
+    """(fitted background in the window, S/B with it), or the reason it is not available."""
+    fit = summary["fit"]
+    if not fit.get("yields_reliable") or not fit.get("background_yield"):
+        return "the fit's yields are not reliable (background not positive over the fit range)"
+    label = str(fit.get("background", ""))
+    if not label.startswith("pol"):
+        return f"the fit's background is {label!r}, not a polynomial"
+    low, high = fit["fit_range_gev"]
+    if not low <= WINDOW[0] < WINDOW[1] <= high:
+        return "the window is not inside the fit range"
+    middle = 0.5 * (low + high)
+    coefficients = [fit["parameters"][f"c{k}"]["value"] for k in range(int(label[3:]) + 1)]
+
+    def integral(a: float, b: float) -> float:
+        return sum(
+            c * ((b - middle) ** (k + 1) - (a - middle) ** (k + 1)) / (k + 1) for k, c in enumerate(coefficients)
+        )
+
+    saved = fit["background_yield"][0]
+    if abs(integral(low, high) - saved) > 1e-6 * max(1.0, abs(saved)):
+        return "the saved coefficients do not reproduce the saved background yield"
+    background = integral(*WINDOW)
+    if background <= 0:
+        return "the fitted background in the window is not positive"
+    return background, (window_count - background) / background
+
+
+def _sideband_text(summary: dict[str, Any], window: tuple[int, float]) -> str:
+    """The sideband S/B, then the fit-based value beside it, labelled as a cross-check."""
+    cross = jpsi_fit_cross_check(summary, window[0])
+    if isinstance(cross, str):
+        return f"{window[1]:.2f} (fit cross-check not available: {cross})"
+    return (
+        f"{window[1]:.2f} (cross-check only, not the benchmark's method: fitted background in the window "
+        f"{cross[0]:,.0f}, S/B {cross[1]:.2f})"
+    )
 
 
 def load_test_metrics(repo: Path) -> tuple[list[dict[str, Any]] | None, str]:
@@ -307,9 +351,15 @@ def derive(repo: Path, data: dict[str, Any]) -> dict[str, Any]:
             else:
                 rows.append(_no(metric, benchmark, jpsi_reason))
         elif low.startswith("j/psi sideband"):
-            if window:
+            if window and jpsi_summary:
                 rows.append(
-                    _row(metric, benchmark, f"{window[1]:.2f}", _met(window[1] >= 1), "saved histogram of the run")
+                    _row(
+                        metric,
+                        benchmark,
+                        _sideband_text(jpsi_summary, window),
+                        _met(window[1] >= 1),
+                        "saved histogram of the run; cross-check from the saved fit",
+                    )
                 )
             else:
                 rows.append(_no(metric, benchmark, jpsi_reason))

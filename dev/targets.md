@@ -43,6 +43,10 @@ J/psi sideband signal-to-background, as evaluated by `scripts/production_extras.
 was written on 2026-11-04, before any production file was opened): in the Jpsi_mumu channel's saved histogram, the signal
 window is 2.9-3.3 GeV and the sidebands are the rest of the histogram, 2.6-2.9 and 3.3-3.6 GeV. B is the sideband count
 scaled by width (a locally flat background), S is the window count minus B.
+This definition was confirmed by the owner on 2026-11-04, before any production file was opened.
+Beside it, as a labelled cross-check only (it never sets met or not met): the fitted background integrated over the
+window, from the fit parameters in the saved summary. The summary's own `background_yield` covers the fit range, 2.8-3.4
+GeV, not the window, and the summary has no covariance matrix, so this cross-check has no uncertainty.
 
 Existing self-check thresholds in examples/ are also benchmarks and may not
 be loosened: same-sign pairs in 88-94 GeV below 10 % of opposite-sign pairs

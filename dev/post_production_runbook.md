@@ -38,7 +38,8 @@ python scripts/production_extras.py
 ```
 
 Every registry benchmark with its observed value, or `not derivable` with the reason: the J/psi pairs in 2.9-3.3 GeV and
-sideband S/B from the saved histogram (definition in `dev/targets.md`), and the toy results, labelled "from the test
+sideband S/B from the saved histogram (definition in `dev/targets.md`, with the fit-based value beside it as a labelled
+cross-check only), and the toy results, labelled "from the test
 suite, not production data". Review these with Claude as well: the report in step 1 does not have them.
 
 ## 4. Rehearse
