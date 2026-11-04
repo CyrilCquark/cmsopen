@@ -54,7 +54,7 @@ def problems(repo: Path, release: bool = False) -> tuple[list[str], list[str]]:
     author = (cff.get("authors") or [{}])[0]
     if (author.get("given-names"), author.get("family-names")) != (meta["given_names"], meta["family_names"]):
         failures.append("CITATION.cff author differs from templates/release_metadata.json")
-    if author.get("email") != meta["email"]:
+    if "email" in author and author["email"] != meta["email"]:  # absent unless --include-email was given
         failures.append("CITATION.cff email differs from templates/release_metadata.json")
     if cff.get("repository-code") != meta["repository"]:
         failures.append("CITATION.cff repository URL differs from templates/release_metadata.json")

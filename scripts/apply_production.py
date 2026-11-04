@@ -1,7 +1,8 @@
 """The one command after the production run: write every protected, results-bearing file, then check them.
 
-Reads results/production.json and docs/figures/ and writes README.md, docs/ (the MkDocs pages), CITATION.cff,
-.zenodo.json, notebooks/ and the application assets outside the repository. It does not commit.
+Reads results/production.json, docs/figures/ and the run's saved outputs in build/production/, and writes README.md,
+README_PYPI.md, DATA.md (the record facts), docs/ (the MkDocs pages), CITATION.cff, .zenodo.json, notebooks/,
+results/production_extras.json and the application assets outside the repository. It does not commit.
 
 Refuses, and writes nothing, unless:
 
@@ -15,17 +16,22 @@ Refuses, and writes nothing, unless:
 
 After writing it runs scripts/check_readme_numbers.py, scripts/check_release_metadata.py, the audit of numbers,
 mkdocs build --strict and the notebooks, then prints the list of files it changed. Rerunning is byte-identical.
+The address in templates/release_metadata.json goes into CITATION.cff only with --include-email; .zenodo.json has no
+field for it.
 
 Usage:
-    python scripts/apply_production.py [--application-dir DIR] [--self-checks-only] [--dry-run-data]
-    python scripts/apply_production.py --check    # write nothing; fail if a generated file differs
+    python scripts/apply_production.py --rehearse  # all of it in a throwaway copy; this tree is not touched
+    python scripts/apply_production.py [--application-dir DIR] [--self-checks-only] [--include-email]
+    python scripts/apply_production.py --check     # write nothing; fail if a generated file differs
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -40,6 +46,7 @@ sys.path.insert(0, str(REPO / "examples"))
 import make_application_assets  # noqa: E402, I001
 from build_production_notebooks import notebooks  # noqa: E402
 from generate_release_files import build_values, not_met, text_outputs  # noqa: E402
+from production_extras import RESULT_FILE, load_or_derive  # noqa: E402
 from production_schema import validate  # noqa: E402
 from release_lib import NumberAudit, audit_numbers, lint_template  # noqa: E402
 from render_results import is_dry_run  # noqa: E402
@@ -109,19 +116,24 @@ def template_problems() -> list[str]:
     return out
 
 
-def all_outputs(data: dict[str, Any]) -> dict[str, bytes]:
+def all_outputs(data: dict[str, Any], include_email: bool = False) -> dict[str, bytes]:
     """Relative path -> content of every generated file inside the repository."""
-    return {**text_outputs(REPO, data), **notebooks(REPO, build_values(REPO, data))}
+    return {**text_outputs(REPO, data, include_email), **notebooks(REPO, build_values(REPO, data))}
+
+
+def _strings(extras: dict[str, Any]) -> list[str]:
+    return [value for row in extras["rows"] for value in row.values()]
 
 
 def audit_problems(data: dict[str, Any], outputs: dict[str, bytes]) -> list[str]:
     """Numbers in generated text that do not trace to results/production.json, as 'file: token'."""
     total = sum(int(f["size_bytes"]) for f in data["files"])
-    # beyond the file: its total size, the citation format's version in CITATION.cff, and the package version
-    audit = NumberAudit(data, extra=(total, round(total / 1e9, 2), "1.2.0"))
+    # beyond the file: its total size, the citation format's version, and the table of registry benchmarks
+    extras = load_or_derive(REPO, data)
+    audit = NumberAudit(data, extra=(total, round(total / 1e9, 2), "1.2.0", *_strings(extras)))
     problems = []
     for name, content in outputs.items():
-        if name.endswith((".png", ".pdf")):
+        if name.endswith((".png", ".pdf")) or name in ("DATA.md", RESULT_FILE):  # portal facts; the source table itself
             continue
         text = content.decode()
         if name.endswith(".ipynb"):
@@ -137,6 +149,71 @@ def run_check(*command: str) -> bool:
     if out.returncode != 0 and out.stderr.strip():  # a kernel's start-up messages on stderr are not news otherwise
         print(out.stderr.strip())
     return out.returncode == 0
+
+
+def docs_build_failure() -> str | None:
+    """Why mkdocs build --strict failed, or None. A missing docs extra is a failure, never a silent skip."""
+    if importlib.util.find_spec("mkdocs") is None or importlib.util.find_spec("mkdocstrings") is None:
+        return 'mkdocs is not installed: pip install -e ".[dev,docs]" (or pass --skip-docs-build in a test)'
+    with tempfile.TemporaryDirectory() as site:
+        mkdocs = subprocess.run(
+            [sys.executable, "-m", "mkdocs", "build", "--strict", "--quiet", "--site-dir", site],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+        )
+    return None if mkdocs.returncode == 0 else mkdocs.stderr[-2000:]
+
+
+def rehearse(args: argparse.Namespace) -> int:
+    """The full apply step in a throwaway copy of this tree; print the checks and what it would change here."""
+    flags = [
+        ("--dry-run-data", args.dry_run_data),
+        ("--self-checks-only", args.self_checks_only),
+        ("--include-email", args.include_email),
+        ("--skip-docs-build", args.skip_docs_build),
+    ]
+    real_application = args.application_dir or make_application_assets.DEFAULT_OUTDIR
+    environment = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", "PYTHONDONTWRITEBYTECODE": "1"}
+    with tempfile.TemporaryDirectory(prefix="cmsopen-rehearse-") as tmp:
+        copy, application = Path(tmp) / "repo", Path(tmp) / "application"
+        subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(REPO), str(copy)], check=True, env=environment)
+        files = _git("ls-files", "-co", "--exclude-standard").stdout.splitlines()
+        for rel in files:  # the tree as it is, with uncommitted production outputs
+            if (REPO / rel).is_file():
+                (copy / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(REPO / rel, copy / rel)
+            else:
+                (copy / rel).unlink(missing_ok=True)
+        for summary in (REPO / "build" / "production").glob("*/run1/summary.json"):
+            target = copy / summary.relative_to(REPO)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(summary, target)
+        if is_test_copy():  # dry-run data stay acceptable in the copy of a marked copy, and nowhere else
+            with open(copy / ".git" / "info" / "exclude", "a") as exclude:
+                exclude.write("scripts/.production_test_copy\n")
+            (copy / "scripts" / ".production_test_copy").write_text(str(copy.resolve()) + "\n")
+        command = [sys.executable, str(copy / "scripts" / "apply_production.py"), "--application-dir", str(application)]
+        command += [flag for flag, chosen in flags if chosen]
+        print("== rehearsal in a throwaway copy; this tree is not changed")
+        result = subprocess.run(command, cwd=copy, capture_output=True, text=True, env=environment)
+        stdout = result.stdout.replace(str(application), "<application directory>")
+        print(stdout.strip())
+        if result.stderr.strip() and result.returncode != 0:
+            print(result.stderr.strip()[-2000:])
+        assets = sorted(p.relative_to(application).as_posix() for p in application.rglob("*") if p.is_file())
+        different = [
+            a
+            for a in assets
+            if not (real_application / a).exists()
+            or (real_application / a).read_bytes() != (application / a).read_bytes()
+        ]
+        if result.returncode == 0:
+            print(f"== it would change {len(different)} of {len(assets)} files in {real_application}")
+            print("REHEARSAL PASSED: nothing was changed; now run the same command without --rehearse")
+        else:
+            print(f"REHEARSAL FAILED (exit {result.returncode}): nothing was changed; do not run the real apply")
+    return result.returncode
 
 
 def write_outputs(outputs: dict[str, bytes]) -> list[str]:
@@ -167,8 +244,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--dry-run-data", action="store_true", help="accept dry-run data in a marked test copy")
     parser.add_argument("--check", action="store_true", help="write nothing; fail if a generated file differs")
+    parser.add_argument(
+        "--rehearse", action="store_true", help="the whole step in a throwaway copy; touches nothing here"
+    )
+    parser.add_argument("--include-email", action="store_true", help="put the author's email address in CITATION.cff")
+    parser.add_argument("--skip-docs-build", action="store_true", help="for tests without the docs extra")
     args = parser.parse_args(argv)
 
+    if args.rehearse:
+        return rehearse(args)
     if not PRODUCTION.exists():
         print("REFUSED: results/production.json does not exist (only the production run creates it)")
         return 2
@@ -189,7 +273,9 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSED: dry-run data never go to the default application directory; pass --application-dir")
         return 2
 
-    outputs = all_outputs(data)
+    citation = REPO / "CITATION.cff"
+    has_email = args.check and citation.exists() and "    email:" in citation.read_text()
+    outputs = all_outputs(data, args.include_email or has_email)
     if args.check:
         different = [n for n, c in outputs.items() if not (REPO / n).exists() or (REPO / n).read_bytes() != c]
         for name in different:
@@ -215,19 +301,12 @@ def main(argv: list[str] | None = None) -> int:
         else "FAIL: numbers that do not trace to results/production.json:\n  " + "\n  ".join(unaudited)
     )
     ok = ok and not unaudited
-    with tempfile.TemporaryDirectory() as site:
-        mkdocs = subprocess.run(
-            [python, "-m", "mkdocs", "build", "--strict", "--quiet", "--site-dir", site],
-            cwd=REPO,
-            capture_output=True,
-            text=True,
-        )
-    print(
-        "OK: mkdocs build --strict"
-        if mkdocs.returncode == 0
-        else f"FAIL: mkdocs build --strict\n{mkdocs.stderr[-2000:]}"
-    )
-    ok = ok and mkdocs.returncode == 0
+    if args.skip_docs_build:
+        print("SKIPPED: mkdocs build --strict (--skip-docs-build)")
+    else:
+        failure = docs_build_failure()
+        print("OK: mkdocs build --strict" if failure is None else f"FAIL: mkdocs build --strict\n{failure}")
+        ok = ok and failure is None
     notebook_args = ["--self-checks-only"] if args.self_checks_only else []
     ok = run_check(python, str(HERE / "check_notebooks.py"), *notebook_args) and ok
 

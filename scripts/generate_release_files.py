@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from production_extras import RESULT_FILE, load_or_derive
 from release_lib import render
 from render_results import (
     CHANNEL_LABELS,
@@ -215,6 +216,25 @@ def _method_table(data: dict[str, Any]) -> str:
     return _table(["channel", "model", "fit range", "muon quality"], rows)
 
 
+def registry_table(extras: dict[str, Any]) -> str:
+    """Every registry benchmark: the benchmark first, then the observed value, status and where the value comes from."""
+    rows = [[f"{r['metric']}", f"**{r['benchmark']}**", r["observed"], r["status"], r["source"] or "n/a"]
+            for r in extras["rows"]]
+    return _table(["metric", "**controlling benchmark**", "observed", "status", "source of the observed value"], rows)
+
+
+def registry_not_met(extras: dict[str, Any]) -> str:
+    """One sentence on the registry rows not met and not derivable."""
+    missed = [r["metric"] for r in extras["rows"] if r["status"].startswith("not met")]
+    unknown = [r["metric"] for r in extras["rows"] if r["status"] == "not derivable"]
+    parts = []
+    if missed:
+        parts.append("**Not met:** " + "; ".join(missed) + ".")
+    if unknown:
+        parts.append("**Not derivable:** " + "; ".join(unknown) + ".")
+    return " ".join(parts) or "Every benchmark in the registry was met."
+
+
 def _channel_values(prefix: str, c: dict[str, Any], data: dict[str, Any]) -> dict[str, str]:
     r, d = c["result"], channel_digits(c)
     alt = c.get("alternate_fit") or {}
@@ -304,6 +324,10 @@ def _limitations(data: dict[str, Any]) -> str:
     return "\n".join(f"- {i}" for i in items)
 
 
+def _other_dois(meta: dict[str, Any]) -> list[str]:
+    return [d for d in meta.get("record_dois", {}).values() if d != "TODO"]
+
+
 def build_values(repo: Path, data: dict[str, Any]) -> dict[str, str]:
     """Every placeholder a template can use."""
     meta = json.loads((repo / "templates" / "release_metadata.json").read_text())
@@ -333,6 +357,8 @@ def build_values(repo: Path, data: dict[str, Any]) -> dict[str, str]:
         )
         if missed
         else "All benchmarks in the table were met in this run.",
+        "registry_table": registry_table(load_or_derive(repo, data)),
+        "registry_not_met": registry_not_met(load_or_derive(repo, data)),
         "targets_table": targets_table(data),
         "headline_table": headline_table(data),
         "method_table": _method_table(data),
@@ -379,8 +405,9 @@ def build_values(repo: Path, data: dict[str, Any]) -> dict[str, str]:
         ),
         "data_citation_quote": cite["quote"],
         "data_citation_note": (
-            f"[DATA.md](DATA.md) records the DOI of the parent dataset of record 31129: "
-            f"[{cite['doi']}](https://doi.org/{cite['doi']})."
+            "The records list no DOI of their own, so [DATA.md](DATA.md) gives their parent datasets': "
+            + ", ".join(f"[{d}](https://doi.org/{d})" for d in (cite["doi"], *_other_dois(meta)))
+            + "."
         ),
     }
     for prefix, name in KEYS.items():
@@ -404,7 +431,23 @@ def _yaml(text: str) -> str:
     return json.dumps(text, ensure_ascii=False)
 
 
-def citation_cff(repo: Path, values: dict[str, str]) -> str:
+def patched_data_md(repo: Path) -> str:
+    """DATA.md with the record facts of templates/DATA_md_*.txt; a second pass changes nothing."""
+    text = (repo / "DATA.md").read_text()
+    addition = (repo / "templates" / "DATA_md_addition.txt").read_text()
+    citation = (repo / "templates" / "DATA_md_citation_addition.txt").read_text()
+    if addition.splitlines()[0] in text:
+        return text
+    old = "| Events (whole record) | 35,455,705 in 74 files |"
+    if old not in text or "## How to cite" not in text:
+        raise ValueError("DATA.md: not the text this patch was written for")
+    text = text.replace(old, "| Events (whole record) | 35,455,705 in 74 files (73 separate files and one file that "
+                             "merges them) |")
+    text = text.replace("## How to cite", addition + "## How to cite", 1)
+    return text.rstrip("\n") + "\n" + citation
+
+
+def citation_cff(repo: Path, values: dict[str, str], include_email: bool = False) -> str:
     """CITATION.cff. An ORCID that is still "TODO" is a comment, because the schema rejects it as a field value."""
     meta = json.loads((repo / "templates" / "release_metadata.json").read_text())
     cite = parse_data_md(repo)
@@ -423,7 +466,7 @@ def citation_cff(repo: Path, values: dict[str, str]) -> str:
         "authors:",
         f"  - given-names: {_yaml(meta['given_names'])}",
         f"    family-names: {_yaml(meta['family_names'])}",
-        f"    email: {_yaml(meta['email'])}",
+        *([f"    email: {_yaml(meta['email'])}"] if include_email else []),
         *orcid_lines,
         f"abstract: {_yaml(values['abstract'])}",
         "keywords:",
@@ -445,12 +488,12 @@ def citation_cff(repo: Path, values: dict[str, str]) -> str:
         ]
         other = meta.get("record_dois", {}).get(str(record["record_id"]))
         if other in (None, "TODO") and record["record_id"] != DATA_MD_RECORD:
-            lines += ['    notes: "TODO: no DOI recorded in DATA.md; set it in templates/release_metadata.json."']
+            lines += ['    notes: "TODO: no DOI recorded; set it in templates/release_metadata.json."']
         elif record["record_id"] == DATA_MD_RECORD:
             lines += [f"    doi: {_yaml(cite['doi'])}",
                       f"    notes: {_yaml('DOI of the parent AOD dataset. ' + cite['quote'])}"]
         else:
-            lines += [f"    doi: {_yaml(other)}"]
+            lines += [f"    doi: {_yaml(other)}", '    notes: "DOI of the parent AOD dataset."']
     return "\n".join(lines) + "\n"
 
 
@@ -474,12 +517,27 @@ def zenodo_json(repo: Path, values: dict[str, str]) -> str:
         "related_identifiers": [
             {"identifier": meta["repository"], "relation": "isSupplementTo", "scheme": "url"},
             {"identifier": cite["doi"], "relation": "references", "scheme": "doi"},
+            *({"identifier": d, "relation": "references", "scheme": "doi"} for d in _other_dois(meta)),
         ],
     }
     return json.dumps(record, indent=2, ensure_ascii=False) + "\n"
 
 
-def text_outputs(repo: Path, data: dict[str, Any]) -> dict[str, bytes]:
+def pypi_readme(readme: str, tag: str, repo_url: str) -> str:
+    """The README for PyPI: images and links pinned to the release tag, because PyPI cannot resolve relative paths."""
+    owner_repo = repo_url.removeprefix("https://github.com/")
+
+    def image(match: re.Match[str]) -> str:
+        return f"![{match.group(1)}](https://raw.githubusercontent.com/{owner_repo}/{tag}/{match.group(2)})"
+
+    def link(match: re.Match[str]) -> str:
+        return f"[{match.group(1)}]({repo_url}/blob/{tag}/{match.group(2)})"
+
+    text = re.sub(r"!\[([^\]]*)\]\((?!https?://)([^)]+)\)", image, readme)
+    return re.sub(r"(?<!!)\[([^\]]*)\]\((?!https?://|#)([^)]+)\)", link, text)
+
+
+def text_outputs(repo: Path, data: dict[str, Any], include_email: bool = False) -> dict[str, bytes]:
     """Relative path -> content of every generated text file except the notebooks."""
     values = build_values(repo, data)
     templates = repo / "templates"
@@ -487,7 +545,10 @@ def text_outputs(repo: Path, data: dict[str, Any]) -> dict[str, bytes]:
     out = {"README.md": readme, "docs/index.md": _tidy(docs_home(readme, values["repo_url"]))}
     for page in DOC_PAGES:
         out[f"docs/{page}.md"] = _tidy(render((templates / "docs" / f"{page}.md").read_text(), values))
-    out["CITATION.cff"] = citation_cff(repo, values)
+    out["README_PYPI.md"] = pypi_readme(readme, f"v{values['version']}", values["repo_url"])
+    out["DATA.md"] = patched_data_md(repo)
+    out[RESULT_FILE] = json.dumps(load_or_derive(repo, data), indent=2, ensure_ascii=False) + "\n"
+    out["CITATION.cff"] = citation_cff(repo, values, include_email)
     out[".zenodo.json"] = zenodo_json(repo, values)
     return {k: v.encode() for k, v in out.items()}
 
