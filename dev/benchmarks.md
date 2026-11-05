@@ -578,3 +578,47 @@ of MB between runs (allocator and garbage-collection timing).
 
 Projected peak at 20 files: below 0.8 GB (the 18-input measurement), far
 below the 2 GB target.
+
+## Verified production results (run of 2026-11-04, recorded 2026-11-05)
+
+Unlike the development observations above, these are verified results of the
+pre-registered production sample: 20 files (12 from record 31129, 8 from record
+31123), 9,780,165 events, git HEAD 9ebc2e3a8b37, 2 attempts (the first failed in
+the download phase with a DownloadError, before any file was opened; no code
+fix). Sources: `results/production.json`, `results/production_extras.json` and
+the gates record of the production commit. Nothing was refitted or tuned.
+
+| metric | controlling benchmark at the run | observed | status |
+|---|---|---|---|
+| Fit adequacy chi2/ndf, Z (cb2_bw_exp) | <= 2.0, positive background | 48.6/32 = 1.518, background positive | met |
+| Fit adequacy chi2/ndf, J/psi (cb2_bw_poly2) | <= 2.0, positive background | 63.6/21 = 3.028, background positive | **not met** |
+| Production sample size | 20 files (12 + 8) | 20 files (12 + 8) | met |
+| Line coverage of src/cmsopen | >= 90 % | 96.7 % | met |
+| mypy / ruff findings | 0 | 0 | met |
+| Validation pairs per category (minimum fitted) | >= 5,000 | Z 35,439; J/psi 9,704 | met |
+| J/psi opposite-sign pairs in 2.9-3.3 GeV | >= 2,000 | 380,964 | met |
+| J/psi sideband signal-to-background | >= 1 | 12.16 (cross-check, fitted background: 7.48) | met |
+| Parallel versus serial, summary.json reproducibility | identical | byte-identical, both channels | met |
+| Fitted Z resolution | 0.5-4 GeV | 1.982 GeV | met |
+| Z stability spread over fit choices | < 0.5 GeV | 0.0068 GeV (3 of 9 stability fits failed) | met |
+| Z peak sanity window (not a mass target) | within 1.0 GeV of PDG | -0.2879 GeV | met |
+| Figure file size | > 20 kB | smallest 57 kB | met |
+| Same-sign fraction in 88-94 GeV; PNG size; layout overlaps; byte-identical figure regeneration; deliberate-breakage checks | see dev/targets.md | not derivable from the run's outputs | not derivable |
+
+chi2/ndf: the benchmark stays <= 2.0. It is a consistency window, not a
+lower-is-better metric, so the Z's 1.518 does not replace it. The J/psi's 3.028 is
+recorded as not met.
+
+Reported without a threshold (observed): Z peak 90.9000 +- 0.0050 (stat.) +- 0.0061
+(scaled, S = 1.232) GeV, offset from PDG -0.2879 GeV; J/psi peak 3.09332 +- 0.00007
+(stat.) +- 0.00013 (scaled, S = 1.740) GeV, offset from PDG -0.00358 GeV; 2012B
+minus 2012C, Z peak -0.0184 +- 0.0103 GeV (-1.78 sigma), J/psi peak +0.00000 +-
+0.00016 GeV (+0.02 sigma). These are peak positions, not mass measurements: no
+momentum-scale corrections are applied.
+
+Under the policy in CLAUDE.md a verified production result that beats a benchmark
+becomes the new benchmark, and the registry is `dev/targets.md`. Results beyond their
+benchmark at this run: coverage 96.7 %; validation pairs 9,704; J/psi pairs 380,964;
+J/psi sideband S/B 12.16; Z stability spread 0.0068 GeV. `dev/targets.md` has not been
+updated with them: a change there regenerates the documents (post-production runbook,
+step 9) and is the owner's decision.
