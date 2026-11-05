@@ -119,6 +119,8 @@ Run-period consistency (Run 2012B minus Run 2012C, observed):
 
 {{ registry_table }}
 
+Coverage, validation pairs, J/ψ pairs and J/ψ sideband S/B were raised to this run's own observed values after the run, under the all-time-highest benchmark policy (`dev/targets.md` lists the old values). For those four, "met" here is true by construction; each was above its earlier benchmark.
+
 {{ registry_not_met }}
 
 Every category, charge, pT, pileup and working-point entry is listed under
