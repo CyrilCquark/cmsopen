@@ -1,0 +1,16 @@
+## Records of the production sample
+
+Record-level facts from the [CERN Open Data Portal](https://opendata.cern.ch) record pages, read on 2026-11-04. The
+production files are listed in `results/production_files.json`.
+
+| Record | Run period | Title | Events | Files on the portal | Files to choose from | Parent AOD record | Parent DOI |
+|---|---|---|---|---|---|---|---|
+| [31129](https://opendata.cern.ch/record/31129) | Run2012C | Run2012C_DoubleMuParked dataset in Run1 NanoAOD-like format | 35,455,705 | 74 | 73 | [6030](https://opendata.cern.ch/record/6030) | [10.7483/OPENDATA.CMS.M5AD.Y3V3](https://doi.org/10.7483/OPENDATA.CMS.M5AD.Y3V3) |
+| [31123](https://opendata.cern.ch/record/31123) | Run2012B | Run2012B_DoubleMuParked dataset in Run1 NanoAOD-like format | 26,084,708 | 57 | 56 | [6004](https://opendata.cern.ch/record/6004) | [10.7483/OPENDATA.CMS.YLIC.86ZZ](https://doi.org/10.7483/OPENDATA.CMS.YLIC.86ZZ) |
+
+**File counts.** Each record holds its separate files plus one file that, in the portal's words, "contains the separate
+files merged into one file". So the portal's count is one more than the count of separate files. The production sample
+is chosen from the per-file index only (`results/production_files.json`, "rule"), which is why it counts 73 and 56.
+
+Both records are released under the Creative Commons Zero v1.0 Universal licence (CC0-1.0).
+

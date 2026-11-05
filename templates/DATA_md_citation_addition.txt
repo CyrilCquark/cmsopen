@@ -1,0 +1,7 @@
+
+Records 31129 and 31123 list no DOI of their own, so cite their parent AOD datasets. The portal's "Cite as" text for each:
+
+- Record 6030 (parent of 31129): CMS collaboration (2017). DoubleMuParked primary dataset in AOD format from Run of 2012
+  (/DoubleMuParked/Run2012C-22Jan2013-v1/AOD). CERN Open Data Portal. DOI: 10.7483/OPENDATA.CMS.M5AD.Y3V3
+- Record 6004 (parent of 31123): CMS collaboration (2017). DoubleMuParked primary dataset in AOD format from Run of 2012
+  (/DoubleMuParked/Run2012B-22Jan2013-v1/AOD). CERN Open Data Portal. DOI: 10.7483/OPENDATA.CMS.YLIC.86ZZ

@@ -1,0 +1,116 @@
+{
+  "label": "from the test suite, not production data",
+  "fitting_blob": "074ce3e4cd9c4355fc1e170fa496d9de8c739666",
+  "tests": [
+    {
+      "test": "gauss_poly",
+      "n_toys": 1000,
+      "n_failed": 0,
+      "pulls": {
+        "mean": {
+          "mean": 0.103,
+          "std": 0.997
+        }
+      }
+    },
+    {
+      "test": "cb_bw_exp Z-like",
+      "n_toys": 1000,
+      "n_failed": 0,
+      "pulls": {
+        "mean": {
+          "mean": -0.038,
+          "std": 1.039
+        }
+      }
+    },
+    {
+      "test": "cb_bw_exp Jpsi-like",
+      "n_toys": 1000,
+      "n_failed": 0,
+      "pulls": {
+        "mean": {
+          "mean": -0.01,
+          "std": 0.997
+        }
+      }
+    },
+    {
+      "test": "cb2_bw_exp Z-like",
+      "n_toys": 1000,
+      "n_failed": 34,
+      "pulls": {
+        "mean": {
+          "mean": -0.046,
+          "std": 1.033
+        },
+        "sigma": {
+          "mean": 0.114,
+          "std": 1.016
+        },
+        "f": {
+          "mean": 0.12,
+          "std": 1.086
+        },
+        "r": {
+          "mean": -0.03,
+          "std": 0.86
+        }
+      }
+    },
+    {
+      "test": "cb2_bw_exp Jpsi-like",
+      "n_toys": 1000,
+      "n_failed": 0,
+      "pulls": {
+        "mean": {
+          "mean": -0.022,
+          "std": 0.976
+        },
+        "sigma": {
+          "mean": 0.023,
+          "std": 1.033
+        },
+        "f": {
+          "mean": 0.051,
+          "std": 1.073
+        },
+        "r": {
+          "mean": 0.27,
+          "std": 0.969
+        }
+      }
+    },
+    {
+      "test": "cb3_bw_exp J/psi-like",
+      "n_toys": 1000,
+      "n_failed": 0,
+      "pulls": {
+        "mean": {
+          "mean": -0.005,
+          "std": 1.012
+        },
+        "sigma": {
+          "mean": 0.094,
+          "std": 1.041
+        },
+        "r2": {
+          "mean": 0.071,
+          "std": 1.005
+        },
+        "s": {
+          "mean": 0.051,
+          "std": 1.011
+        },
+        "f1": {
+          "mean": 0.142,
+          "std": 1.065
+        },
+        "g": {
+          "mean": 0.439,
+          "std": 1.004
+        }
+      }
+    }
+  ]
+}

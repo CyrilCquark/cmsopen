@@ -4,9 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cmsopen"
-dynamic = ["version"]  # single source: cmsopen.__version__ (src/cmsopen/__init__.py)
+dynamic = ["version", "readme"]  # version: cmsopen.__version__; readme: README_PYPI.md (see below)
 description = "End-to-end analysis of CMS open data: from NanoAOD ROOT files to the Z boson mass peak"
-readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
@@ -55,10 +54,17 @@ dev = [
     "build",
     "twine",
     "setuptools>=77",
+    "nbclient",
+    "jsonschema>=4.18",
+    "pyyaml",
 ]
+docs = ["mkdocs>=1.6", "mkdocs-material>=9.5", "mkdocstrings[python]>=0.25"]
 
 [tool.setuptools.dynamic]
 version = { attr = "cmsopen.__version__" }
+# The README with images and links pinned to the release tag, written by scripts/apply_production.py; the GitHub README
+# uses relative paths, which PyPI cannot resolve. Before that step README_PYPI.md is a short stub without results.
+readme = { file = ["README_PYPI.md"], content-type = "text/markdown" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
