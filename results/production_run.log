@@ -1,0 +1,12 @@
+{"attempt": 1, "event": "attempt_start", "head": "9ebc2e3a8b379341df8c2e4920e22448e95f27e0", "time": "2026-11-04T11:58:24-0800"}
+{"attempt": 1, "event": "phase", "phase": "download", "time": "2026-11-04T11:58:24-0800"}
+{"attempt": 1, "event": "attempt_end", "exception": "DownloadError", "phase": "download", "status": "failed", "time": "2026-11-04T14:06:20-0800"}
+{"attempt": 2, "event": "attempt_start", "head": "9ebc2e3a8b379341df8c2e4920e22448e95f27e0", "time": "2026-11-04T15:39:52-0800"}
+{"attempt": 2, "event": "phase", "phase": "download", "time": "2026-11-04T15:39:52-0800"}
+{"attempt": 2, "event": "downloaded", "n_files": 20, "time": "2026-11-04T19:28:51-0800"}
+{"attempt": 2, "event": "phase", "phase": "lock", "time": "2026-11-04T19:28:51-0800"}
+{"attempt": 2, "event": "phase", "phase": "analysis Z_mumu", "time": "2026-11-04T19:28:51-0800"}
+{"attempt": 2, "event": "phase", "phase": "analysis Jpsi_mumu", "time": "2026-11-04T19:35:20-0800"}
+{"attempt": 2, "event": "phase", "phase": "figures", "time": "2026-11-04T19:41:22-0800"}
+{"attempt": 2, "event": "phase", "phase": "results", "time": "2026-11-04T19:42:24-0800"}
+{"attempt": 2, "event": "attempt_end", "phase": "results", "status": "complete", "time": "2026-11-04T19:42:24-0800"}
