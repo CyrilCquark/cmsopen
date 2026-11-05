@@ -299,7 +299,8 @@ def test_too_few_pairs_is_an_analysis_error(small_files):
         run(small_files[0], n_events=12, config=cfg)
 
 
-@pytest.mark.parametrize("target", ["README.md", "docs", "docs/figures", "notebooks", "notebooks/x", "DATA.md"])
+@pytest.mark.parametrize("target", ["README.md", "docs", "docs/figures", "notebooks", "notebooks/x", "DATA.md",
+                                    "results/production.json", "results/figures_rerender.json"])
 def test_protected_paths_are_refused(tmp_path, small_files, target):
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
@@ -309,6 +310,7 @@ def test_protected_paths_are_refused(tmp_path, small_files, target):
     with pytest.raises(AnalysisError, match="refusing to write"):
         run(small_files[0], outdir=repo / target)
     assert not (repo / "docs").exists() and not (repo / "notebooks").exists() and not (repo / "README.md").exists()
+    assert not (repo / "results").exists()
     r.save(repo / "results" / "dev")  # an unprotected directory is fine
 
 

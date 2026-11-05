@@ -20,6 +20,8 @@ def run_main(monkeypatch, tmp_path, failing: str | None):
     def fake_run(cmd, **_):
         commands.append(" ".join(cmd))
         stdout = "" if cmd[0] == "git" and "status" in cmd else "1 passed"
+        if "pytest" in cmd:
+            stdout = "\n".join(f"line {k}" for k in range(100)) + "\nFAILED tests/test_x.py::test_y\n1 failed, 1 passed"
         return subprocess.CompletedProcess(cmd, 1 if failing and failing in " ".join(cmd) else 0, stdout, "")
 
     monkeypatch.setattr(gates.subprocess, "run", fake_run)
@@ -43,3 +45,12 @@ def test_all_gates_run_and_are_recorded(monkeypatch, tmp_path):
                                      "check_package"])
 def test_any_failed_gate_fails_the_run(monkeypatch, tmp_path, failing):
     assert run_main(monkeypatch, tmp_path, failing)[0] == 1
+
+
+def test_the_record_keeps_the_end_of_pytests_output(monkeypatch, tmp_path):
+    rc, _, repo = run_main(monkeypatch, tmp_path, "pytest")
+    assert rc == 1
+    record = json.loads(next((repo / "build" / "gates").glob("*.json")).read_text())
+    tail = record["pytest_output_tail"]
+    assert len(tail) == 60 and tail[-2:] == ["FAILED tests/test_x.py::test_y", "1 failed, 1 passed"]
+    assert record["summary"] == "1 failed, 1 passed"

@@ -3,8 +3,9 @@
 Requires a clean working tree, so that the record describes exactly the
 committed state. Writes build/gates/<HEAD>.json with the HEAD commit, the exit
 statuses of ``pytest`` (the full suite), ``scripts/check_quality.py`` and the
-release checks in RELEASE_GATES, pytest's summary line and the total line
-coverage of src/cmsopen. ``scripts/production_preflight.py`` accepts only a
+release checks in RELEASE_GATES, pytest's summary line and the last
+PYTEST_TAIL_LINES lines of its output (so a failure can be read without a
+second run), and the total line coverage of src/cmsopen. ``scripts/production_preflight.py`` accepts only a
 record whose HEAD is the current HEAD and whose pytest and quality statuses
 are 0.
 
@@ -21,6 +22,7 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+PYTEST_TAIL_LINES = 60
 # run after the two gates above; check_package builds from README_PYPI.md and checks the long description
 RELEASE_GATES = {
     "check_notebooks": ["scripts/check_notebooks.py"],
@@ -56,7 +58,8 @@ def main() -> int:
         release[name] = gate.returncode
         print(f"{name}: exit {gate.returncode}; {(gate.stdout + gate.stderr).strip().splitlines()[-1:]}")
     record = {"head": head, "pytest_rc": pytest.returncode, "quality_rc": quality.returncode, "summary": summary,
-              "coverage_total": total, "release_rc": release, "seconds": round(time.time() - start)}
+              "coverage_total": total, "release_rc": release, "seconds": round(time.time() - start),
+              "pytest_output_tail": (pytest.stdout + pytest.stderr).splitlines()[-PYTEST_TAIL_LINES:]}
     out = REPO / "build" / "gates" / f"{head}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(record, indent=2) + "\n")

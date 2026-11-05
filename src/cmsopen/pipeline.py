@@ -87,7 +87,14 @@ __all__ = [
 ]
 
 # The same rules as scripts/check_docs_frozen.py ("Documentation freeze" in CLAUDE.md).
-PROTECTED_FILES = ("README.md", "DATA.md", "LICENSE", "CITATION.cff", "results/production.json")
+PROTECTED_FILES = (
+    "README.md",
+    "DATA.md",
+    "LICENSE",
+    "CITATION.cff",
+    "results/production.json",
+    "results/figures_rerender.json",
+)
 PROTECTED_DIRS = ("docs/", "notebooks/")
 
 SYSTEMATICS_SENTENCE = (
