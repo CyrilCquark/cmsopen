@@ -467,9 +467,10 @@ def _clipped_text(fig: Figure, renderer: Any) -> list[str]:
     for ax in fig.axes:
         for axis in (ax.xaxis, ax.yaxis):
             lo, hi = sorted(axis.get_view_interval())
-            tol = 1e-9 * max(1.0, abs(lo), abs(hi))
+            # each limit's own tolerance: on a log axis one scaled by the top would let in ticks far below the bottom
+            low, high = lo - 1e-9 * max(1.0, abs(lo)), hi + 1e-9 * max(1.0, abs(hi))
             for tick in (*axis.get_major_ticks(), *axis.get_minor_ticks()):
-                if not lo - tol <= tick.get_loc() <= hi + tol:
+                if not low <= tick.get_loc() <= high:
                     hidden.update((id(tick.label1), id(tick.label2)))
     out = []
     for text in fig.findobj(Text):

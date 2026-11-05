@@ -270,3 +270,15 @@ def test_the_cutflow_says_which_column_counts_what(figures):
     for a, b in zip(by("bar-label"), by("muon-count"), strict=True):
         ea, eb = a.get_window_extent(r), b.get_window_extent(r)
         assert bars < ea.x0 and ea.x1 < eb.x0 and eb.x1 <= ax.get_window_extent(r).x1
+
+
+def test_a_tick_label_below_a_tall_log_axis_is_not_counted_as_clipped_but_a_drawn_text_is():
+    """The eta figure of the production sample: a peak of millions, so the axis reaches about 1e10."""
+    edges = plotting.ETA_EDGES_DEFAULT
+    counts = np.where(np.abs(edges[:-1]) < 2.5, 4_800_000, 3)
+    values = BinnedValues(edges, counts, int(counts.sum()), 4)
+    fig, ax = plotting.plot_eta_distribution(values, before=values, data_label=RUN)
+    assert ax.get_ylim()[1] > 1e9
+    assert layout_overlaps(fig) == []
+    ax.text(0.5, -0.5, "below the figure", transform=ax.transAxes)
+    assert any("below the figure" in p and "clipped" in p for p in layout_overlaps(fig))
