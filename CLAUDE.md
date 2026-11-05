@@ -99,6 +99,13 @@ user's explicit written instruction in a prompt.
 - `results/production.json` (may only ever be created by the future
   production run)
 
+After the production run, `docs/figures/` changes only through
+`scripts/rerender_production_figures.py`, which writes nothing unless a rerun of
+the analysis equals `results/production.json`, and records the check and the
+figure hashes in `results/figures_rerender.json` (the check below and
+`scripts/apply_production.py` compare them). Text in figures is at least 8 pt;
+the one exception is mathtext sub- and superscripts.
+
 `python scripts/check_docs_frozen.py --since <rev>` fails if any protected
 path was modified, added, deleted or renamed since `<rev>`, in commits or in
 the working tree (including untracked files). `examples/make_figures.py`

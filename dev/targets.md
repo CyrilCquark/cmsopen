@@ -1,9 +1,10 @@
 # Method targets
 
 These are targets and controlling benchmarks: requirements fixed before the
-production sample is analysed. This file contains no measured values; observed
-values are reported separately, next to the benchmarks (see "Controlling
-benchmarks" and "Results integrity" in CLAUDE.md).
+production sample is analysed. The only measured values here are the verified
+production results promoted to benchmarks under the policy below, each with its
+source; other observed values are reported separately, next to the benchmarks
+(see "Controlling benchmarks" and "Results integrity" in CLAUDE.md).
 
 ## Controlling benchmarks (all-time-highest policy)
 
@@ -17,27 +18,50 @@ planning documents, acceptance criteria, specifications and prompts use the
 controlling value. Summaries show the benchmark (prominent) and the observed
 value (measured, met or not met), each clearly labelled.
 
-Verified production results so far: none (the production sample has not
-been opened). Every benchmark below therefore comes from targets and
-requirements.
+Verified production results so far: the run of 2026-11-04 (git HEAD
+9ebc2e3a8b37; `results/production.json`). The benchmarks it raised are listed
+under "Promoted from the production run"; every other benchmark below comes from
+targets and requirements.
 
 | metric | direction | controlling benchmark | history (source) |
 |---|---|---|---|
 | Production sample size | higher | 20 files (12 from record 31129, 8 from 31123) | 20 (AMBITION OVERRIDES 1, T4) |
 | Fit adequacy chi2/ndf (final model, production) | lower | <= 2.0, with a positive background everywhere in the fit range | 2.0 (T2, AMBITION OVERRIDES 2) |
-| Line coverage of src/cmsopen | higher | >= 90 % (`--cov-fail-under=90`) | 90 % (DoD (h), AMBITION OVERRIDES 2 and 3) |
+| Line coverage of src/cmsopen | higher | >= 96.7 % | 90 % (DoD (h), AMBITION OVERRIDES 2 and 3; `--cov-fail-under=90`), 96.7 % (production run) |
 | mypy / ruff findings | lower | 0 (mypy `disallow_untyped_defs`, `warn_unused_ignores`; `ruff check src/`), enforced in CI | 0 (T7, AMBITION OVERRIDES 3) |
 | Pull-test toys per pull test | higher | >= 1,000 | 300 (Layer 6 and 6b prompts), 1,000 (AMBITION OVERRIDES 5) |
 | Pull mean, abs value | lower | <= 0.2 | 0.2 (Layer 6 and 6b prompts) |
 | Pull standard deviation | window | 0.8 to 1.2 | 0.8-1.2 (Layer 6 and 6b prompts) |
 | Deliberate-breakage checks per layer | higher | >= 3, each confirmed to fail a test | 2 (Layer 4, 6, 7, 6b prompts), 3 (AMBITION OVERRIDES 5) |
-| Validation pairs per category (minimum fitted) | higher | >= 5,000 | 1,500 (Layer 6b prompt default), 5,000 (AMBITION OVERRIDES 5) |
-| J/psi opposite-sign pairs in 2.9-3.3 GeV | higher | >= 2,000, clearly visible peak | 2,000 (AMBITION OVERRIDES 6) |
-| J/psi sideband signal-to-background | higher | >= 1 | 1 (AMBITION OVERRIDES 6) |
+| Validation pairs per category (minimum fitted) | higher | >= 9,704 | 1,500 (Layer 6b prompt default), 5,000 (AMBITION OVERRIDES 5), 9,704 (production run) |
+| J/psi opposite-sign pairs in 2.9-3.3 GeV | higher | >= 380,964, clearly visible peak | 2,000 (AMBITION OVERRIDES 6), 380,964 (production run) |
+| J/psi sideband signal-to-background | higher | >= 12.16 | 1 (AMBITION OVERRIDES 6), 12.16 (production run) |
 | Parallel versus serial results | exact | identical masses, cutflow and fit results | exact (AMBITION OVERRIDES 4 and 7) |
 | Reproducibility of summary.json | exact | byte-identical on identical inputs | exact (T1) |
 | Run-period consistency | reported | 2012B and 2012C peak and resolution, differences with combined stat. uncertainties | T6 (AMBITION OVERRIDES 2) |
 | Mass value | none | no numeric target (T3) | T3 |
+
+### Promoted from the production run
+
+Updated 2026-11-05 on the owner's instruction, for the metrics whose observed value measures the registry's definition
+like for like.
+
+| metric | definition | old benchmark | new benchmark | source |
+|---|---|---|---|---|
+| Line coverage of src/cmsopen | total line coverage of `src/cmsopen` from the full test suite | >= 90 % | >= 96.7 % | gates record of the production commit (`gates.coverage_total` in `results/production.json`) |
+| Validation pairs per category (minimum fitted) | smallest number of pairs in a fitted validation entry, over both channels (Z 35,439; J/psi 9,704) | >= 5,000 | >= 9,704 | `results/production_extras.json` |
+| J/psi opposite-sign pairs in 2.9-3.3 GeV | opposite-sign pairs in the window, in the Jpsi_mumu channel's saved histogram | >= 2,000 | >= 380,964 | `results/production_extras.json` |
+| J/psi sideband signal-to-background | the sideband definition below | >= 1 | >= 12.16 | `results/production_extras.json` |
+
+These benchmarks bind later productions and summaries. They change no analysis choice (the model freeze holds: the
+analysis's own minimum of 5,000 pairs per validation entry is unchanged) and no recorded result of the run.
+
+Not promoted:
+
+- **Z stability spread over fit choices** (benchmark < 0.5 GeV, observed 0.0068 GeV): 3 of its 9 grid fits failed, so the
+  observed spread does not measure the same grid as the benchmark.
+- **chi2/ndf** stays at <= 2.0: it is a consistency window, not a lower-is-better metric, so the Z's observed 1.518 does
+  not replace it. The J/psi's observed 3.028 is not met.
 
 J/psi sideband signal-to-background, as evaluated by `scripts/production_extras.py` (the registry gave no formula; this
 was written on 2026-11-04, before any production file was opened): in the Jpsi_mumu channel's saved histogram, the signal

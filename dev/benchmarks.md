@@ -1,9 +1,16 @@
-# Benchmarks: development observations (append only)
+# Benchmarks: development observations and verified production results (append only)
 
-Measurements made during development, each labelled with its date, machine,
-input and command. They are development observations, not results: the
-README and results documents never quote them (see "Results integrity" in
-CLAUDE.md). New entries are appended below; existing entries are never edited.
+Two kinds of entry, each labelled with its date and source; new entries are
+appended below and existing entries are never edited.
+
+- **Development observations:** every section up to the first "Verified
+  production results" heading. Measurements made during development, each with
+  its machine, input and command. They are not results: the README and results
+  documents never quote them (see "Results integrity" in CLAUDE.md).
+- **Verified production results:** the sections so headed, from the
+  pre-registered production sample. The README and results documents take their
+  numbers from `results/production.json`, not from here. The controlling
+  benchmarks themselves are in `dev/targets.md`.
 
 ## 2026-10-28: Layer 8 parallel processing (development observation)
 
@@ -622,3 +629,11 @@ benchmark at this run: coverage 96.7 %; validation pairs 9,704; J/psi pairs 380,
 J/psi sideband S/B 12.16; Z stability spread 0.0068 GeV. `dev/targets.md` has not been
 updated with them: a change there regenerates the documents (post-production runbook,
 step 9) and is the owner's decision.
+
+## Verified production results: registry update (2026-11-05)
+
+`dev/targets.md` was updated on the owner's instruction: coverage, validation pairs,
+J/psi pairs and J/psi sideband S/B now have their observed values as benchmarks, with
+definitions, old and new values and sources there. This updates the last paragraph of
+the section above. The Z stability spread is not promoted, because 3 of its 9 grid fits
+failed. chi2/ndf stays at <= 2.0.

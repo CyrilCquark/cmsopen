@@ -15,9 +15,9 @@ been run on the production sample. The commands print no production file name.
   Do not close the lid. If the Mac sleeps anyway, nothing is lost: run the
   same command again (see "If something goes wrong").
 - Disk: the download is 29.99 GB; the preflight requires at least twice that
-  free (59.98 GB). On 2026-10-30 the machine had about 53-59 GB free (the
-  preflight measured 58.9 GB on 2026-10-29): the disk check FAILS today. Free
-  space first; candidates (sizes measured 2026-10-30; nothing was deleted):
+  free (59.98 GB). The check passed before the run (71.3 GB free on
+  2026-11-04). If it ever fails, free space first; candidates (sizes measured
+  2026-10-30; nothing was deleted):
   the five extra development-set files in `data/` (7.6 GB of the 8.7 GB
   there, dev/development_set.md; the original development file is still
   needed by the development tests), `brew cleanup` (about 2.4 GB), and
@@ -36,7 +36,8 @@ been run on the production sample. The commands print no production file name.
     (Z_mumu 145 s, Jpsi_mumu 131 s, figures 26 s; peak resident memory
     0.88 GB). Scaled to 20 files (29.99 GB): about 15-20 minutes, plus about
     a minute to re-verify the 20 checksums on every attempt;
-  - gates (`scripts/run_gates.py`): 35-50 minutes.
+  - gates (`scripts/run_gates.py`): 50-75 minutes (72 minutes on 2026-11-04,
+    51 minutes with the release checks on 2026-11-05).
 - Use the project venv: `cd ~/Developer/cmsopen && source .venv/bin/activate`.
 
 ## Commands, in order
@@ -47,7 +48,7 @@ been run on the production sample. The commands print no production file name.
    git status --short        # prints nothing
    ```
 
-2. Record the full test suite and the quality gates at HEAD (35-50 minutes):
+2. Record the full test suite and the quality gates at HEAD (50-75 minutes):
 
    ```bash
    caffeinate -dimsu python scripts/run_gates.py
