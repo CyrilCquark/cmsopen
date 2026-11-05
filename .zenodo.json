@@ -1,0 +1,42 @@
+{
+  "title": "cmsopen: end-to-end analysis of CMS open data",
+  "version": "0.1.0",
+  "upload_type": "software",
+  "creators": [
+    {
+      "name": "Nadar, Cyril",
+      "orcid": "TODO"
+    }
+  ],
+  "description": "cmsopen is an open-source Python library for analysing CMS NanoAOD open data: it selects muons, forms opposite-sign pairs, computes invariant masses and fits the Z and J/psi resonance peaks. Sample: benchmark 20 pre-registered files, observed 20 files (met). Fit adequacy: benchmark chi2/ndf <= 2.0; observed 1.518 for the Z (met) and 3.028 for the J/psi (not met). Observed peak positions, without momentum-scale corrections and so not mass measurements: 90.9000 GeV (Z) and 3.09332 GeV (J/psi). Unofficial analysis of CMS Open Data, not a CMS result.",
+  "keywords": [
+    "CMS",
+    "open data",
+    "particle physics",
+    "Z boson",
+    "J/psi",
+    "invariant mass",
+    "NanoAOD",
+    "Python"
+  ],
+  "license": "MIT",
+  "access_right": "open",
+  "notes": "CMS open data citation: All datasets will have a unique DOI that you are requested to cite in any applications or publications.",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/CyrilCquark/cmsopen",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "10.7483/OPENDATA.CMS.M5AD.Y3V3",
+      "relation": "references",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "10.7483/OPENDATA.CMS.YLIC.86ZZ",
+      "relation": "references",
+      "scheme": "doi"
+    }
+  ]
+}
