@@ -35,6 +35,10 @@ is reported.
 | analysis configuration | `{{ config_sha }}` |
 {{ figure_hashes }}
 
+If `results/figures_rerender.json` exists, the figures were rendered again after the run, for layout and captions only,
+by `scripts/rerender_production_figures.py`. That script reruns the analysis on the same files and writes nothing unless
+every number equals `results/production.json`; the file records the commit, the check and the figure hashes.
+
 ## Run the analysis again
 
 This needs the {{ total_gb }} GB of registered files and several hours, mostly the download. The commit that ran the

@@ -11,7 +11,8 @@ Refuses, and writes nothing, unless:
    is an ancestor of HEAD. Dry-run data are accepted only with --dry-run-data inside a marked temporary test copy
    (scripts/.production_test_copy holding that copy's own path); every generated file then says DRY-RUN DATA;
 3. every figure it lists is in docs/figures/, and the fit captions there state this file's peak positions and models
-   (so stale figures from development are not published under production numbers);
+   (so stale figures from development are not published under production numbers); docs/figures/ is as the production
+   run left it, or as scripts/rerender_production_figures.py left it (results/figures_rerender.json holds the hashes);
 4. no template holds a typed number (scripts/release_lib.py, lint_template).
 
 After writing it runs scripts/check_readme_numbers.py, scripts/check_release_metadata.py, the audit of numbers,
@@ -46,6 +47,7 @@ sys.path.insert(0, str(REPO / "examples"))
 import make_application_assets  # noqa: E402, I001
 from build_production_notebooks import notebooks  # noqa: E402
 from generate_release_files import build_values, not_met, text_outputs  # noqa: E402
+from check_docs_frozen import figures_problems  # noqa: E402
 from production_extras import RESULT_FILE, load_or_derive  # noqa: E402
 from production_schema import validate  # noqa: E402
 from release_lib import NumberAudit, audit_numbers, lint_template  # noqa: E402
@@ -92,11 +94,18 @@ def _figure_problem(data: dict[str, Any]) -> str | None:
     missing = [f for f in data["figures"] if not (REPO / f).is_file() or (REPO / f).stat().st_size == 0]
     if missing:
         return f"figures missing from docs/figures/: {', '.join(missing)}"
-    for name, caption, digits in (("Z_mumu", "z_peak_fit_caption.md", 3), ("Jpsi_mumu", "jpsi_peak_fit_caption.md", 5)):
+    from cmsopen.plotting import format_pm
+
+    changed = [] if is_dry_run(data) else figures_problems(REPO)
+    if changed:
+        return "docs/figures/ may change only through scripts/rerender_production_figures.py:\n  " + "\n  ".join(
+            changed
+        )
+    for name, caption in (("Z_mumu", "z_peak_fit_caption.md"), ("Jpsi_mumu", "jpsi_peak_fit_caption.md")):
         result = data["channels"][name]["result"]
         path = REPO / "docs" / "figures" / caption
         text = path.read_text() if path.exists() else ""
-        peak = f"{result['peak_position_gev']:.{digits}f}"
+        peak = format_pm(result["peak_position_gev"], result["stat_error_gev"])[0]
         if peak not in text:
             return (
                 f"docs/figures/{caption} does not state the peak {peak} GeV of results/production.json: "

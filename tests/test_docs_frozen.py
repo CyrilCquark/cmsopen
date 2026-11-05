@@ -1,5 +1,7 @@
 """Tests for scripts/check_docs_frozen.py, each in a throwaway git repository."""
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -198,3 +200,87 @@ def test_make_figures_production_and_outdir_are_exclusive(make_figures_in):
     mf, repo, _ = make_figures_in
     with pytest.raises(SystemExit):
         mf.main(["--production", "--outdir", str(repo / "x")])
+
+
+# -- docs/figures/ after the production run: only through the rerender script's provenance --------------------------
+
+
+def with_provenance(repo, rev, figure="docs/figures/a.png", content="new png\n", commit=None):
+    """A figure changed and a provenance file listing its hash; returns nothing, the files are on disk."""
+    (repo / figure).write_text(content)
+    record = {"commit": commit or rev.strip(),
+              "figures": {figure: hashlib.sha256(content.encode()).hexdigest()}}
+    (repo / "results").mkdir(exist_ok=True)
+    (repo / "results" / "figures_rerender.json").write_text(json.dumps(record))
+
+
+def test_a_figure_change_with_matching_provenance_passes(repo):
+    root, rev = repo
+    with_provenance(root, rev)
+    out = check(root, rev.strip())
+    assert out.returncode == 0, out.stdout
+
+
+def test_a_figure_edited_after_the_rerender_fails(repo):
+    root, rev = repo
+    with_provenance(root, rev)
+    (root / "docs" / "figures" / "a.png").write_text("edited by hand\n")
+    out = check(root, rev.strip())
+    assert out.returncode == 1 and "differs from its hash" in out.stdout
+
+
+def test_a_figure_change_without_provenance_fails(repo):
+    root, rev = repo
+    (root / "docs" / "figures" / "a.png").write_text("new png\n")
+    out = check(root, rev.strip())
+    assert out.returncode == 1 and "docs/figures/a.png" in out.stdout
+
+
+def test_an_added_figure_not_in_the_provenance_fails(repo):
+    root, rev = repo
+    with_provenance(root, rev)
+    (root / "docs" / "figures" / "b.png").write_text("another\n")
+    out = check(root, rev.strip())
+    assert out.returncode == 1 and "b.png is not listed" in out.stdout
+
+
+def test_provenance_from_an_unknown_commit_fails(repo):
+    root, rev = repo
+    with_provenance(root, rev, commit="0" * 40)
+    out = check(root, rev.strip())
+    assert out.returncode == 1 and "not an ancestor of HEAD" in out.stdout
+
+
+def test_provenance_does_not_excuse_other_protected_paths(repo):
+    root, rev = repo
+    with_provenance(root, rev)
+    (root / "README.md").write_text("changed\n")
+    out = check(root, rev.strip())
+    assert out.returncode == 1 and "README.md" in out.stdout and "a.png" not in out.stdout
+
+
+def test_make_figures_production_refuses_after_the_production_run(make_figures_in, capsys):
+    make_figures, repo, calls = make_figures_in
+    (repo / "results").mkdir()
+    (repo / "results" / "production.json").write_text("{}\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "results")
+    assert make_figures.main(["--production", "--file", "x.root"]) == 1
+    assert "rerender_production_figures" in capsys.readouterr().err and calls == []
+
+
+def test_figures_problems_compares_with_the_production_commit_or_the_provenance(repo):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from check_docs_frozen import figures_problems
+
+    sys.path.pop(0)
+    root, rev = repo
+    assert figures_problems(root) == []  # no production commit yet: nothing to compare with
+    (root / "results").mkdir()
+    (root / "results" / "production.json").write_text("{}\n")
+    commit_all(root, "production")
+    assert figures_problems(root) == []
+    (root / "docs" / "figures" / "a.png").write_text("edited\n")
+    assert ["docs/figures/a.png changed since the production commit" in p for p in figures_problems(root)] == [True]
+    with_provenance(root, git(root, "rev-parse", "HEAD"), content="edited\n")
+    assert figures_problems(root) == []

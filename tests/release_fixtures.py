@@ -11,6 +11,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from cmsopen.plotting import format_pm
+
 DRY_RUN_JSON = Path.home() / "Developer" / "cmsopen-dryrun" / "production.json"
 REPO = Path(__file__).resolve().parents[1]
 FIGURE_PNG_DPI = 300
@@ -38,9 +40,10 @@ def install_production(repo: Path, data: dict) -> None:
         path = repo / rel
         if path.suffix in (".png", ".pdf"):
             placeholder_figure(path, path.name)
-    for name, caption, digits in (("Z_mumu", "z_peak_fit_caption.md", 3), ("Jpsi_mumu", "jpsi_peak_fit_caption.md", 5)):
+    for name, caption in (("Z_mumu", "z_peak_fit_caption.md"), ("Jpsi_mumu", "jpsi_peak_fit_caption.md")):
         result = data["channels"][name]["result"]
-        (figures / caption).write_text(f"# Placeholder caption\n\nPeak {result['peak_position_gev']:.{digits}f} GeV.\n")
+        peak = format_pm(result["peak_position_gev"], result["stat_error_gev"])[0]
+        (figures / caption).write_text(f"# Placeholder caption\n\nPeak {peak} GeV.\n")
     (figures / "README.md").write_text("# Figures\n\nPlaceholders for a test copy: [caption](z_peak_fit_caption.md).\n")
     mark_test_copy(repo)
 

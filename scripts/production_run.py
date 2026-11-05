@@ -316,11 +316,12 @@ def _per_file(name: str, paths: list[Path], files: list[dict[str, Any]], workers
     return rows
 
 
-def _channel(name: str, paths: list[Path], files: list[dict[str, Any]], workers: int) -> tuple[dict[str, Any], Any]:
-    """Every result of one channel, and its AnalysisResult (for the figures)."""
+def _channel(name: str, paths: list[Path], files: list[dict[str, Any]], workers: int,
+             outdir: Path | None = None) -> tuple[dict[str, Any], Any]:
+    """Every result of one channel, and its AnalysisResult (for the figures); ``outdir`` default: build/production."""
     from cmsopen import analyze
 
-    out = REPO / "build" / "production" / name
+    out = REPO / "build" / "production" / name if outdir is None else outdir
     timing: dict[str, float] = {}
     t = time.perf_counter()
     first = analyze(paths, channel=name, n_workers=workers, validation=True, verbose=False, outdir=out / "run1")

@@ -84,6 +84,11 @@ If a check fails, the files are written but nothing is committed; report it. Do 
 template or the generator, then rerun. Read the generated README and the application assets yourself before going on,
 and add your mentor's name to the email.
 
+If a figure needs a layout or caption change, do not edit `docs/figures/`. Change the plotting or caption code, commit,
+and run `python scripts/rerender_production_figures.py` (about 15 minutes): it reruns the analysis on the local files,
+writes nothing unless every number equals `results/production.json`, and records the check in
+`results/figures_rerender.json`. Commit both, then rerun steps 4 to 6.
+
 ## 6. Commit the generated files
 
 `run_gates.py` requires a clean tree.
