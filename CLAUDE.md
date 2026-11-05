@@ -312,8 +312,8 @@ fails, report the failure. Do not weaken or edit a check to make it pass.
 | 6d three-resolution amendment, scaled validation errors | Done: (a)–(h) met; Amendment 3 selected no model (defaults unchanged); live browser check 2026-10-29, browser check Tier 1 (Claude in Chrome). |
 | 7 plotting | Done: (a)–(e) met; live browser check 2026-10-27, Tier 1 (Claude in Chrome). |
 | 8 pipeline | Done: (a)–(h) met; live browser check 2026-10-28, browser check Tier 1 (Claude in Chrome). |
-| 9 notebooks | Partly done: the real-data sample demo (examples/layer9_sample_demo.py and .ipynb, the committed ~8 MB sample) has (a)–(e) met, live browser check 2026-10-29, Tier 1 (Claude in Chrome). Notebooks 01–03 (the narrated Z and J/psi analyses on the production results) wait for the production run. |
-| 10 packaging/docs | Waiting for the production run: packaging audit, CI and the production path (preflight, single-run command with resume, report, runbook dev/production_runbook.md) are ready; the README results and the release follow the production run. |
+| 9 notebooks | Done: notebooks 01–03 (generated from the production results) and the sample demo run from a fresh clone with a non-editable install; live browser check 2026-11-05, Tier 1 (Claude in Chrome). |
+| 10 packaging/docs | Generated from the production run (README, DATA.md, docs, citation metadata). Left for the owner: the ORCID TODO, the tag, the push, PyPI, Zenodo and making the repository public (dev/post_production_runbook.md). |
 
 ## Model freeze
 
