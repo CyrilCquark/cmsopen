@@ -62,6 +62,9 @@ def test_the_rerender_writes_only_if_every_number_is_equal(tmp_path, capsys):
     checks = record["verification"]["checks"]
     assert checks["Z_mumu"]["differences"] == checks["Jpsi_mumu"]["differences"] == 0
     assert checks["Z_mumu"]["values_compared_exactly"] > 100
+    assert set(checks["layout"]) >= {"z_peak_fit", "jpsi_peak_fit", "z_os_vs_ss", "jpsi_os_vs_ss", "muon_pt",
+                                     "muon_eta", "cutflow"}
+    assert all(row["overlaps"] == row["text_below_8_pt"] == 0 for row in checks["layout"].values())
     assert checks["Z_mumu"]["summary_json_identical_to_the_saved_run"] is True
     assert {f"docs/figures/{n}": h for n, h in figure_hashes(repo).items()} == record["figures"]
     assert "SYNTH-" not in provenance.read_text()

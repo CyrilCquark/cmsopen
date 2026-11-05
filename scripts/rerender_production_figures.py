@@ -11,7 +11,8 @@ say:
    fit, the alternate fit, the cutflow, the validation tables and the warnings all come from the summary that T1
    requires byte-identical, and summary.json is compared byte for byte with the run's saved copy when that exists),
    within a relative 1e-9 for the run-period and per-file fits;
-4. if anything differs it reports each difference and writes NOTHING (exit 3);
+4. it measures the new figures: cmsopen.plotting.layout_overlaps on each, no text set below 8 pt, and the y-axis
+   headroom of the fit figures; if anything differs or fails it reports each problem and writes NOTHING (exit 3);
 5. if all is equal it writes docs/figures/ and results/figures_rerender.json: the commit, the reason, the verification,
    the hash of each figure and the timings.
 
@@ -153,6 +154,28 @@ def verify_z_figure_fit(data: dict[str, Any], figs: Any) -> Comparison:
     return comparison
 
 
+def layout_report(figures: dict[str, Any], tops: dict[str, float]) -> tuple[dict[str, Any], list[str]]:
+    """The measured layout of the real figures: overlaps, text below 8 pt, headroom of the fit figures; and problems."""
+    from matplotlib.text import Text
+
+    from cmsopen.plotting import HEADROOM, MIN_FONT_SIZE, layout_overlaps
+
+    report: dict[str, Any] = {}
+    problems: list[str] = []
+    for name, fig in sorted(figures.items()):
+        overlaps = layout_overlaps(fig)
+        small = [t.get_text()[:40] for t in fig.findobj(Text)
+                 if t.get_text().strip() and t.get_fontsize() < MIN_FONT_SIZE]
+        report[name] = {"overlaps": len(overlaps), "text_below_8_pt": len(small)}
+        problems += [f"{name}: {p}" for p in overlaps] + [f"{name}: text below 8 pt: {t!r}" for t in small]
+        if name in tops:
+            headroom = fig.axes[0].get_ylim()[1] / tops[name]
+            report[name]["headroom"] = round(headroom, 3)
+            if not HEADROOM[0] - 1e-9 <= headroom <= HEADROOM[-1] + 1e-9:
+                problems.append(f"{name}: headroom {headroom:.3f} is outside {HEADROOM[0]}-{HEADROOM[-1]}")
+    return report, problems
+
+
 def main(argv: list[str] | None = None) -> int:
     """Verify the numbers, then write the figures and their provenance; return the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -224,8 +247,26 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"DIFFERS: {sanitize(line, paths, files)}")
             print(f"NUMBERS DIFFER: {len(differences)} differences from {PRODUCTION_JSON}; NOTHING WRITTEN")
             return 3
+        jpsi = results.get("Jpsi_mumu")
+        figures = dict(figs.figures)
+        h = figs.histograms["z_peak"]
+        tops = {"z_peak_fit": float((h.counts + h.errors).max())}
+        if jpsi is not None:
+            figures["jpsi_peak_fit"], figures["jpsi_os_vs_ss"] = jpsi.figures["mass_fit"], jpsi.figures["os_vs_ss"]
+            tops["jpsi_peak_fit"] = float((jpsi.histogram.counts + jpsi.histogram.errors).max())
+        layout, problems = layout_report(figures, tops)
+        report["layout"] = layout
+        for name, row in layout.items():
+            verdict = "FAIL" if row["overlaps"] or row["text_below_8_pt"] else "OK"
+            print(f"{verdict}: {name}: {row['overlaps']} overlaps, {row['text_below_8_pt']} texts below 8 pt"
+                  + (f", headroom {row['headroom']}x" if "headroom" in row else ""), flush=True)
+        if problems:
+            for line in problems[:50]:
+                print(f"LAYOUT: {line}")
+            print(f"LAYOUT PROBLEMS: {len(problems)}; NOTHING WRITTEN")
+            return 3
         out = tmp / "figures"
-        make_figures.write(figs, out, anonymous=True, jpsi=results.get("Jpsi_mumu"))
+        make_figures.write(figs, out, anonymous=True, jpsi=jpsi)
         timing["figures_s"] = round(time.perf_counter() - t, 1)
         written = sorted(f"docs/figures/{p.name}" for p in out.iterdir())
         if written != sorted(data["figures"]):

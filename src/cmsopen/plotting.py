@@ -1282,7 +1282,7 @@ def plot_cutflow(
             ax.text(_CUTFLOW_MUONS, yi, f"{muons:,.0f}", va="center", ha="right", fontsize=8.5, transform=columns,
                     gid="muon-count")
         for x, title in ((_CUTFLOW_EVENTS, "Events (% of all)"), (_CUTFLOW_MUONS, "Muons")):
-            ax.text(x, len(rows) - 0.25, title, va="center", ha="right", fontsize=8.5, weight="bold", transform=columns,
+            ax.text(x, len(rows) - 0.25, title, va="center", ha="right", fontsize=8.5, transform=columns,
                     gid="column-title")
         ax.set_yticks(y, names, fontsize=8.5)
         ax.tick_params(axis="y", which="both", left=False, right=False)
