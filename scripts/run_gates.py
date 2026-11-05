@@ -2,10 +2,11 @@
 
 Requires a clean working tree, so that the record describes exactly the
 committed state. Writes build/gates/<HEAD>.json with the HEAD commit, the exit
-statuses of ``pytest`` (the full suite) and ``scripts/check_quality.py``,
-pytest's summary line and the total line coverage of src/cmsopen.
-``scripts/production_preflight.py`` accepts only a record whose HEAD is the
-current HEAD and whose two statuses are 0.
+statuses of ``pytest`` (the full suite), ``scripts/check_quality.py`` and the
+release checks in RELEASE_GATES, pytest's summary line and the total line
+coverage of src/cmsopen. ``scripts/production_preflight.py`` accepts only a
+record whose HEAD is the current HEAD and whose pytest and quality statuses
+are 0.
 
 Usage:
     python scripts/run_gates.py
@@ -20,10 +21,17 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+# run after the two gates above; check_package builds from README_PYPI.md and checks the long description
+RELEASE_GATES = {
+    "check_notebooks": ["scripts/check_notebooks.py"],
+    "check_release_metadata": ["scripts/check_release_metadata.py"],
+    "mkdocs_strict": ["-m", "mkdocs", "build", "--strict", "--quiet"],
+    "check_package": ["scripts/check_package.py"],
+}
 
 
 def main() -> int:
-    """Run the gates and write the record; return 0 only if both passed."""
+    """Run the gates and write the record; return 0 only if all of them passed."""
     status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True)
     # the state of a production attempt that failed after the lock (scripts/production_run.py) is not a change
     run_state = ("results/production_run.lock", "results/production_run.log")
@@ -42,13 +50,18 @@ def main() -> int:
                              capture_output=True, text=True)
     print(f"check_quality: exit {quality.returncode}; {quality.stdout.strip().splitlines()[-1:]}")
     total = next((line.split()[-1] for line in quality.stdout.splitlines() if line.startswith("TOTAL ")), "unknown")
+    release = {}
+    for name, args in RELEASE_GATES.items():
+        gate = subprocess.run([sys.executable, *args], cwd=REPO, capture_output=True, text=True)
+        release[name] = gate.returncode
+        print(f"{name}: exit {gate.returncode}; {(gate.stdout + gate.stderr).strip().splitlines()[-1:]}")
     record = {"head": head, "pytest_rc": pytest.returncode, "quality_rc": quality.returncode, "summary": summary,
-              "coverage_total": total, "seconds": round(time.time() - start)}
+              "coverage_total": total, "release_rc": release, "seconds": round(time.time() - start)}
     out = REPO / "build" / "gates" / f"{head}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(record, indent=2) + "\n")
     print(f"recorded in {out.relative_to(REPO)}")
-    return 0 if pytest.returncode == 0 and quality.returncode == 0 else 1
+    return 0 if pytest.returncode == 0 and quality.returncode == 0 and not any(release.values()) else 1
 
 
 if __name__ == "__main__":
