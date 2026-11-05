@@ -24,9 +24,9 @@ is not tracked by git):
     README.md                what each figure is, how to regenerate it, data and versions
 
 docs/figures/ is protected documentation (see "Documentation freeze" in
-CLAUDE.md). The script writes there only with --production, and then only
-if the git working tree is clean. That is for the final production run,
-on the user's explicit instruction; never run it otherwise.
+CLAUDE.md). The script writes there only with --production, only if the git
+working tree is clean, and only before the production run exists: after it,
+docs/figures/ changes only through scripts/rerender_production_figures.py.
 
 Usage:
     python examples/make_figures.py [--file PATH [PATH ...]] [--model MODEL] [--outdir DIR]
@@ -65,11 +65,14 @@ from cmsopen.plotting import (
     ETA_EDGES_DEFAULT,
     PT_EDGES_DEFAULT,
     BinnedValues,
+    _width_text,
+    format_pm,
     plot_cutflow,
     plot_eta_distribution,
     plot_mass_spectrum,
     plot_os_vs_ss,
     plot_pt_distribution,
+    pm_digits,
     save_figure,
 )
 from cmsopen.selection import CutFlow
@@ -223,12 +226,13 @@ def build(paths: Path | list[Path], model: str | None = None, chunk_size: int | 
     h_ss = make_histogram(cat("ss_mass"), bins=cfg.bins, range=cfg.mass_range)
     out.histograms["os"], out.histograms["ss"] = h_os, h_ss
     out.figures["z_os_vs_ss"], _ = plot_os_vs_ss(
-        h_os, h_ss, selection="Loose selection: no ID, no isolation", resonance_label=symbol, pdg_mass=pdg_mass
+        h_os, h_ss, selection="Loose selection: no ID, no isolation", resonance_label=symbol, pdg_mass=pdg_mass,
+        data_label=out.data_label,
     )
 
-    out.figures["muon_pt"], _ = plot_pt_distribution(cat("pt"), before=cat("pt_all"))
-    out.figures["muon_eta"], _ = plot_eta_distribution(cat("eta"), before=cat("eta_all"))
-    out.figures["cutflow"], _ = plot_cutflow(out.cutflow)
+    out.figures["muon_pt"], _ = plot_pt_distribution(cat("pt"), before=cat("pt_all"), data_label=out.data_label)
+    out.figures["muon_eta"], _ = plot_eta_distribution(cat("eta"), before=cat("eta_all"), data_label=out.data_label)
+    out.figures["cutflow"], _ = plot_cutflow(out.cutflow, data_label=out.data_label)
     return out
 
 
@@ -256,15 +260,21 @@ _MODEL_TEXT = {
 }
 
 
-def _pm(fit: Any, name: str, digits: int = 3) -> str:
-    v, e = fit.parameters[name]
-    return f"{v:.{digits}f} +- {e:.{digits}f}"
+def pm_text(value: float, error: float) -> str:
+    """``value +- error`` with two significant digits of the error, so an uncertainty never prints as +- 0.000."""
+    if not (np.isfinite(error) and error > 0):
+        return f"{value:.4g} (no uncertainty)"
+    v, e = format_pm(value, error)
+    return f"{v} +- {e}"
 
 
-def _fit_line(fit: Any, resonance: str = "Z", digits: int = 3) -> str:
+def _pm(fit: Any, name: str) -> str:
+    return pm_text(*fit.parameters[name])
+
+
+def _fit_line(fit: Any, resonance: str = "Z") -> str:
     """Every fitted quantity of one fit, including those the figure annotation may leave out."""
     m, me = fit.peak_position
-    s, se = fit.resolution
     c = compare_to_pdg(fit, resonance)
     position = "pole mass" if fit.cb_n is not None else "peak position"
     mixture = "r" in fit.parameters or "r2" in fit.parameters
@@ -278,26 +288,26 @@ def _fit_line(fit: Any, resonance: str = "Z", digits: int = 3) -> str:
     if fit.cb_n is not None:
         extra.append(f"alpha {_pm(fit, 'alpha')}, n = {fit.cb_n:g} (fixed)")
     if fit.gamma is not None:
-        extra.append(f"natural width {2 * fit.gamma:.4f} GeV (fixed)")
-    d = digits
+        extra.append(f"natural width {_width_text(2 * fit.gamma)} (fixed)")
+    d = pm_digits(me) if np.isfinite(me) and me > 0 else 4
     return (
-        f"{position} {m:.{d}f} +- {me:.{d}f} GeV (stat.), {width} {s:.{d}f} +- {se:.{d}f} GeV, "
+        f"{position} {pm_text(m, me)} GeV (stat.), {width} {pm_text(*fit.resolution)} GeV, "
         + "".join(f"{x}, " for x in extra)
         + f"chi2/ndf = {fit.chi2:.1f}/{fit.ndf}; {c.difference:+.{d}f} GeV ({100 * c.relative_difference:+.2f} %) "
         f"from the PDG mass {c.pdg_mass:.4f} GeV"
     )
 
 
-def _yields_sentence(fits: dict[str, Any]) -> str:
-    unreliable = [name for name, fit in fits.items() if not fit.yields_reliable]
-    if not unreliable:
-        return "Signal and background yields are given in the figure annotation."
-    which = "both fits" if len(unreliable) == len(fits) else f"the {', '.join(unreliable)} fit"
-    return (
-        f"Signal and background yields are not quoted: in {which} the fitted background goes below zero "
-        "inside the fit range, most likely because the peak model does not describe the radiative tail "
-        "below the Z and the background bends to absorb it."
-    )
+def _yields_sentence(shown: Any, alternate: Any = None) -> str:
+    """What the caption says about the yields: it follows the fit in the figure, not the alternate fit."""
+    reason = ("the fitted background goes below zero inside the fit range, most likely because the peak model does "
+              "not describe the radiative tail below the peak and the background bends to absorb it.")
+    if not shown.yields_reliable:
+        return f"Signal and background yields are not quoted: in the `{shown.model_name}` fit shown, {reason}"
+    sentence = "The signal and background yields of the fit shown are given in the figure annotation."
+    if alternate is not None and not alternate.yields_reliable:
+        sentence += f" Those of the `{alternate.model_name}` fit are not quoted: in that fit, {reason}"
+    return sentence
 
 
 def caption(fits: dict[str, Any], main_model: str = MAIN_MODEL, other_model: str = OTHER_MODEL,
@@ -316,7 +326,7 @@ line is the PDG Z mass, drawn for reference only; the fit does not use it.
 - `{main_model}` (shown): {_fit_line(main)}.
 - `{other_model}` (same data, same range, not shown): {_fit_line(other)}.
 
-{_yields_sentence(fits)}
+{_yields_sentence(main, other)}
 Uncertainties are statistical only. The offset from the PDG mass reflects the absent muon momentum-scale
 corrections and the simple line shape; it is not a measurement of the Z mass. Unofficial analysis of CMS Open
 Data.
@@ -337,7 +347,7 @@ def jpsi_caption(result: Any) -> str:
     def model(name: str) -> str:
         return _MODEL_TEXT[name].replace("the Z natural width", "the J/psi natural width")
 
-    other_line = (f"- `{other.model_name}` (same data, same range, not shown): {_fit_line(other, 'J/psi', 5)}."
+    other_line = (f"- `{other.model_name}` (same data, same range, not shown): {_fit_line(other, 'J/psi')}."
                   if other is not None else "- The alternate fit failed (see the analysis warnings).")
     return f"""# jpsi_peak_fit
 
@@ -347,10 +357,10 @@ bins ({data}), with a fit of {model(main.model_name)} over {main.fit_range[0]:g}
 `{main.model_name}`, the natural width from the `particle` package). The lower panel shows (data - fit) / sigma per
 bin. The dotted line is the PDG J/psi mass, drawn for reference only; the fit does not use it.
 
-- `{main.model_name}` (shown): {_fit_line(main, 'J/psi', 5)}.
+- `{main.model_name}` (shown): {_fit_line(main, 'J/psi')}.
 {other_line}
 
-{_yields_sentence({f.model_name: f for f in (main, other) if f is not None})}
+{_yields_sentence(main, other)}
 Uncertainties are statistical only. The offset from the PDG mass reflects the absent muon momentum-scale
 corrections and the simple line shape; it is not a measurement of the J/psi mass. Unofficial analysis of CMS Open
 Data.
@@ -409,7 +419,7 @@ def _data_section(data_files: list[Path]) -> str:
 
 def _regenerate(data_files: list[Path], main_model: str, anonymous: bool) -> str:
     if anonymous:
-        return "python scripts/production_run.py --confirm-single-production-run   # once; dev/production_runbook.md"
+        return "python scripts/rerender_production_figures.py   # verifies the numbers first, then writes these files"
     model = "" if main_model == MAIN_MODEL else f" --model {main_model}"
     files = " ".join(f"data/{f.name}" for f in data_files)
     return f"python examples/make_figures.py --production --file {files}{model}"
@@ -439,9 +449,9 @@ Data: these are not CMS results.
 |---|---|
 {_ROW_FIT.format(model=main_model)}
 {_ROW_OS_SS}
-| `muon_pt.png` | Muon pT: every muon in the file vs the muons passing the full selection{z_only}. |
-| `muon_eta.png` | Muon eta: every muon vs the selected muons, with the abs(eta) = 2.4 acceptance edges{z_only}. |
-| `cutflow.png` | Events left after each step of the selection, with the percentage of all events{z_only}. |
+| `muon_pt.png` | Muon pT: all muons, before selection, vs the muons passing the full selection{z_only}. |
+| `muon_eta.png` | Muon eta: all muons, before selection, vs the selected muons, with the abs(eta) = 2.4 cut{z_only}. |
+| `cutflow.png` | Events and muons left after each step of the selection, with the percentage of all events{z_only}. |
 {jpsi_rows}
 ## Regenerate
 
@@ -522,6 +532,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.production:
+        if (REPO / "results" / "production.json").exists():
+            print("error: refusing --production: the production run is complete; docs/figures/ changes only through "
+                  "scripts/rerender_production_figures.py", file=sys.stderr)
+            return 1
         print(
             f"{BOLD}WARNING: --production OVERWRITES PROTECTED DOCUMENTATION in {PRODUCTION_OUTDIR}. "
             f"Run it only for the final production run, on explicit instruction.{RESET}",

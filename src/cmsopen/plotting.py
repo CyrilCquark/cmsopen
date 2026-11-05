@@ -58,8 +58,9 @@ from __future__ import annotations
 
 import contextlib
 import math
+import re
 import textwrap
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -110,7 +111,10 @@ FOOTNOTE = "Unofficial analysis of CMS Open Data"
 """Printed on every figure: the data are real CMS data, the analysis is not an official CMS result."""
 
 MIN_FONT_SIZE = 8.0
-"""No text in any figure is smaller than this (points): when a box does not fit, its content is shortened."""
+"""No text in any figure is set smaller than this (points): when a box does not fit, its content is shortened.
+
+The one exception is inside mathtext: sub- and superscripts (the T of pT, the 5 of the axis multiplier) are drawn at
+about 0.7 of the size of the text they belong to, as in any typeset formula."""
 SERIF_FONTS = ("STIX Two Text", "STIXGeneral", "DejaVu Serif")
 """Serif text fonts in order of preference. STIXGeneral and DejaVu Serif ship with matplotlib; STIX Two Text is used
 where the system has it (macOS does; a plain Linux runner does not, and the figures then use STIXGeneral)."""
@@ -222,10 +226,15 @@ def _prepare_figure(fig: Figure | None, figsize: tuple[float, float]) -> Figure:
     return fig
 
 
-def _titles(ax: Axes, label: str) -> None:
-    """The data label above the axes on the left, the unofficial-analysis footnote on the right."""
+def _titles(ax: Axes, label: str, data_label: str | None = None) -> None:
+    """The label above the axes on the left; the run label and the unofficial-analysis footnote on the right.
+
+    ``data_label`` names the data (from :func:`cmsopen.datasets.run_label`, never typed here); default
+    :data:`cmsopen.datasets.GENERIC_DATA_LABEL`.
+    """
     ax.set_title(label, loc="left", fontsize=10)
-    ax.set_title(FOOTNOTE, loc="right", fontsize=MIN_FONT_SIZE, color="0.35", style="italic")
+    run = GENERIC_DATA_LABEL if data_label is None else data_label
+    ax.set_title(f"{run}\n{FOOTNOTE}", loc="right", fontsize=MIN_FONT_SIZE, color="0.35", style="italic")
 
 
 def _separate_titles(ax: Axes) -> None:
@@ -238,7 +247,7 @@ def _separate_titles(ax: Axes) -> None:
         gap = 6 * fig.dpi / 72.0
         lb, rb = left.get_window_extent(renderer), right.get_window_extent(renderer)
         if left.get_text() and right.get_text() and lb.x1 + gap > rb.x0:
-            left.set_text(left.get_text() + "\n")
+            left.set_text(left.get_text() + "\n" * (right.get_text().count("\n") + 1))
 
 
 # -- layout: keep the legend and the annotation off the data -------------------------------
@@ -352,7 +361,8 @@ def _obstacles(ax: Axes) -> list[tuple[str, np.ndarray, float]]:
 
 
 REFERENCE_GIDS = frozenset({"pdg", "acceptance"})
-"""Reference lines (not data): they may pass behind a box only if the box has an opaque background."""
+"""Reference lines (not data): :func:`layout_overlaps` counts them like data. Only the last resort of placement may
+hide one behind an opaque box, and :func:`layout_overlaps` then reports that."""
 
 
 def _is_opaque(artist: Any) -> bool:
@@ -388,7 +398,7 @@ def _box_hits(bb: Any, obstacles: list, pad: float, opaque: bool) -> list[tuple[
     return hits
 
 
-def _axes_overlaps(ax: Axes, renderer: Any, pad_points: float = 1.5) -> list[str]:
+def _axes_overlaps(ax: Axes, renderer: Any, pad_points: float = 1.5, allow_opaque: bool = False) -> list[str]:
     problems = []
     pad = pad_points * ax.figure.dpi / 72.0
     boxes = _boxes(ax, renderer)
@@ -397,7 +407,7 @@ def _axes_overlaps(ax: Axes, renderer: Any, pad_points: float = 1.5) -> list[str
     for box_name, bb, opaque in boxes:
         if bb.x0 < axes_box.x0 - 1 or bb.x1 > axes_box.x1 + 1 or bb.y0 < axes_box.y0 - 1 or bb.y1 > axes_box.y1 + 1:
             problems.append(f"{box_name} extends outside the axes ({bb} vs {axes_box})")
-        for name, pts in _box_hits(bb, obstacles, pad, opaque):
+        for name, pts in _box_hits(bb, obstacles, pad, allow_opaque and opaque):
             x, y = ax.transData.inverted().transform(pts[0])
             problems.append(f"{box_name} overlaps {name}: {len(pts)} points, e.g. at data ({x:.4g}, {y:.4g})")
     for i in range(len(boxes)):
@@ -435,9 +445,9 @@ def layout_overlaps(fig: Figure, dpi: float = LAYOUT_DPI) -> list[str]:
     are measured with the renderer at the output resolution ``dpi`` and
     compared, in display pixels, with every data marker (with its radius),
     error bar, curve, filled region, histogram outline and reference line
-    in that axes (a reference line, the PDG mass or an acceptance edge, may
-    pass behind a box only if the box has an opaque background). A box reaching outside its axes, and any text (titles,
-    labels, tick labels) reaching outside the figure, also count. An empty list
+    in that axes, including the reference lines (the PDG mass, the |eta| cut),
+    even behind an opaque box. A box reaching outside its axes, and any text
+    (titles, labels, tick labels) reaching outside the figure, also count. An empty list
     means the figure is clean. This is how the plotting functions place
     their boxes, and how the demos check the final figures.
     """
@@ -514,7 +524,9 @@ def _apply(legend: Any, annotation: Any, legend_loc: str, annot_loc: str | None)
         annotation.set_va(va)
 
 
-def _place_boxes(ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str, Any]) -> None:
+def _place_boxes(
+    ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str, Any], y_tops: Sequence[float] | None = None
+) -> None:
     """Put the legend and annotation where they cover nothing; if no corner is free, make room.
 
     The boxes are measured once; every pair of distinct locations is then
@@ -537,13 +549,18 @@ def _place_boxes(ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str,
     and no text gets smaller than 8 pt. If nothing works, a RuntimeError is
     raised rather than a cluttered figure returned; :func:`plot_mass_spectrum`
     then shortens its annotation and tries again.
+
+    With ``y_tops`` the top of the y-axis takes only these values, and step 3
+    is not used: the caller keeps the headroom it asked for or gets the error.
     """
     fig = _figure_of(ax)
     pairs: list[tuple[str, str | None]] = [(a, b) for a in _LOCATIONS for b in _LOCATIONS if a != b]
     if annotation is None:
         pairs = [(a, None) for a in _LOCATIONS]
     ylim0 = ax.get_ylim()
-    stages = [(size, 5, False) for size in _BOX_FONT_SIZES] + [(_BOX_FONT_SIZES[-1], 12, True)]
+    stages = [(size, 5, False) for size in _BOX_FONT_SIZES]
+    if y_tops is None:
+        stages.append((_BOX_FONT_SIZES[-1], 12, True))
     with _measuring_dpi(fig):
         for size, max_grow, opaque in stages:
             ax.set_ylim(*ylim0)
@@ -555,7 +572,9 @@ def _place_boxes(ax: Axes, annotation: Any, logy: bool, legend_kwargs: dict[str,
                 annotation.set_fontsize(size)
                 if opaque:
                     annotation.set_bbox({"facecolor": "white", "edgecolor": "none", "alpha": 0.9, "pad": 2.0})
-            for _ in range(max_grow + 1):
+            for k in range(len(y_tops) if y_tops is not None else max_grow + 1):
+                if y_tops is not None:
+                    ax.set_ylim(ylim0[0], y_tops[k])
                 if _try_pairs(ax, legend, annotation, pairs, opaque):
                     return
                 lo, hi = ax.get_ylim()
@@ -589,7 +608,7 @@ def _try_pairs(ax: Axes, legend: Any, annotation: Any, pairs: list, opaque: bool
             continue
         _apply(legend, annotation, legend_loc, annot_loc)
         fig.draw_without_rendering()
-        if not _axes_overlaps(ax, _renderer(fig)):
+        if not _axes_overlaps(ax, _renderer(fig), allow_opaque=opaque):
             return True
     return False
 
@@ -608,11 +627,16 @@ def _width_label(width: float) -> str:
     return f"{width:g}"
 
 
-def _fmt_pm(value: float, error: float) -> tuple[str, str]:
+def pm_digits(error: float) -> int:
+    """Decimals that show two significant digits of ``error``, so an uncertainty never rounds to zero."""
+    return max(0, 1 - int(math.floor(math.log10(error))))
+
+
+def format_pm(value: float, error: float) -> tuple[str, str]:
     """Value and error rounded to two significant digits of the error."""
     if not (math.isfinite(error) and error > 0):
         return f"{value:.4g}", f"{error:.2g}"
-    digits = max(0, 1 - int(math.floor(math.log10(error))))
+    digits = pm_digits(error)
     return f"{value:.{digits}f}", f"{error:.{digits}f}"
 
 
@@ -644,12 +668,11 @@ def _fit_annotation(
     fit: FitResult,
     resonance_label: str | None = None,
     natural_width: float | None = None,
-    data_label: str | None = None,
     level: int = 0,
 ) -> str:
     """The annotation text; ``level`` 1 leaves out the fixed Crystal Ball tail (alpha, n), level 2 also the fixed
-    natural width, level 3 also puts the data label on two lines (split at its last comma); for the
-    three-resolution models level 4 also leaves out the weights (f1, g) and level 5 the core widths (sigma1, r2, s).
+    natural width; for the three-resolution models level 3 also leaves out the weights (f1, g) and level 4 the core
+    widths (sigma1, r2, s). The run label is above the axes (:func:`_titles`).
 
     The left-out lines are reported in summary.txt, summary.json and the
     figure caption; they are dropped only when the full block cannot be
@@ -659,27 +682,29 @@ def _fit_annotation(
         f"{_MODEL_LABELS.get(fit.model_name, fit.model_name)} + {fit.background_label} fit, "
         f"{fit.fit_range[0]:g}$-${fit.fit_range[1]:g} GeV"
     ]
-    m, me = _fmt_pm(*fit.peak_position)
+    m, me = format_pm(*fit.peak_position)
     position = r"$M_{\mathrm{pole}}$" if fit.cb_n is not None else r"$m_{\mathrm{peak}}$"  # BW pole for cb_bw_*
     lines.append(rf"{position} = {m} $\pm$ {me} GeV (stat.)")
-    s, se = _fmt_pm(*fit.resolution)
+    s, se = format_pm(*fit.resolution)
     if "r2" in fit.parameters:  # three resolutions: the effective width and the components, on two lines
-        s1, s1e = _fmt_pm(*fit.parameters["sigma"])
+        s1, s1e = format_pm(*fit.parameters["sigma"])
         lines.append(rf"FWHM/2.355 = {s} $\pm$ {se} GeV")
-        r2, r2e = _fmt_pm(*fit.parameters["r2"])
-        sr, sre = _fmt_pm(*fit.parameters["s"])
-        f1, f1e = _fmt_pm(*fit.parameters["f1"])
-        gg, gge = _fmt_pm(*fit.parameters["g"])
-        if level < 5:
-            lines.append(rf"$\sigma_1$ = {s1} $\pm$ {s1e} GeV, $r_2$ = {r2} $\pm$ {r2e}, $s$ = {sr} $\pm$ {sre}")
+        r2, r2e = format_pm(*fit.parameters["r2"])
+        sr, sre = format_pm(*fit.parameters["s"])
+        f1, f1e = format_pm(*fit.parameters["f1"])
+        gg, gge = format_pm(*fit.parameters["g"])
         if level < 4:
+            lines.append(rf"$\sigma_1$ = {s1} $\pm$ {s1e} GeV")
+            lines.append(rf"$r_2$ = {r2} $\pm$ {r2e}, $s$ = {sr} $\pm$ {sre}")
+        if level < 3:
             lines.append(rf"$f_1$ = {f1} $\pm$ {f1e}, $g$ = {gg} $\pm$ {gge}")
     elif "r" in fit.parameters:  # a resolution mixture: report the effective width and the components
-        s1, s1e = _fmt_pm(*fit.parameters["sigma"])
+        s1, s1e = format_pm(*fit.parameters["sigma"])
         lines.append(rf"FWHM/2.355 = {s} $\pm$ {se} GeV")
-        r, re = _fmt_pm(*fit.parameters["r"])
-        fr, fre = _fmt_pm(*fit.parameters["f"])
-        lines.append(rf"$\sigma_1$ = {s1} $\pm$ {s1e} GeV, $r$ = {r} $\pm$ {re}, $f$ = {fr} $\pm$ {fre}")
+        r, re = format_pm(*fit.parameters["r"])
+        fr, fre = format_pm(*fit.parameters["f"])
+        lines.append(rf"$\sigma_1$ = {s1} $\pm$ {s1e} GeV")
+        lines.append(rf"$r$ = {r} $\pm$ {re},  $f$ = {fr} $\pm$ {fre}")
     elif fit.gamma is None:
         lines.append(rf"$\sigma$ = {s} $\pm$ {se} GeV (effective)")
     else:
@@ -689,20 +714,16 @@ def _fit_annotation(
         gamma_symbol = _resonance_symbol(resonance_label, r"\Gamma")
         lines.append(f"{gamma_symbol} = {_width_text(width)} (fixed)")
     if fit.cb_n is not None and level < 1:
-        a, ae = _fmt_pm(*fit.parameters["alpha"])
+        a, ae = format_pm(*fit.parameters["alpha"])
         lines.append(rf"$\alpha$ = {a} $\pm$ {ae},  $n$ = {fit.cb_n:g} (fixed)")
     lines.append(rf"$\chi^2$/ndf = {fit.chi2:.1f}/{fit.ndf}")
     if fit.yields_reliable:
         sy, sye = fit.signal_yield
         by, bye = fit.background_yield
-        lines.append(
-            rf"$N_{{\mathrm{{sig}}}}$ = {sy:,.0f} $\pm$ {sye:,.0f},  "
-            rf"$N_{{\mathrm{{bkg}}}}$ = {by:,.0f} $\pm$ {bye:,.0f}"
-        )
+        lines.append(rf"$N_{{\mathrm{{sig}}}}$ = {sy:,.0f} $\pm$ {sye:,.0f}")
+        lines.append(rf"$N_{{\mathrm{{bkg}}}}$ = {by:,.0f} $\pm$ {bye:,.0f}")
     else:
         lines.append("yields not shown: background not positive")
-    label = GENERIC_DATA_LABEL if data_label is None else data_label
-    lines.append("\n".join(label.rsplit(", ", 1)) if level >= 3 else label)
     return "\n".join(lines)
 
 
@@ -728,6 +749,10 @@ def _pdg_line(ax: Axes, resonance_label: str | None, pdg_mass: float | None, edg
         label=f"PDG {_resonance_symbol(resonance_label, 'm')} = {pdg_mass:.4f} GeV",
         gid="pdg",
     )
+
+
+HEADROOM = (1.25, 1.32, 1.4)
+"""Tops of the linear mass-spectrum axis tried in turn, as multiples of the highest data point plus its error."""
 
 
 # -- the mass spectrum ---------------------------------------------------------------------------
@@ -775,6 +800,9 @@ def plot_mass_spectrum(
     the renderer (see :func:`layout_overlaps`); the y-axis starts at 0 on a
     linear scale and is raised if needed to make room.
 
+    On a linear axis the top of the y-axis is :data:`HEADROOM` times the highest
+    data point plus its error, so the peak is not squeezed by the boxes beside it.
+
     Parameters
     ----------
     masshist : MassHistogram
@@ -806,14 +834,13 @@ def plot_mass_spectrum(
         Natural width in GeV shown in the annotation; it must equal the width
         the fit held fixed (``2 * fit.gamma``), which is used if omitted.
     data_label : str, optional
-        The data line of the annotation, e.g. from
+        The run label above the axes, e.g. from
         :func:`cmsopen.datasets.run_label`; default
         :data:`cmsopen.datasets.GENERIC_DATA_LABEL`. If the annotation does
         not fit beside the data at 8 pt, the fixed tail parameters (alpha, n)
         and then the fixed natural width are left out of it (they are in the
-        summary and the caption), then the data label is split over two
-        lines, and for the three-resolution models the weights and then the
-        core widths are left out; the font is never made smaller.
+        summary and the caption), and for the three-resolution models the
+        weights and then the core widths; the font is never made smaller.
 
     Returns
     -------
@@ -842,6 +869,7 @@ def plot_mass_spectrum(
 
         centers, counts = masshist.centers, masshist.counts
         ymax = float(np.max(counts + masshist.errors)) if counts.size else 1.0
+        data_top = ymax
         if same_sign is not None:
             ax.stairs(
                 same_sign.counts,
@@ -885,7 +913,7 @@ def plot_mass_spectrum(
                 label="Fit: signal + background",
                 gid="fit-total",
             )
-            ymax = max(ymax, float(np.max(total)))
+            ymax = max(ymax, 1.02 * float(np.max(total)))  # the curve stays inside the axes
         data = ax.errorbar(
             centers,
             counts,
@@ -909,9 +937,9 @@ def plot_mass_spectrum(
             positive = counts[counts > 0]
             ax.set_ylim(0.5 if positive.size == 0 else max(0.5, 0.5 * positive.min()), ymax * 3)
         else:
-            ax.set_ylim(0.0, ymax * 1.08)
+            ax.set_ylim(0.0, max(data_top * HEADROOM[0], ymax))
         ax.set_ylabel(f"Events / {_width_label(width)} GeV")
-        _titles(ax, label)
+        _titles(ax, label, data_label)
 
         if with_pulls:
             fitted = cast(FitResult, fit)  # with_pulls implies a fit
@@ -933,12 +961,13 @@ def plot_mass_spectrum(
             ax.set_xlabel(r"$m_{\mu\mu}$ [GeV]")
         fig.align_ylabels(axes)
 
+        _separate_titles(ax)
         annotation = None
         if annotate and fit is not None:
             annotation = ax.text(
                 0.03,
                 0.97,
-                _fit_annotation(fit, resonance_label, natural_width, data_label),
+                _fit_annotation(fit, resonance_label, natural_width),
                 transform=ax.transAxes,
                 fontsize=8.5,
                 linespacing=1.45,
@@ -947,9 +976,10 @@ def plot_mass_spectrum(
                 gid=_ANNOTATION_GID,
             )
         ylim = ax.get_ylim()
+        tops = None if logy else [max(data_top * h, ymax) for h in HEADROOM]
         for level in range(1, 6):
             try:
-                _place_boxes(ax, annotation, logy, {})
+                _place_boxes(ax, annotation, logy, {}, tops)
                 break
             except RuntimeError:
                 if annotation is None or fit is None:
@@ -957,10 +987,10 @@ def plot_mass_spectrum(
                 # start again from the original axis with a shorter annotation (never a smaller font)
                 ax.set_ylim(*ylim)
                 annotation.set_bbox(None)
-                annotation.set_text(_fit_annotation(fit, resonance_label, natural_width, data_label, level))
+                annotation.set_text(_fit_annotation(fit, resonance_label, natural_width, level))
         else:
+            ax.set_ylim(*ylim)  # unusual data: more headroom, and a reference line may go behind an opaque box
             _place_boxes(ax, annotation, logy, {})
-        _separate_titles(ax)
     return fig, axes
 
 
@@ -1016,6 +1046,10 @@ def _binned(values: Any, attr: str, bins: np.ndarray) -> tuple[np.ndarray, int, 
     return counts, int(raw.size), int(np.sum((raw < bins[0]) | (raw >= bins[-1])))
 
 
+_CUT_LINE_TOP = 0.74
+"""Where the |eta| cut lines of the eta figure end, as a fraction of the axes height."""
+
+
 def _distribution(
     values: Any,
     before: Any,
@@ -1028,6 +1062,7 @@ def _distribution(
     fig: Figure | None,
     acceptance: float | None,
     outside_text: Any,
+    data_label: str | None = None,
 ) -> tuple[Figure, Axes]:
     with paper_style():
         fig = _prepare_figure(fig, (WIDTH, 3.8))
@@ -1044,7 +1079,8 @@ def _distribution(
                 linewidth=1.2,
                 baseline=None if logy else 0.0,
                 gid="before",
-                label=f"All muons ({n_raw:,}" + (f"; {outside:,} {outside_text})" if outside else ")"),
+                label=f"All muons, before selection ({n_raw:,}"
+                + (f"; {outside:,} {outside_text})" if outside else ")"),
             )
             peak = max(peak, float(counts.max(initial=0)))
         counts, n_after, outside = _binned(values, attr, bins)
@@ -1063,23 +1099,25 @@ def _distribution(
             for edge in (-acceptance, acceptance):
                 ax.axvline(
                     edge,
+                    ymax=_CUT_LINE_TOP,  # the legend, too wide to fit beside the lines, goes above them
                     color="0.3",
                     linestyle="-.",
                     linewidth=0.9,
                     gid="acceptance",
-                    label=rf"$|\eta|$ = {acceptance:g} (acceptance)" if edge > 0 else "_nolegend_",
+                    label=rf"$|\eta|$ = {acceptance:g} (selection cut)" if edge > 0 else "_nolegend_",
                 )
         ax.set_xlim(lo, hi)
         if logy:
             ax.set_yscale("log", nonpositive="mask")
-            ax.set_ylim(0.5, peak * 5)
+            # with cut lines, the data stay below the lines' top (axes fraction _CUT_LINE_TOP)
+            ax.set_ylim(0.5, peak * 5 if acceptance is None else 0.5 * (peak / 0.5) ** (1 / (_CUT_LINE_TOP - 0.02)))
         else:
             ax.set_ylim(0.0, peak * 1.1)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        _titles(ax, label)
-        _place_boxes(ax, None, logy, {})
+        _titles(ax, label, data_label)
         _separate_titles(ax)
+        _place_boxes(ax, None, logy, {})
     return fig, ax
 
 
@@ -1090,6 +1128,7 @@ def plot_pt_distribution(
     logy: bool = True,
     label: str = "CMS Open Data",
     fig: Figure | None = None,
+    data_label: str | None = None,
 ) -> tuple[Figure, Axes]:
     """Muon transverse momentum, selected muons and optionally all muons before the cuts.
 
@@ -1125,6 +1164,7 @@ def plot_pt_distribution(
         fig,
         None,
         f"outside {edges[0]:g}-{edges[-1]:g} GeV",
+        data_label,
     )
 
 
@@ -1136,8 +1176,9 @@ def plot_eta_distribution(
     acceptance: float = 2.4,
     label: str = "CMS Open Data",
     fig: Figure | None = None,
+    data_label: str | None = None,
 ) -> tuple[Figure, Axes]:
-    """Muon pseudorapidity, with the |eta| = 2.4 acceptance edges as dashed lines.
+    """Muon pseudorapidity, with the |eta| = 2.4 selection cut as dashed lines.
 
     The muon chambers and tracker cover |eta| < 2.4. Before the cuts the
     raw collection extends to |eta| ~ 12, far beyond any detector: these are
@@ -1160,67 +1201,100 @@ def plot_eta_distribution(
         fig,
         acceptance,
         f"outside {edges[0]:g} to {edges[-1]:g}",
+        data_label,
     )
 
 
+_NUMBER_WORDS = {1: "one", 2: "two", 3: "three", 4: "four"}
+_CUT_PATTERNS: tuple[tuple[str, Callable[[re.Match[str]], str]], ...] = (
+    (r"min_pt\((.+)\)", lambda m: rf"Muon $p_{{\mathrm{{T}}}}$ > {m[1]} GeV"),
+    (r"max_eta\((.+)\)", lambda m: rf"Muon $|\eta|$ < {m[1]}"),
+    (r"quality_id\((.+)\)", lambda m: f"{m[1].capitalize()} muon ID"),
+    (r"max_rel_iso\(([^,]+), cone=(.+)\)", lambda m: f"Relative isolation < {m[1]} (cone {m[2]})"),
+    (r"max_abs_dxy\((.+)\)", lambda m: rf"Muon $|d_{{xy}}|$ < {m[1]} cm"),
+    (r"max_abs_dz\((.+)\)", lambda m: rf"Muon $|d_{{z}}|$ < {m[1]} cm"),
+    (r"global_muon\(.*\)", lambda m: "Global muon"),
+    (r"trigger\((.+)\)", lambda m: "Trigger: " + m[1].replace(" OR ", " or ")),
+    (r"all events", lambda m: "All events"),
+)
+
+
+def readable_cut(cut: str) -> str:
+    """The cutflow's name of a selection step in words, with units, e.g. ``min_pt(20)`` as "Muon pT > 20 GeV"."""
+    for pattern, text in _CUT_PATTERNS:
+        match = re.fullmatch(pattern, cut)
+        if match:
+            return text(match)
+    match = re.fullmatch(r"require\(>= (\d+)\)", cut)
+    if match and int(match[1]) in _NUMBER_WORDS:
+        n = int(match[1])
+        return f"At least {_NUMBER_WORDS[n]} muon{'s' if n > 1 else ''}"
+    return cut
+
+
+CUTFLOW_NOTE = (
+    "Events column and bars: events left; at a muon cut, events with at least one muon passing it. "
+    "Muons column: muons left in the events kept at that step."
+)
+"""Printed under the cutflow figure: which column counts what."""
+_CUTFLOW_BARS, _CUTFLOW_EVENTS, _CUTFLOW_MUONS = 0.36, 0.74, 0.995  # axes fractions: longest bar, column right edges
+
+
 def plot_cutflow(
-    cutflow: CutFlow | Selection, label: str = "CMS Open Data", fig: Figure | None = None
+    cutflow: CutFlow | Selection, label: str = "CMS Open Data", fig: Figure | None = None,
+    data_label: str | None = None,
 ) -> tuple[Figure, Axes]:
-    """Horizontal bars: events left after each selection step, with counts and percent of all events.
+    """Horizontal bars: events left after each selection step, with the counts of events and of muons.
 
     The first bar is every event in the file. Each later bar is the number of
     events that still have at least one selected muon after that step, or,
-    for an event-level step (the trigger, ``require(>= 2)``), the events
-    kept. The text gives the count and the percentage of all events. The
-    cutflow is the audit trail of a selection: it shows which cut does the
-    work. Counts are in thousands so the axis needs no offset multiplier;
-    the axis is widened until every bar label fits inside it.
+    for an event-level step (the trigger, at least two muons), the events
+    kept. Beside the bars, one column gives those events with their percentage
+    of all events, and one the muons left. The cutflow is the audit trail of a
+    selection: it shows which cut does the work. Bars are in thousands of
+    events so the axis needs no offset multiplier.
     """
-    from matplotlib.ticker import AutoMinorLocator
+    from matplotlib.ticker import FuncFormatter, MaxNLocator
+    from matplotlib.transforms import blended_transform_factory
 
     if isinstance(cutflow, Selection):
         cutflow = cutflow.cutflow()
     rows = cutflow.to_records()
-    names = [textwrap.fill(r["cut"], width=26, break_long_words=False) for r in rows]
+    names = [
+        name if "$" in name else textwrap.fill(name, width=24, break_long_words=False)
+        for name in (readable_cut(r["cut"]) for r in rows)
+    ]
     values = np.array(
         [r["n_events"] if r["level"] in ("start", "event") else r["n_events_with_particles"] for r in rows], dtype=float
     )
     start = rows[0]["n_events"]
     with paper_style():
-        fig = _prepare_figure(fig, (WIDTH, 0.38 * len(rows) + 1.3))
+        fig = _prepare_figure(fig, (WIDTH, 0.38 * len(rows) + 2.0))
         ax = fig.subplots()
         y = np.arange(len(rows))[::-1]
         thousands = values / 1000.0
         ax.barh(y, thousands, height=0.62, color=OKABE_ITO["blue"], alpha=0.85, gid="bars")
-        texts = [
-            ax.text(
-                v + 0.012 * thousands.max(),
-                yi,
-                f"{n:,.0f} ({100 * n / start:.1f} %)",
-                va="center",
-                ha="left",
-                fontsize=8.5,
-                gid="bar-label",
-            )
-            for yi, v, n in zip(y, thousands, values, strict=False)
-        ]
+        ax.set_xlim(0, max(float(thousands.max()), 1e-3) / _CUTFLOW_BARS)
+        columns = blended_transform_factory(ax.transAxes, ax.transData)
+        for yi, n, muons in zip(y, values, (r["n_particles"] for r in rows), strict=True):
+            ax.text(_CUTFLOW_EVENTS, yi, f"{n:,.0f} ({100 * n / start:.1f} %)", va="center", ha="right", fontsize=8.5,
+                    transform=columns, gid="bar-label")
+            ax.text(_CUTFLOW_MUONS, yi, f"{muons:,.0f}", va="center", ha="right", fontsize=8.5, transform=columns,
+                    gid="muon-count")
+        for x, title in ((_CUTFLOW_EVENTS, "Events (% of all)"), (_CUTFLOW_MUONS, "Muons")):
+            ax.text(x, len(rows) - 0.25, title, va="center", ha="right", fontsize=8.5, weight="bold", transform=columns,
+                    gid="column-title")
         ax.set_yticks(y, names, fontsize=8.5)
         ax.tick_params(axis="y", which="both", left=False, right=False)
+        ax.tick_params(axis="x", which="both", top=False)
         ax.minorticks_off()
-        ax.xaxis.set_minor_locator(AutoMinorLocator())
-        ax.set_ylim(-0.6, len(rows) - 0.4)
-        ax.set_xlabel("Events (thousands)")
-        _titles(ax, label)
-        xmax = thousands.max() * 1.15
-        with _measuring_dpi(fig):
-            for _ in range(20):
-                ax.set_xlim(0, xmax)
-                fig.draw_without_rendering()
-                renderer = _renderer(fig)
-                right = ax.get_window_extent(renderer).x1
-                if max(t.get_window_extent(renderer).x1 for t in texts) < right - 3:
-                    break
-                xmax *= 1.08
+        ax.set_ylim(-0.6, len(rows) + 0.15)
+        ticks = np.asarray(MaxNLocator(nbins=3, integer=True).tick_values(0.0, float(thousands.max())))
+        ax.set_xticks(ticks[ticks <= thousands.max()])
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
+        ax.set_xlabel("Events left (thousands)", loc="left")
+        fig.supxlabel(textwrap.fill(CUTFLOW_NOTE, width=92), fontsize=MIN_FONT_SIZE, color="0.25", gid="cutflow-note")
+        _titles(ax, label, data_label)
         _separate_titles(ax)
     return fig, ax
 
@@ -1235,6 +1309,7 @@ def plot_os_vs_ss(
     fig: Figure | None = None,
     resonance_label: str | None = None,
     pdg_mass: float | None = None,
+    data_label: str | None = None,
 ) -> tuple[Figure, Axes]:
     """Opposite-sign and same-sign dimuon mass spectra on one log-scale axis.
 
@@ -1286,9 +1361,9 @@ def plot_os_vs_ss(
             ax.set_ylim(0.0, top * 1.1)
         ax.set_xlabel(r"$m_{\mu\mu}$ [GeV]")
         ax.set_ylabel(f"Pairs / {_width_label(width)} GeV")
-        _titles(ax, label)
-        _place_boxes(ax, None, logy, {"title": selection, "title_fontsize": 8.5} if selection else {})
+        _titles(ax, label, data_label)
         _separate_titles(ax)
+        _place_boxes(ax, None, logy, {"title": selection, "title_fontsize": 8.5} if selection else {})
     return fig, ax
 
 

@@ -249,9 +249,10 @@ def test_annotation_contents_match_the_fit():
     assert float(m.group(1)) == round(fit.peak_position[0], digits)
     assert float(m.group(2)) == round(fit.peak_position[1], digits)
     assert f"{fit.chi2:.1f}/{fit.ndf}" in text
-    assert text.splitlines()[-1] == label  # the data label is passed in (run_label), never hard-coded
-    default = annotation_text(plot_mass_spectrum(h, fit)[1][0]).get_text()
-    assert default.splitlines()[-1] == "CMS 2012 open data, DoubleMuParked, $\\sqrt{s}$ = 8 TeV"
+    ax = plot_mass_spectrum(h, fit, data_label=label)[1][0]
+    assert ax.get_title(loc="right").splitlines()[0] == label  # the label is passed in (run_label), never hard-coded
+    default = plot_mass_spectrum(h, fit)[1][0]
+    assert default.get_title(loc="right").splitlines()[0] == "CMS 2012 open data, DoubleMuParked, $\\sqrt{s}$ = 8 TeV"
     assert "sigma_{\\mathrm{res}}" in text and "Gamma_{Z}$ = 2.496 GeV (fixed)" in text
 
 
@@ -274,7 +275,7 @@ def test_paper_style_restores_rcparams():
 def test_footnote_and_label_present_and_no_official_claim():
     h, fit = toy_fit()
     fig, (ax, _) = plot_mass_spectrum(h, fit)
-    assert ax.get_title(loc="right") == FOOTNOTE == "Unofficial analysis of CMS Open Data"
+    assert ax.get_title(loc="right").splitlines()[-1] == FOOTNOTE == "Unofficial analysis of CMS Open Data"
     assert ax.get_title(loc="left").strip() == "CMS Open Data"
     all_text = " ".join(t.get_text() for t in fig.findobj(matplotlib.text.Text))
     assert "Preliminary" not in all_text and "CMS Collaboration" not in all_text

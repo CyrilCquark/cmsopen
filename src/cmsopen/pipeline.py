@@ -895,6 +895,8 @@ def _figures(
     from cmsopen.datasets import run_label
     from cmsopen.plotting import plot_cutflow, plot_mass_spectrum, plot_os_vs_ss
 
+    data_label = run_label(list(files))
+
     pdg_mass, _, width, _ = pdg_mass_width(cfg.resonance)
     symbol = resonance_label(cfg)
     figures: dict[str, Any] = {}
@@ -905,11 +907,12 @@ def _figures(
         resonance_label=symbol,
         pdg_mass=pdg_mass,
         natural_width=width if fit.gamma is not None else None,
-        data_label=run_label(list(files)),
+        data_label=data_label,
     )
     if ss_hist is not None:
-        figures["os_vs_ss"], _ = plot_os_vs_ss(hist, ss_hist, resonance_label=symbol, pdg_mass=pdg_mass)
-    figures["cutflow"], _ = plot_cutflow(cutflow)
+        figures["os_vs_ss"], _ = plot_os_vs_ss(hist, ss_hist, resonance_label=symbol, pdg_mass=pdg_mass,
+                                               data_label=data_label)
+    figures["cutflow"], _ = plot_cutflow(cutflow, data_label=data_label)
     return figures
 
 

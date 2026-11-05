@@ -63,25 +63,36 @@ def test_no_text_below_8_pt_and_the_annotation_does_not_cover_the_data(channel_f
     assert small == [] and plotting.MIN_FONT_SIZE == 8.0
     assert plotting.layout_overlaps(fig) == []
     text = annotation_of(axes).get_text()
-    assert text.splitlines()[-1] == label and "M_{\\mathrm{pole}}" in text and "\\chi^2" in text
+    assert axes[0].get_title(loc="right").splitlines()[0] == label
+    assert "M_{\\mathrm{pole}}" in text and "\\chi^2" in text
 
 
-def test_a_long_annotation_is_shortened_not_shrunk(channel_fit):
+def test_a_long_annotation_is_shortened_not_shrunk(channel_fit, monkeypatch):
+    """When the full block cannot be placed, alpha and n, then the fixed width, are left out; the font stays."""
     cfg, h, fit = channel_fit
-    if cfg.name != "Jpsi_mumu":
-        pytest.skip("only the J/psi mixture with six-digit yields and the mixed label needs shortening")
+    place, calls = plotting._place_boxes, []
+
+    def fails_twice(*args):
+        calls.append(args[1].get_text())
+        if len(calls) <= 2:
+            raise RuntimeError("could not place")
+        place(*args)
+
+    monkeypatch.setattr(plotting, "_place_boxes", fails_twice)
     _, axes = plot(cfg, h, fit, MIXED)
+    assert "\\alpha" in calls[0] and "(fixed)" in calls[1] and "\\alpha" not in calls[1]
     text = annotation_of(axes).get_text()
-    assert "\\alpha" not in text and "(fixed)" not in text  # alpha and n, then the fixed width, are left out
+    assert "\\alpha" not in text and "(fixed)" not in text
     assert annotation_of(axes).get_fontsize() >= plotting.MIN_FONT_SIZE
 
 
-def test_without_shortening_it_cannot_be_placed(channel_fit, monkeypatch):
+def test_if_nothing_can_be_placed_the_error_is_raised(channel_fit, monkeypatch):
     cfg, h, fit = channel_fit
-    if cfg.name != "Jpsi_mumu":
-        pytest.skip("only the J/psi case needs shortening")
-    full = plotting._fit_annotation
-    monkeypatch.setattr(plotting, "_fit_annotation", lambda *a, **k: full(*a[:4]))  # every level gives the full text
+
+    def never(*args):
+        raise RuntimeError("could not place")
+
+    monkeypatch.setattr(plotting, "_place_boxes", never)
     with pytest.raises(RuntimeError, match="could not place"):
         plot(cfg, h, fit, MIXED)
 
