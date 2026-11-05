@@ -31,18 +31,22 @@ is reported.
 | `results/production.json` | `12effe765b3a7fbacfb901d41cc7f2cdca0f32ad5ed079f51d1b0399124da2ec` |
 | `results/production_files.json` | `0b26c081b9bc7f951c03d1af9a7735bcd0beb55a2bd69d91132a563101f085a7` |
 | analysis configuration | `10247c26cb18e3e3b8288e63a259b5437b18d3c20621dec253ec457cfb81e9d1` |
-| `docs/figures/README.md` | `8e08effcb66d10b20104d740071597ae639667918205e5272407ad61fdc55756` |
-| `docs/figures/cutflow.png` | `c112b2eec1dbf6d6b02a52a82b15e18c08d82ccd0ccfd215f4f348d7245d6f1a` |
-| `docs/figures/jpsi_os_vs_ss.png` | `54dfb57a2859091ee30e1992956c26ba989f341fb6c4b1d7e9fd5159b61974e1` |
-| `docs/figures/jpsi_peak_fit.pdf` | `871c2dd3c7486af274e72a4b295a0c8d4d978150800c4127f1bc34c922a8c317` |
-| `docs/figures/jpsi_peak_fit.png` | `e65daa79c65cbbf17ee4068f308b9d1c960c2a6cd6baf3687f88fc55522ea740` |
-| `docs/figures/jpsi_peak_fit_caption.md` | `0a44603795ca95b4d8da785de5322c960c65c5a67ed97ba1d437a3db86cfde70` |
-| `docs/figures/muon_eta.png` | `5c77c6fde18d48c6431de32b4e7f305ffd5e510c278090ce97cada341e9e40e9` |
-| `docs/figures/muon_pt.png` | `6a0c952a4ee19c10ab8e1286d6f1349d680ab32c0dfab540aa8eab0cd3890388` |
-| `docs/figures/z_os_vs_ss.png` | `b64bd1a7e02880b7ddf76c1091e46fa4929a1e32c757c4a9bfa2d228510ee31b` |
-| `docs/figures/z_peak_fit.pdf` | `a680a0555799ac035e493d8d867832f6f60a9791f6420008097ccd6d097f8f6b` |
-| `docs/figures/z_peak_fit.png` | `9e3dbd47b13a3bea69e5872b7795e608b4eca637fff25edde9311d35ba24d4a2` |
-| `docs/figures/z_peak_fit_caption.md` | `34741c57b543bb15b0b3311be2d1a10ea8f4828e0c8a83c71a9b9ecb01788a85` |
+| `docs/figures/README.md` | `9cd60bdec12e03f0e1ddc23516724f7f74322edb7d0870b1788499d0e1f102f8` |
+| `docs/figures/cutflow.png` | `6b7a7ce666ffeff74932eed351c5fb7a046b2f5900e4bba203fe47cac0bf1b17` |
+| `docs/figures/jpsi_os_vs_ss.png` | `4df1944cf981561b7c151292225fc88dd194600c200a134b1f4860df4dc46adf` |
+| `docs/figures/jpsi_peak_fit.pdf` | `73ca32434f00f0c4129643b39bdaed2990c6033f3a027b112fd84f5541b97990` |
+| `docs/figures/jpsi_peak_fit.png` | `db0545f0b460bc05be9f084dc70baacd11e054253803de28ee170351f2607313` |
+| `docs/figures/jpsi_peak_fit_caption.md` | `63ca8f562b6bea786dd1131c63c32b8f9d8c90800986aeec5c4df2a619b62a34` |
+| `docs/figures/muon_eta.png` | `a407e0ce83228f8e03d8eb5601028d8a2580f482b628a5f64e31a6267bd55994` |
+| `docs/figures/muon_pt.png` | `b9bbd02bedbf28cc516ab3f987fcb974456ca3d189a8b4dca3cd28959e15b89b` |
+| `docs/figures/z_os_vs_ss.png` | `9f48f57b6ac0706873aa64e47b170e774b81e97e7ceb04d77efb00450b27da90` |
+| `docs/figures/z_peak_fit.pdf` | `31bd625e67b3a68f11cd7718bd35d21ecf4a186bc2bf76f585fd00cdeba71374` |
+| `docs/figures/z_peak_fit.png` | `cdcb6e9f7887e1c8106ec125776b5fad098442e2d1a6e8032390ef84e7d39e2d` |
+| `docs/figures/z_peak_fit_caption.md` | `2403eadaf8a7c9c32338ec4725d5120cbceb168aa351b1e9c1684192c3eb75ab` |
+
+If `results/figures_rerender.json` exists, the figures were rendered again after the run, for layout and captions only,
+by `scripts/rerender_production_figures.py`. That script reruns the analysis on the same files and writes nothing unless
+every number equals `results/production.json`; the file records the commit, the check and the figure hashes.
 
 ## Run the analysis again
 

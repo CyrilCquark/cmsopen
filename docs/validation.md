@@ -27,15 +27,15 @@ category, which uncorrected momentum scales can produce. Values are reported as 
 |---|---|---|---|---|
 | Production sample size | **20 files (12 from record 31129, 8 from 31123)** | 20 files (12 from record 31129, 8 from record 31123) | met | results/production.json |
 | Fit adequacy chi2/ndf (final model, production) | **<= 2.0, with a positive background everywhere in the fit range** | Z 1.518 (met); J/ψ 3.028 (not met) | not met for every channel | results/production.json |
-| Line coverage of src/cmsopen | **>= 90 % (`--cov-fail-under=90`)** | 96.7 % | met | gates record of the production commit |
+| Line coverage of src/cmsopen | **>= 96.7 %** | 96.7 % | met | gates record of the production commit |
 | mypy / ruff findings | **0 (mypy `disallow_untyped_defs`, `warn_unused_ignores`; `ruff check src/`), enforced in CI** | 0 findings (quality gates exit 0) | met | gates record of the production commit |
 | Pull-test toys per pull test | **>= 1,000** | 1,000 toys in each of 6 tests; up to 34 failed fits per test, whose pulls are not counted | met | from the test suite, not production data |
 | Pull mean, abs value | **<= 0.2** | peak position: largest 0.103; every fitted parameter: largest 0.439 (g) | met for the peak position | from the test suite, not production data |
 | Pull standard deviation | **0.8 to 1.2** | peak position: 0.976 to 1.039; every fitted parameter: 0.860 to 1.086 | met for the peak position | from the test suite, not production data |
 | Deliberate-breakage checks per layer | **>= 3, each confirmed to fail a test** | not derivable: these checks were run by hand during development and no per-layer count was recorded; the commit history does not give one | not derivable | n/a |
-| Validation pairs per category (minimum fitted) | **>= 5,000** | Z smallest fitted entry 35,439; J/ψ smallest fitted entry 9,704 | met | results/production.json |
-| J/psi opposite-sign pairs in 2.9-3.3 GeV | **>= 2,000, clearly visible peak** | 380,964 pairs (peak: see the J/ψ figure) | met | saved histogram of the run |
-| J/psi sideband signal-to-background | **>= 1** | 12.16 (cross-check only, not the benchmark's method: fitted background in the window 44,908, S/B 7.48) | met | saved histogram of the run; cross-check from the saved fit |
+| Validation pairs per category (minimum fitted) | **>= 9,704** | Z smallest fitted entry 35,439; J/ψ smallest fitted entry 9,704 | met | results/production.json |
+| J/psi opposite-sign pairs in 2.9-3.3 GeV | **>= 380,964, clearly visible peak** | 380,964 pairs (peak: see the J/ψ figure) | met | saved histogram of the run |
+| J/psi sideband signal-to-background | **>= 12.16** | 12.16 (cross-check only, not the benchmark's method: fitted background in the window 44,908, S/B 7.48) | met | saved histogram of the run; cross-check from the saved fit |
 | Parallel versus serial results | **identical masses, cutflow and fit results** | Z: byte-identical; J/ψ: byte-identical | met | results/production.json |
 | Reproducibility of summary.json | **byte-identical on identical inputs** | Z: byte-identical; J/ψ: byte-identical | met | results/production.json |
 | Run-period consistency | **2012B and 2012C peak and resolution, differences with combined stat. uncertainties** | Z peak -0.0184 ± 0.0103 GeV (-1.78 σ); Z resolution -0.0059 ± 0.0157 GeV (-0.38 σ); J/ψ peak +0.00000 ± 0.00016 GeV (+0.02 σ); J/ψ resolution +0.00001 ± 0.00026 GeV (+0.03 σ) | reported | results/production.json |
@@ -44,10 +44,12 @@ category, which uncorrected momentum scales can produce. Values are reported as 
 | Fitted Z resolution | **0.5-4 GeV** | 1.982 GeV | met | results/production.json |
 | Z stability spread over fit choices | **< 0.5 GeV** | 0.0068 GeV | met | results/production.json |
 | Z peak sanity window around the PDG mass (not a mass target) | **within 1.0 GeV** | -0.2879 GeV | met | results/production.json |
-| Figure file size | **> 20 kB** | smallest 57 kB | met | docs/figures/ |
+| Figure file size | **> 20 kB** | smallest 62 kB | met | docs/figures/ |
 | PNG size equal to figsize x 300 dpi | **exact** | not derivable: the run does not save figsize; the PNGs are 300 to 300 dpi | not derivable | n/a |
 | Layout overlaps in the figures | **0** | not derivable: checked by the tests on other inputs; the production figures' layout is not measured in the run | not derivable | n/a |
 | Byte-identical regeneration of the figures | **exact** | not derivable: checked by the tests on other inputs; the figures were written once in the run | not derivable | n/a |
+
+Coverage, validation pairs, J/ψ pairs and J/ψ sideband S/B were raised to this run's own observed values after the run, under the all-time-highest benchmark policy (`dev/targets.md` lists the old values). For those four, "met" here is true by construction; each was above its earlier benchmark.
 
 **Not met:** Fit adequacy chi2/ndf (final model, production). **Not derivable:** Deliberate-breakage checks per layer; Same-sign pairs in 88-94 GeV (fraction of opposite-sign); PNG size equal to figsize x 300 dpi; Layout overlaps in the figures; Byte-identical regeneration of the figures.
 
