@@ -1,0 +1,89 @@
+{
+  "commit": "639771694767be1014bbd8c5abb1ca744b92e614",
+  "figures": {
+    "docs/figures/README.md": "9cd60bdec12e03f0e1ddc23516724f7f74322edb7d0870b1788499d0e1f102f8",
+    "docs/figures/cutflow.png": "6b7a7ce666ffeff74932eed351c5fb7a046b2f5900e4bba203fe47cac0bf1b17",
+    "docs/figures/jpsi_os_vs_ss.png": "4df1944cf981561b7c151292225fc88dd194600c200a134b1f4860df4dc46adf",
+    "docs/figures/jpsi_peak_fit.pdf": "73ca32434f00f0c4129643b39bdaed2990c6033f3a027b112fd84f5541b97990",
+    "docs/figures/jpsi_peak_fit.png": "db0545f0b460bc05be9f084dc70baacd11e054253803de28ee170351f2607313",
+    "docs/figures/jpsi_peak_fit_caption.md": "63ca8f562b6bea786dd1131c63c32b8f9d8c90800986aeec5c4df2a619b62a34",
+    "docs/figures/muon_eta.png": "a407e0ce83228f8e03d8eb5601028d8a2580f482b628a5f64e31a6267bd55994",
+    "docs/figures/muon_pt.png": "b9bbd02bedbf28cc516ab3f987fcb974456ca3d189a8b4dca3cd28959e15b89b",
+    "docs/figures/z_os_vs_ss.png": "9f48f57b6ac0706873aa64e47b170e774b81e97e7ceb04d77efb00450b27da90",
+    "docs/figures/z_peak_fit.pdf": "31bd625e67b3a68f11cd7718bd35d21ecf4a186bc2bf76f585fd00cdeba71374",
+    "docs/figures/z_peak_fit.png": "cdcb6e9f7887e1c8106ec125776b5fad098442e2d1a6e8032390ef84e7d39e2d",
+    "docs/figures/z_peak_fit_caption.md": "2403eadaf8a7c9c32338ec4725d5120cbceb168aa351b1e9c1684192c3eb75ab"
+  },
+  "reason": "layout and caption polish",
+  "schema_version": 1,
+  "timing_s": {
+    "Jpsi_mumu_s": 262.1,
+    "Z_mumu_s": 295.7,
+    "figures_s": 57.7,
+    "total_s": 629.9
+  },
+  "verification": {
+    "checks": {
+      "Jpsi_mumu": {
+        "differences": 0,
+        "largest_relative_deviation": 0.0,
+        "summary_json_identical_to_the_saved_run": true,
+        "values_compared_exactly": 1077,
+        "values_compared_within_1e-9": 160
+      },
+      "Z_mumu": {
+        "differences": 0,
+        "largest_relative_deviation": 0.0,
+        "summary_json_identical_to_the_saved_run": true,
+        "values_compared_exactly": 1072,
+        "values_compared_within_1e-9": 148
+      },
+      "layout": {
+        "cutflow": {
+          "overlaps": 0,
+          "text_below_8_pt": 0
+        },
+        "jpsi_os_vs_ss": {
+          "overlaps": 0,
+          "text_below_8_pt": 0
+        },
+        "jpsi_peak_fit": {
+          "headroom": 1.25,
+          "overlaps": 0,
+          "text_below_8_pt": 0
+        },
+        "muon_eta": {
+          "overlaps": 0,
+          "text_below_8_pt": 0
+        },
+        "muon_pt": {
+          "overlaps": 0,
+          "text_below_8_pt": 0
+        },
+        "z_os_vs_ss": {
+          "overlaps": 0,
+          "text_below_8_pt": 0
+        },
+        "z_peak_fit": {
+          "headroom": 1.25,
+          "overlaps": 0,
+          "text_below_8_pt": 0
+        }
+      },
+      "z_figure_fit": {
+        "differences": 0,
+        "largest_relative_deviation": 0.0,
+        "values_compared_within_1e-9": 5
+      }
+    },
+    "exact_except": [
+      "per_file",
+      "t6"
+    ],
+    "not_compared": [
+      "timing_s"
+    ],
+    "relative_tolerance": 1e-09,
+    "result": "every value equals results/production.json"
+  }
+}

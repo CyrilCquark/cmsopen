@@ -7,9 +7,9 @@ Data: these are not CMS results.
 |---|---|
 | `z_peak_fit.png`, `z_peak_fit.pdf` | Dimuon mass spectrum with the fit (model `cb2_bw_exp`), background, signal band, PDG Z mass and pull panel. Caption: [`z_peak_fit_caption.md`](z_peak_fit_caption.md). |
 | `z_os_vs_ss.png` | Opposite- vs same-sign pair masses (all candidates) for a loose selection (pT > 20 GeV, abs(eta) < 2.4, dimuon trigger, no ID or isolation), log scale: the peak is opposite-sign only. |
-| `muon_pt.png` | Muon pT: every muon in the file vs the muons passing the full selection (Z selection). |
-| `muon_eta.png` | Muon eta: every muon vs the selected muons, with the abs(eta) = 2.4 acceptance edges (Z selection). |
-| `cutflow.png` | Events left after each step of the selection, with the percentage of all events (Z selection). |
+| `muon_pt.png` | Muon pT: all muons, before selection, vs the muons passing the full selection (Z selection). |
+| `muon_eta.png` | Muon eta: all muons, before selection, vs the selected muons, with the abs(eta) = 2.4 cut (Z selection). |
+| `cutflow.png` | Events and muons left after each step of the selection, with the percentage of all events (Z selection). |
 | `jpsi_peak_fit.png`, `jpsi_peak_fit.pdf` | J/psi dimuon mass spectrum with the fit (model `cb2_bw_poly2`), background, signal band, PDG J/psi mass and pull panel. Caption: [`jpsi_peak_fit_caption.md`](jpsi_peak_fit_caption.md). |
 | `jpsi_os_vs_ss.png` | Opposite- vs same-sign pair masses after the full J/psi selection: the peak is opposite-sign only. |
 
@@ -18,7 +18,7 @@ Data: these are not CMS results.
 From the repository root, with the package installed (`pip install -e ".[dev]"`):
 
 ```bash
-python scripts/production_run.py --confirm-single-production-run   # once; dev/production_runbook.md
+python scripts/rerender_production_figures.py   # verifies the numbers first, then writes these files
 ```
 
 The output is deterministic: rerunning on the same data and software gives byte-identical files.
@@ -30,7 +30,7 @@ analysed in registry order; their names, sizes and checksums are in `results/pro
 
 ## Software
 
-Generated from commit `9ebc2e3` with Python 3.12.15:
+Generated from commit `6397716` with Python 3.12.15:
 
 | package | version |
 |---|---|
